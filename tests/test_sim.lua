@@ -29,7 +29,7 @@ local function threeMembers()
 	math.randomseed(42)
 	local world = H.NewWorld()
 	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = { [TAILORING] = tailoring(150, { [3914] = 2568, [3915] = 2569 }) } })
-	local b = world:AddChar({ guid = guid(2), name = "Bert", profs = { [COOKING] = { rank = 50, maxRank = 75, name = "Cooking", recipes = { [2538] = 2679 } } } })
+	local b = world:AddChar({ guid = guid(2), name = "Bert", profs = { [COOKING] = { rank = 50, maxRank = 75, name = "Cooking", secondary = true, recipes = { [2538] = 2679 } } } })
 	local c = world:AddChar({ guid = guid(3), name = "Cleo" })
 	return world, a, b, c
 end
@@ -48,6 +48,79 @@ test("recipes spread to everyone online", function()
 	local rb = world.online[b.guid]:Record(a.guid)
 	eq(rb.profs[TAILORING].recipes[3914], 2568)
 	eq(world.online[c.guid].env.GuildTradebookDB.recipeFacts[3914].item, 2568, "fact learned from record")
+end)
+
+test("clicking quickly through profession tabs scans every profession", function()
+	math.randomseed(11)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = {
+		[TAILORING] = tailoring(150, { [3914] = 2568 }),
+		[ALCHEMY] = { rank = 80, maxRank = 150, name = "Alchemy", recipes = { [2330] = 118 } },
+	} })
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(0.2)
+	ca:OpenTradeSkill(ALCHEMY)
+	world:Run(30)
+	local own = ca:Record(a.guid)
+	truthy(own.profs[TAILORING].recipes, "tailoring scanned")
+	truthy(own.profs[ALCHEMY].recipes, "alchemy scanned")
+end)
+
+test("every profession with a crafting window is shared, gathering ones are not", function()
+	math.randomseed(12)
+	local world = H.NewWorld()
+	local FISHING, HERBALISM = 356, 182
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = {
+		[FISHING] = { rank = 100, maxRank = 150, name = "Fishing", secondary = true, recipes = { [9001] = 6533 } },
+		[HERBALISM] = { rank = 100, maxRank = 150, name = "Herbalism", noCraftingUI = true },
+		[COOKING] = { rank = 50, maxRank = 75, name = "Cooking", secondary = true, recipes = { [2538] = 2679 } },
+	} })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(FISHING)
+	world:Run(5)
+	ca:OpenTradeSkill(COOKING)
+	world:Run(120)
+	local r = world.online[b.guid]:Record(a.guid)
+	truthy(r.profs[FISHING] and r.profs[FISHING].recipes[9001] == 6533, "fishing recipes shared")
+	truthy(r.profs[COOKING] and r.profs[COOKING].recipes[2538], "cooking shared")
+	eq(r.profs[HERBALISM], nil, "herbalism has no crafting window")
+end)
+
+test("primary recipe changes go out fast, secondary ones are batched", function()
+	math.randomseed(13)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = {
+		[TAILORING] = tailoring(150, { [3914] = 2568 }),
+		[COOKING] = { rank = 50, maxRank = 75, name = "Cooking", secondary = true, recipes = { [2538] = 2679 } },
+	} })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(2)
+	ca:OpenTradeSkill(COOKING)
+	world:Run(200)
+	local cb = world.online[b.guid]
+	truthy(cb:Record(a.guid).profs[TAILORING].primary, "primary flag shared")
+	eq(cb:Record(a.guid).profs[COOKING].primary, nil)
+
+	a.profs[COOKING].recipes[2539] = 2680
+	ca:Fire("NEW_RECIPE_LEARNED", 2539)
+	world:Run(20)
+	eq(cb:Record(a.guid).profs[COOKING].recipes[2539], nil, "secondary change not sent yet")
+	world:Run(60)
+	eq(cb:Record(a.guid).profs[COOKING].recipes[2539], 2680, "secondary change sent in the batch")
+
+	a.profs[TAILORING].recipes[3915] = 2569
+	ca:Fire("NEW_RECIPE_LEARNED", 3915)
+	world:Run(10)
+	eq(cb:Record(a.guid).profs[TAILORING].recipes[3915], 2569, "primary change sent within seconds")
 end)
 
 test("offline owner's data is relayed to later logins", function()

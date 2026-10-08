@@ -48,7 +48,7 @@ L.TOOLTIP_CRAFTABLE = "Craftable by guild:"
 L.TOOLTIP_KNOWN = "Known by guild:"
 L.TOOLTIP_MORE = "(+%d more)"
 
-L.REMIND_SCAN = "Open your %s window once so your recipes can be shared with the guild."
+L.REMIND_SCAN = "Open the professions window and click the %s tab once so your recipes can be shared with the guild."
 
 L.SLASH_HELP = [[/gtb - open window
 /gtb search <text> - search recipes

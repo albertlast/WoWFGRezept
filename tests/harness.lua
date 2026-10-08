@@ -270,19 +270,32 @@ function H.NewClient(world, char)
 	}
 
 	-- Professions
+	-- Like the real API: prim1, prim2, then secondary slots (nil where empty).
+	-- Professions flagged `secondary` go into the secondary slots.
 	env.GetProfessions = function()
-		local list = {}
-		for sl in pairs(char.profs) do list[#list + 1] = sl end
-		table.sort(list)
-		return list[1], list[2], list[3], list[4]
+		local primary, secondary = {}, {}
+		for sl, p in pairs(char.profs) do
+			table.insert(p.secondary and secondary or primary, sl)
+		end
+		table.sort(primary)
+		table.sort(secondary)
+		return primary[1], primary[2], secondary[1], secondary[2], secondary[3], secondary[4], secondary[5]
 	end
 	env.GetProfessionInfo = function(sl)
 		local p = char.profs[sl]
-		return p.name or ("Prof" .. sl), 0, p.rank, p.maxRank, 0, 0, sl
+		-- spellOffset + 1 encodes the skill line, see C_SpellBook below.
+		return p.name or ("Prof" .. sl), 0, p.rank, p.maxRank, 0, sl - 1, sl
 	end
+	env.C_SpellBook = {
+		GetSpellBookItemInfo = function(slot) return { spellID = slot } end,
+	}
 	env.Enum = {}
 	env.C_TradeSkillUI = {
 		IsTradeSkillReady = function() return client.openSkill ~= nil end,
+		CanTradeSkillShowCraftingUI = function(spellID)
+			local p = char.profs[spellID]
+			return p ~= nil and not p.noCraftingUI
+		end,
 		IsTradeSkillLinked = function() return false end,
 		IsTradeSkillGuild = function() return false end,
 		IsNPCCrafting = function() return false end,

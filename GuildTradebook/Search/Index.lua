@@ -3,13 +3,14 @@ In-memory lookup tables over the visible pool, rebuilt lazily after changes:
   byRecipe[recipeID] = { guid, ... }
   byItem[itemID]     = { recipeID, ... }
   recipeSkill[recipeID] = skillLineID
+  primarySkill[skillLineID] = true when some member has it as a primary profession
 Visible = shared record of a current member, minus primary professions the
 server says the member no longer has (stale relayed data).
 ]]
 local _, ns = ...
 
 local Store, Roster, Util = ns.Store, ns.Roster, ns.Util
-local Index = { dirty = true, byRecipe = {}, byItem = {}, recipeSkill = {} }
+local Index = { dirty = true, byRecipe = {}, byItem = {}, recipeSkill = {}, primarySkill = {} }
 ns.Index = Index
 
 ns.On("RecordsChanged", function() Index.dirty = true end)
@@ -25,12 +26,15 @@ function Index.IsProfessionVisible(rec, skillLine)
 end
 
 function Index.Rebuild()
-	local byRecipe, byItem, recipeSkill = {}, {}, {}
+	local byRecipe, byItem, recipeSkill, primarySkill = {}, {}, {}, {}
 	local gd = ns.GetGuildData()
 	if gd then
 		for guid, rec in pairs(gd.chars) do
 			if Store.IsShareable(rec, isMember) then
 				for sl, p in pairs(rec.profs) do
+					if p.primary then
+						primarySkill[sl] = true
+					end
 					if p.recipes and Index.IsProfessionVisible(rec, sl) then
 						for rid, item in pairs(p.recipes) do
 							local list = byRecipe[rid]
@@ -52,7 +56,7 @@ function Index.Rebuild()
 			end
 		end
 	end
-	Index.byRecipe, Index.byItem, Index.recipeSkill = byRecipe, byItem, recipeSkill
+	Index.byRecipe, Index.byItem, Index.recipeSkill, Index.primarySkill = byRecipe, byItem, recipeSkill, primarySkill
 	Index.dirty = false
 end
 
@@ -136,18 +140,34 @@ function Index.Search(text, skillLine)
 			end
 		end
 	end
-	table.sort(results, function(a, b) return a.name < b.name end)
+	table.sort(results, function(a, b)
+		if a.name ~= b.name then return a.name < b.name end
+		local pa, pb = Index.primarySkill[a.skillLine] or false, Index.primarySkill[b.skillLine] or false
+		if pa ~= pb then return pa end
+		return a.recipeID < b.recipeID
+	end)
 	return results
 end
 
--- Skill lines present in the pool, for the profession filter.
+-- Skill lines present in the pool, for the profession filter: primary
+-- professions first, then secondary ones, each by name.
 function Index.SkillLines()
 	Index.Ensure()
 	local seen = {}
 	for _, sl in pairs(Index.recipeSkill) do
 		seen[sl] = true
 	end
-	return Util.SortedKeys(seen)
+	local list = Util.SortedKeys(seen)
+	Index.SortSkillLines(list, function(sl) return Index.primarySkill[sl] end)
+	return list
+end
+
+function Index.SortSkillLines(list, isPrimary)
+	table.sort(list, function(a, b)
+		local pa, pb = isPrimary(a) or false, isPrimary(b) or false
+		if pa ~= pb then return pa end
+		return Index.SkillLineName(a) < Index.SkillLineName(b)
+	end)
 end
 
 function Index.SkillLineName(skillLine)

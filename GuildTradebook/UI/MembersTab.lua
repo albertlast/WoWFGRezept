@@ -3,9 +3,12 @@ local _, ns = ...
 local L, W, Index, Roster, Store, Util = ns.L, ns.Widgets, ns.Index, ns.Roster, ns.Store, ns.Util
 local ui = {}
 
+-- Primary professions first; secondary ones (Cooking, First Aid, ...) dimmed.
 local function professionText(rec)
 	local parts = {}
-	for _, sl in ipairs(Util.SortedKeys(rec.profs)) do
+	local skillLines = Util.SortedKeys(rec.profs)
+	Index.SortSkillLines(skillLines, function(sl) return rec.profs[sl].primary end)
+	for _, sl in ipairs(skillLines) do
 		local p = rec.profs[sl]
 		local text = ("%s %d/%d"):format(Index.SkillLineName(sl), p.rank, p.maxRank)
 		if not p.recipes then
@@ -18,6 +21,8 @@ local function professionText(rec)
 		end
 		if Roster.IsProfessionContradicted(rec.guid, sl) then
 			text = "|cff808080" .. text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") .. " (server: -)|r"
+		elseif not p.primary then
+			text = "|cffa0a0a0" .. text:gsub("|r", "|cffa0a0a0") .. "|r"
 		end
 		parts[#parts + 1] = text
 	end

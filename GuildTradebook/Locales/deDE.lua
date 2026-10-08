@@ -45,7 +45,7 @@ L.TOOLTIP_CRAFTABLE = "Herstellbar in der Gilde:"
 L.TOOLTIP_KNOWN = "Bekannt in der Gilde:"
 L.TOOLTIP_MORE = "(+%d weitere)"
 
-L.REMIND_SCAN = "Öffne einmal dein %s-Fenster, damit deine Rezepte mit der Gilde geteilt werden."
+L.REMIND_SCAN = "Öffne das Berufsfenster und klicke einmal auf den Reiter %s, damit deine Rezepte mit der Gilde geteilt werden."
 
 L.SLASH_HELP = [[/gtb - Fenster öffnen
 /gtb search <Text> - Rezepte suchen

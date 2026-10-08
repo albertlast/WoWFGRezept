@@ -189,7 +189,7 @@ test("wire round trip preserves content and hash", function()
 	local r = rec(A, 12345, 2, {
 		[197] = { rank = 150, maxRank = 225, scannedAt = 999, recipes = { [3914] = 2568, [8776] = 0 } },
 		[171] = { rank = 1, maxRank = 75 },
-		[164] = { rank = 50, maxRank = 75, unverified = true, recipes = { [2660] = 2862 } },
+		[164] = { rank = 50, maxRank = 75, unverified = true, primary = true, recipes = { [2660] = 2862 } },
 	})
 	r.main = B
 	Store.Rehash(r)
@@ -198,6 +198,8 @@ test("wire round trip preserves content and hash", function()
 	eq(back.main, B)
 	eq(back.profs[171].recipes, nil)
 	truthy(back.profs[164].unverified)
+	truthy(back.profs[164].primary)
+	eq(back.profs[197].primary, nil)
 	eq(back.profs[197].recipes[8776], 0)
 end)
 

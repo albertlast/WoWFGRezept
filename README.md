@@ -6,9 +6,17 @@ Every guild member running the addon shares their recipes automatically, and mem
 
 ## Install
 
-Copy (or symlink) the `GuildTradebook` folder into `World of Warcraft/_forever_/Interface/AddOns/`.
+Copy (or link) the `GuildTradebook` folder into the game's `Interface/AddOns/` folder. During the beta, Forever installs as `World of Warcraft/_classic_beta_/` (product `wow_classic_beta`, build 1.60.x); the folder name for the live release is not known yet.
 
-Each crafter has to open each of their profession windows once. That is the only time the game exposes the recipe list.
+For development, link the repository folder instead of copying it (PowerShell):
+
+```powershell
+New-Item -ItemType Junction `
+  -Path "<WoW folder>\_classic_beta_\Interface\AddOns\GuildTradebook" `
+  -Target "<repository>\GuildTradebook"
+```
+
+Each crafter has to open the professions window once and click each profession tab. That is the only time the game exposes the recipe list.
 
 ## Usage
 
@@ -41,7 +49,7 @@ Each character's data is a **record**: a full snapshot of its professions and re
 
 Built for about 100 members online at once:
 
-- An owner's change is broadcast once to the guild.
+- An owner's change is broadcast once to the guild: recipe changes in the two primary professions within 5 s; secondary professions (Cooking, First Aid, …) and rank-ups are batched into one message per 60 s.
 - When you log in, you sync with **one** partner by whisper. You compare 16 bucket hashes and then exchange only the records that differ. If you are already up to date, that costs two small messages. A second check with another partner follows about a minute later.
 - A fresh install with no known partner broadcasts one request. Peers elect a single responder by a deterministic ranking.
 - Every 20 minutes each client re-syncs with one random partner.

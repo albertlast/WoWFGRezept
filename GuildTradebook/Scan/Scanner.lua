@@ -19,16 +19,36 @@ function Scanner.BuildKey()
 	return (version and version:match("^(%d+%.%d+)")) or "0"
 end
 
--- Live profession list: [skillLine] = { rank, maxRank, name }
+-- Same rule as the tabs of Blizzard's professions window: a profession has
+-- recipes to share if the game can show a crafting window for it. Returns
+-- true / false, or nil when the spell data is not available yet.
+local function hasCraftingUI(spellOffset)
+	if not (C_SpellBook and C_SpellBook.GetSpellBookItemInfo and C_TradeSkillUI.CanTradeSkillShowCraftingUI) then
+		return nil
+	end
+	local bank = Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player
+	local info = spellOffset and C_SpellBook.GetSpellBookItemInfo(spellOffset + 1, bank)
+	if not info or not info.spellID then return nil end
+	return C_TradeSkillUI.CanTradeSkillShowCraftingUI(info.spellID) and true or false
+end
+
+-- Live profession list: [skillLine] = { rank, maxRank, name, primary }
+-- GetProfessions() returns the two primary slots first, then the secondary ones.
 function Scanner.Snapshot()
 	local snapshot = {}
 	local n, indices = collect(GetProfessions())
 	for i = 1, n do
 		local index = indices[i]
 		if index then
-			local name, _, rank, maxRank, _, _, skillLine = GetProfessionInfo(index)
-			if skillLine and skillLine > 0 and not Store.EXCLUDED_SKILLLINES[skillLine] then
-				snapshot[skillLine] = { rank = rank or 0, maxRank = maxRank or 0, name = name }
+			local name, _, rank, maxRank, _, spellOffset, skillLine = GetProfessionInfo(index)
+			if skillLine and skillLine > 0 then
+				local craftable = hasCraftingUI(spellOffset)
+				if craftable == nil then
+					craftable = not Store.NO_RECIPE_SKILLLINES[skillLine]
+				end
+				if craftable then
+					snapshot[skillLine] = { rank = rank or 0, maxRank = maxRank or 0, name = name, primary = i <= 2 }
+				end
 			end
 		end
 	end
@@ -118,12 +138,18 @@ local function updateIdentity(own)
 	return kind
 end
 
+-- One reminder per session, naming an unscanned primary profession first.
 local function remindUnscanned(own, snapshot)
+	if Scanner.reminded then return end
+	local pick
 	for sl, p in pairs(own.profs) do
-		if p.recipes == nil and snapshot[sl] and not Scanner.reminded then
-			Scanner.reminded = true
-			ns.Print(ns.L.REMIND_SCAN:format(snapshot[sl].name or "?"))
+		if p.recipes == nil and snapshot[sl] and (not pick or (p.primary and not own.profs[pick].primary)) then
+			pick = sl
 		end
+	end
+	if pick then
+		Scanner.reminded = true
+		ns.Print(ns.L.REMIND_SCAN:format(snapshot[pick].name or "?"))
 	end
 end
 
@@ -177,7 +203,7 @@ function Scanner.ScanTradeSkill()
 
 	local base = C_TradeSkillUI.GetBaseProfessionInfo()
 	local skillLine = base and base.professionID
-	if not skillLine or skillLine == 0 or Store.EXCLUDED_SKILLLINES[skillLine] then return end
+	if not skillLine or skillLine == 0 then return end
 
 	local own = Scanner.GetOwn()
 	if not own then return end
@@ -211,7 +237,7 @@ function Scanner.ScanTradeSkill()
 
 	ns.Debug("scanned", skillLine, count, "recipes", complete and "complete" or "partial")
 	if Store.ApplyScan(own, skillLine, recipes, complete, ns.Now()) then
-		Scanner.Commit(own, "major")
+		Scanner.Commit(own, Store.ChangeKind(own.profs[skillLine]))
 	end
 end
 
@@ -230,12 +256,25 @@ function Scanner.OnRecipeLearned(_, recipeID)
 	if not own or not skillLine then return end
 	local fact = Scanner.ResolveFact(recipeID, C_TradeSkillUI.GetRecipeInfo(recipeID))
 	if Store.AddLearned(own, skillLine, recipeID, fact and fact.item or 0) then
-		Scanner.Commit(own, "major")
+		Scanner.Commit(own, Store.ChangeKind(own.profs[skillLine]))
 	end
 end
 
 function Scanner.Start()
+	-- The professions window has one tab per profession; each tab click loads
+	-- another profession into the same window. Scan the current one right away
+	-- (fast tab clicking must not skip any), at most every 2 s per profession,
+	-- and again shortly after the events settle to catch late-loading data.
+	local lastScan = {}
 	local function scanSoon()
+		if C_TradeSkillUI.IsTradeSkillReady() then
+			local base = C_TradeSkillUI.GetBaseProfessionInfo()
+			local skillLine = base and base.professionID
+			if skillLine and (not lastScan[skillLine] or GetTime() - lastScan[skillLine] > 2) then
+				lastScan[skillLine] = GetTime()
+				Scanner.ScanTradeSkill()
+			end
+		end
 		ns.Debounce("scan", 1, Scanner.ScanTradeSkill)
 	end
 	local function reconcileSoon()

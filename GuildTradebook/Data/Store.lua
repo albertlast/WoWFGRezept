@@ -11,7 +11,7 @@ records unchanged. Records are ordered by (ver, seq, h):
 
 Internal record:
   { guid, name, class, level, ver, seq, main?,
-    profs = { [skillLineID] = { rank, maxRank, scannedAt?, unverified?,
+    profs = { [skillLineID] = { rank, maxRank, primary?, scannedAt?, unverified?,
                                 recipes = { [recipeID] = outputItemID or 0 } | nil } },
     h,                                     -- content hash
     recvAt?, recvFrom?, goneSince? }       -- local metadata, never sent
@@ -30,11 +30,12 @@ Store.MAX_PROFS = 12
 Store.MAX_RECIPES = 1500            -- per profession
 Store.NUM_BUCKETS = 16
 
--- Gathering-only skill lines have no recipes worth sharing.
-Store.EXCLUDED_SKILLLINES = {
+-- Professions are shared when the game gives them a crafting window (see
+-- Scanner.Snapshot). This list is only the fallback for when the game cannot
+-- tell yet: known gathering-only professions without recipes.
+Store.NO_RECIPE_SKILLLINES = {
 	[182] = true, -- Herbalism
 	[393] = true, -- Skinning
-	[356] = true, -- Fishing
 }
 
 local OPTION_DEFAULTS = {
@@ -81,7 +82,7 @@ function Store.Canonical(rec)
 	local parts = { rec.guid, rec.name or "", rec.class or "", fmt(rec.level), fmt(rec.ver), fmt(rec.seq), rec.main or "" }
 	for _, sl in ipairs(Util.SortedKeys(rec.profs)) do
 		local p = rec.profs[sl]
-		parts[#parts + 1] = fmt(sl) .. ":" .. fmt(p.rank) .. ":" .. fmt(p.maxRank) .. ":" .. fmt(p.scannedAt) .. ":" .. (p.unverified and "u" or "")
+		parts[#parts + 1] = fmt(sl) .. ":" .. fmt(p.rank) .. ":" .. fmt(p.maxRank) .. ":" .. fmt(p.scannedAt) .. ":" .. (p.unverified and "u" or "") .. (p.primary and "p" or "")
 		if p.recipes then
 			local r = {}
 			for _, rid in ipairs(Util.SortedKeys(p.recipes)) do
@@ -215,15 +216,15 @@ function Store.ReconcileProfessions(own, snapshot, allowRemove)
 	for sl, s in pairs(snapshot) do
 		local p = own.profs[sl]
 		if not p then
-			own.profs[sl] = { rank = s.rank, maxRank = s.maxRank }
+			own.profs[sl] = { rank = s.rank, maxRank = s.maxRank, primary = s.primary or nil }
 			mark("major")
 		else
 			if s.rank < p.rank then
 				p.recipes, p.scannedAt, p.unverified = nil, nil, nil
 				mark("major")
 			end
-			if p.rank ~= s.rank or p.maxRank ~= s.maxRank then
-				p.rank, p.maxRank = s.rank, s.maxRank
+			if p.rank ~= s.rank or p.maxRank ~= s.maxRank or p.primary ~= (s.primary or nil) then
+				p.rank, p.maxRank, p.primary = s.rank, s.maxRank, s.primary or nil
 				mark("minor")
 			end
 		end
@@ -262,6 +263,12 @@ function Store.ApplyScan(own, skillLine, recipes, complete, now)
 		p.scannedAt = now
 	end
 	return changed
+end
+
+-- Recipe changes of primary professions are published quickly ("major"),
+-- secondary ones (Cooking, First Aid, Fishing, ...) are batched ("minor").
+function Store.ChangeKind(prof)
+	return (prof and prof.primary) and "major" or "minor"
 end
 
 -- Adds one newly learned recipe. Ignored while the profession is unscanned,
@@ -390,7 +397,8 @@ end
 -- Wire format ------------------------------------------------------------------
 -- Records travel as compact arrays (CBOR handles arrays more reliably than
 -- sparse integer-keyed maps):
---   { guid, name, class, level, ver, seq, main|"", { {sl, rank, maxRank, scannedAt, unverified(0/1), {rid, item, ...}|false}, ... } }
+--   { guid, name, class, level, ver, seq, main|"",
+--     { {sl, rank, maxRank, scannedAt, unverified(0/1), {rid, item, ...}|false, primary(0/1)}, ... } }
 
 function Store.IsValidGUID(guid)
 	return type(guid) == "string" and #guid <= 40 and guid:match("^Player%-%d+%-%x+$") ~= nil
@@ -408,7 +416,7 @@ function Store.ToWire(rec)
 				flat[#flat + 1] = p.recipes[rid]
 			end
 		end
-		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat }
+		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0 }
 	end
 	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.main or "", profs }
 end
@@ -431,10 +439,12 @@ function Store.FromWire(w)
 	for i = 1, #profs do
 		local p = profs[i]
 		if type(p) ~= "table" then return nil, "prof" end
-		local sl, rank, maxRank, scannedAt, unverified, flat = p[1], p[2], p[3], p[4], p[5], p[6]
+		local sl, rank, maxRank, scannedAt, unverified, flat, primary = p[1], p[2], p[3], p[4], p[5], p[6], p[7]
 		if not Util.IsInt(sl, 1, 2 ^ 31) or rec.profs[sl] then return nil, "skillLine" end
 		if not Util.IsInt(rank, 0, 10000) or not Util.IsInt(maxRank, 0, 10000) then return nil, "rank" end
-		if not Util.IsInt(scannedAt, 0, 2 ^ 40) or (unverified ~= 0 and unverified ~= 1) then return nil, "prof meta" end
+		if not Util.IsInt(scannedAt, 0, 2 ^ 40) or (unverified ~= 0 and unverified ~= 1) or (primary ~= 0 and primary ~= 1) then
+			return nil, "prof meta"
+		end
 		local recipes
 		if flat ~= false then
 			if type(flat) ~= "table" or #flat % 2 ~= 0 or #flat > 2 * Store.MAX_RECIPES then return nil, "recipes" end
@@ -449,6 +459,7 @@ function Store.FromWire(w)
 			rank = rank, maxRank = maxRank,
 			scannedAt = scannedAt ~= 0 and scannedAt or nil,
 			unverified = unverified == 1 or nil,
+			primary = primary == 1 or nil,
 			recipes = recipes,
 		}
 	end
