@@ -95,6 +95,10 @@ function ChatResponder.BuildAnswer(query, results, craftersOf)
 	return text
 end
 
+-- The answer is a real guild chat line: impossible during a chat lockdown;
+-- another client further down the ranking answers instead.
+-- (AreOutgoingAddonChatMessagesRestricted is true on the Forever beta realm,
+-- yet guild chat answers go out there, so it is not checked.)
 local function lockedDown()
 	return C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()
 end

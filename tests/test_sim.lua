@@ -435,7 +435,7 @@ test("partitions heal and converge", function()
 	assertConverged(world, d.guid, "D after heal")
 end)
 
-test("restricted channel queues messages until allowed", function()
+test("chat lockdown queues messages until allowed", function()
 	local world, a, b = threeMembers()
 	world:Login(b.guid)
 	a.restricted = true
@@ -469,7 +469,7 @@ test("alts are shared from the account while playing another character", functio
 	truthy(r and r.profs[TAILORING].recipes[3914], "main's recipes came from the alt's client")
 end)
 
-test("roster shows placeholder names instead of real names: sync still works", function()
+test("roster name differs from the sender's name: sync still works", function()
 	math.randomseed(21)
 	local world = H.NewWorld()
 	local a = world:AddChar({ guid = guid(1), name = "Anna", rosterName = "Mira Stein-Realm", profs = { [TAILORING] = tailoring(150, { [3914] = 2568 }) } })
@@ -484,14 +484,14 @@ test("roster shows placeholder names instead of real names: sync still works", f
 	-- A late login knows nobody yet and must find a partner through the guild.
 	local cc = world:Login(c.guid)
 	world:Run(200)
-	assertConverged(world, a.guid, "with placeholder roster names")
+	assertConverged(world, a.guid, "with differing roster names")
 	for name in pairs(world.sentBy) do
 		truthy(name == "Anna-Realm" or name == "Bert-Realm" or name == "Cleo-Realm", name)
 	end
-	-- Whispers and displays use the real name, not the placeholder.
+	-- Whispers and displays use the name the server puts on messages.
 	local crafter = cc.ns.Index.Crafters(3914)[1]
 	eq(cc.ns.Index.ContactName(crafter), "Anna-Realm")
-	eq(world.badWhispers, 0, "no whisper to a name that does not exist")
+	eq(world.repeatedFailures, 0, "a name that failed once is not whispered again")
 end)
 
 test("/gtb versions lists every online addon user; an outdated build is named", function()
@@ -539,6 +539,122 @@ test("/gtb versions lists every online addon user; an outdated build is named", 
 	ca.ns.Versions.Request()
 	world:Run(10)
 	falsy(world.byType.N, "no second round of answers")
+end)
+
+test("/gtb diag: the sender sees its own echo, others see the test message", function()
+	local world, a, b = threeMembers()
+	local ca = world:Login(a.guid)
+	world:Login(b.guid)
+	world:Run(30)
+	ca.ns.Protocol.Diagnose()
+	world:Run(6)
+	local function said(who, text)
+		for _, line in ipairs(world.log) do
+			if line:find("^" .. who) and line:find(text, 1, true) then return true end
+		end
+		return false
+	end
+	truthy(said("Anna", "echo received"), "echo")
+	falsy(said("Anna", "no echo"), "no timeout message")
+	truthy(said("Bert", "test message received from Anna"), "other side")
+	-- Nothing comes back: the timeout says so.
+	a.deaf = true
+	ca.ns.Protocol.Diagnose()
+	world:Run(6)
+	truthy(said("Anna", "no echo within 5 s"), "timeout")
+end)
+
+test("/gtb diag <name>: test whispers in both name forms; the echo teaches your own name", function()
+	math.randomseed(24)
+	local world = H.NewWorld()
+	world.spaceWhispers = true
+	local a = world:AddChar({ guid = guid(1), name = "Mira Stein" })
+	local b = world:AddChar({ guid = guid(2), name = "Joerg Falk" })
+	local ca = world:Login(a.guid)
+	world:Login(b.guid)
+	world:Run(30)
+	ca.ns.Protocol.Diagnose("Joerg Falk")
+	world:Run(3)
+	local got = {}
+	for _, line in ipairs(world.log) do
+		local target = line:match("^Joerg Falk%-Realm: .*test whisper received.*sent to '([^']+)'")
+		if target then got[#got + 1] = target end
+	end
+	table.sort(got)
+	eq(table.concat(got, ","), "Joerg Falk,Joerg Falk-Realm")
+	ca.ns.Protocol.Diagnose()
+	world:Run(6)
+	eq(ca.ns.Util.learnedPlayerName, "Mira Stein-Realm")
+end)
+
+test("names with a space can not be whispered: sync goes through the guild channel, addressed", function()
+	math.randomseed(22)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Joerg Falk", profs = { [TAILORING] = tailoring(150, { [3914] = 2568 }) } })
+	local b = world:AddChar({ guid = guid(2), name = "Mira Stein" })
+	local c = world:AddChar({ guid = guid(3), name = "Cleo" })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(120)
+	local cc = world:Login(c.guid)
+	world:Run(200)
+	assertConverged(world, a.guid, "names with spaces")
+	assertConverged(world, b.guid, "names with spaces")
+	truthy(world.addressed > 0, "addressed guild messages were used")
+	truthy(cc:Record(a.guid).profs[TAILORING].recipes[3914])
+	-- Each client tries each name once, then uses the guild channel.
+	world:Run(3 * 1300)
+	eq(world.repeatedFailures, 0, "a name that failed once is not whispered again")
+	-- Your own name: first name and surname, as the server shows it.
+	eq(cc:Record(a.guid).name, "Joerg Falk-Realm")
+	eq(cc:Record(b.guid).name, "Mira Stein-Realm")
+	eq(cc.ns.Index.Crafters(3914)[1].name, "Joerg Falk-Realm")
+end)
+
+test("Forever names can be whispered without the realm: plain whispers, no detour", function()
+	math.randomseed(23)
+	local world = H.NewWorld()
+	world.spaceWhispers = true
+	local a = world:AddChar({ guid = guid(1), name = "Joerg Falk", profs = { [TAILORING] = tailoring(150, { [3914] = 2568 }) } })
+	local b = world:AddChar({ guid = guid(2), name = "Mira Stein" })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(120)
+	world:Login(world:AddChar({ guid = guid(3), name = "Cleo Tanner" }).guid)
+	world:Run(200)
+	assertConverged(world, a.guid, "whispers with surnames")
+	eq(world.badWhispers, 0)
+	eq(world.addressed, 0, "no guild detour needed")
+end)
+
+test("a whisper fails: the name is marked and the guild channel is used instead", function()
+	local world, a, b = threeMembers()
+	a.unwhisperable = true
+	world:Login(a.guid)
+	world:Run(60)
+	world.online[a.guid]:OpenTradeSkill(TAILORING)
+	world:Run(60)
+	world:Logout(a.guid)
+	-- B knows A from the record; A comes back and B syncs with A.
+	world:Login(b.guid)
+	world:Run(30)
+	world:Login(a.guid)
+	world:ResetCounters()
+	world:Run(1300)
+	truthy(world.online[b.guid].ns.Protocol.unreachable["Anna-Realm"], "marked unreachable")
+	truthy(world.addressed > 0, "guild channel used")
+	assertConverged(world, a.guid, "after the fallback")
+	-- The failed replies were resent, so no sync ran into its timeout.
+	for _, line in ipairs(world.online[a.guid].ns.log) do
+		falsy(line:find("no answer from", 1, true), line)
+	end
+	-- Later whispers to Anna go the guild way right away.
+	world:Run(2 * 1300)
+	eq(world.repeatedFailures, 0, "a name that failed once is not whispered again")
 end)
 
 test("characters of one account are grouped; an offline crafter is reached via the online one", function()
@@ -781,6 +897,25 @@ test("!craft from a member without the addon: exactly one answer", function()
 		if line.text:find("[Guild Tradebook]", 1, true) then again = again + 1 end
 	end
 	eq(again, 1, "the same question within a minute is not answered twice")
+end)
+
+test("AreOutgoingAddonChatMessagesRestricted is true (Forever beta): sync and !craft still work", function()
+	local world, a, b, c = threeMembers()
+	a.noChatPosting, b.noChatPosting, c.noChatPosting = true, true, true
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Login(c.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(120)
+	assertConverged(world, a.guid, "addon messages are not chat messages")
+	world:GuildChat("Nora-Realm", "!craft Recipe 3914")
+	world:Run(30)
+	local answers = {}
+	for _, line in ipairs(world.chat) do
+		if line.text:find("[Guild Tradebook]", 1, true) then answers[#answers + 1] = line end
+	end
+	eq(#answers, 1, "exactly one answer")
 end)
 
 test("!craft is silent when every client disabled it", function()

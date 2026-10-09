@@ -68,6 +68,8 @@ local function slash(input)
 		ns.Print("!craft:", tostring(ns.db.options.chatResponder))
 	elseif cmd == "versions" or cmd == "version" or cmd == "ver" then
 		ns.Versions.Request()
+	elseif cmd == "diag" then
+		ns.Protocol.Diagnose(rest)
 	elseif cmd == "resync" then
 		ns.Protocol.sync = nil
 		ns.Protocol.StartSync()

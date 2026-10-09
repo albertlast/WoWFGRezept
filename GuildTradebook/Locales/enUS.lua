@@ -123,5 +123,7 @@ L.SLASH_HELP = [[/gtb - open window
 /gtb resync - ask the guild for a full sync
 /gtb tooltip - toggle tooltip lines
 /gtb debug - toggle debug output
+/gtb diag - test whether addon messages reach the guild
+/gtb diag <name> - test addon whispers to a member (both name forms)
 /gtb dump <name> - print what is known about a character
 /gtb stats - print pool statistics]]

@@ -119,5 +119,7 @@ L.SLASH_HELP = [[/gtb - Fenster öffnen
 /gtb resync - vollständige Synchronisierung anfordern
 /gtb tooltip - Tooltip-Zeilen ein/aus
 /gtb debug - Debug-Ausgabe ein/aus
+/gtb diag - prüft, ob Addon-Nachrichten die Gilde erreichen
+/gtb diag <Name> - testet Addon-Flüstern an ein Mitglied (beide Namensformen)
 /gtb dump <Name> - zeigt, was über einen Charakter bekannt ist
 /gtb stats - Statistik des Rezept-Pools]]

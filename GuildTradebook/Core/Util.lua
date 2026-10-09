@@ -39,13 +39,32 @@ function Util.NormalizeName(name, realm)
 	return name .. "-" .. realm
 end
 
--- Character names never contain spaces. The roster sometimes shows a
--- placeholder like "Mira Stein" ("a rogue") instead of the real name;
--- such a name can not be whispered.
-function Util.IsPlausibleName(name)
-	if type(name) ~= "string" or name == "" then return false end
-	local base = name:match("^([^%-]+)") or name
-	return not base:find("%s")
+--[[
+Your own name as others see it ("First Last-Realm"). On Forever every
+character has a first name and a surname, and UnitName returns the surname as
+its second value (Blizzard's Camelot NameUtil joins them with
+CHARACTERNAME_SURNAME_SEPARATOR); elsewhere the second value is the realm,
+which is nil for yourself. The name the server puts on our own echoed guild
+addon messages is the final word (Util.LearnPlayerName).
+]]
+Util.learnedPlayerName = nil
+
+function Util.PlayerName()
+	if Util.learnedPlayerName then return Util.learnedPlayerName end
+	local name, surname = UnitName("player")
+	if not name or name == "" then return nil end
+	if surname and surname ~= "" then
+		local consts = Constants and Constants.CharacterNameSeparatorConsts
+		name = name .. (consts and consts.CHARACTERNAME_SURNAME_SEPARATOR or " ") .. surname
+	end
+	return Util.NormalizeName(name)
+end
+
+-- Returns true if the name changed.
+function Util.LearnPlayerName(name)
+	if not name or name == Util.learnedPlayerName then return false end
+	Util.learnedPlayerName = name
+	return true
 end
 
 -- Display name: without the realm when it is your own realm, so players

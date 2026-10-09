@@ -124,7 +124,7 @@ function Scanner.Commit(own, kind)
 end
 
 local function updateIdentity(own)
-	local name = Util.NormalizeName(UnitName("player"))
+	local name = Util.PlayerName()
 	local _, classFile = UnitClass("player")
 	local level = UnitLevel("player")
 	local kind
@@ -370,6 +370,8 @@ function Scanner.Start()
 		extendAdoption()
 		reconcileSoon()
 	end)
+	-- The server told us our exact name (Protocol, own echoed message).
+	ns.On("PlayerNameLearned", reconcileSoon)
 	ns.On("GuildChanged", function()
 		Scanner.reminded = nil
 		Scanner.adopting = false

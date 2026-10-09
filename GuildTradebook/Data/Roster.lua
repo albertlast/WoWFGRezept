@@ -34,21 +34,23 @@ function Roster.IsMember(guid)
 end
 
 --[[
-Members are identified by GUID. Names are only for whispering and display,
-and the roster's name is not always the real one (placeholders like
-"Mira Stein"). Best source first:
-  1. the sender name of the member's own addon messages (always real)
-  2. the name the owner put into its record
-  3. the roster's name
+Members are identified by GUID; names are for whispering and display. Best
+source first:
+  1. the sender name of the member's own addon messages (exactly what the
+     server uses)
+  2. the roster's name
+  3. the name the owner put into its record (older builds wrote a wrong one
+     for Forever names with a surname)
 ]]
 function Roster.NameOf(guid)
 	local real = Roster.realNames[guid]
 	if real then return real end
+	local m = Roster.members[guid]
+	if m and m.name then return m.name end
 	local gd = ns.GetGuildData and ns.GetGuildData()
 	local rec = gd and gd.chars[guid]
 	if rec and rec.name and rec.name ~= "" then return rec.name end
-	local m = Roster.members[guid]
-	return m and m.name
+	return nil
 end
 
 function Roster.LearnName(guid, name)

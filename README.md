@@ -30,6 +30,7 @@ Each crafter has to open the professions window once and click each profession t
 | `/gtb chatbot` | toggle answering `!craft <item>` in guild chat |
 | `/gtb versions` | ask the guild which addon version everyone runs; builds that can not exchange data with yours are named |
 | `/gtb resync` | sync with a guild member now |
+| `/gtb diag [name]` | test whether addon messages reach the guild (the server echoes them back to you); with a name, test addon whispers to that member in both name forms |
 | `/gtb dump <name>` | show what is known about a character |
 | `/gtb stats`, `/gtb debug`, `/gtb log` | diagnostics |
 

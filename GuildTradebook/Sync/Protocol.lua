@@ -66,40 +66,123 @@ function P.Ctx()
 end
 
 local function selfName()
-	return Util.NormalizeName(UnitName("player"))
+	return Util.PlayerName()
 end
 
 -- Sending ----------------------------------------------------------------------
 
+-- Addon messages are blocked while chat messaging is locked down (e.g. during
+-- encounters); until then they wait in the outbox. Not
+-- AreOutgoingAddonChatMessagesRestricted: it is true on the Forever beta
+-- realm, where addon messages and guild chat from addons work fine.
 local function restricted()
+	return C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()
+end
+
+local function outgoingRestrictedFlag()
 	return C_ChatInfo.AreOutgoingAddonChatMessagesRestricted and C_ChatInfo.AreOutgoingAddonChatMessagesRestricted()
 end
 
-local function deliver(msg, channel, target, prio)
+local function sendResultName(result)
+	if type(result) ~= "number" then return tostring(result) end
+	for name, value in pairs(Enum.SendAddonMessageResult or {}) do
+		if value == result then return name end
+	end
+	return tostring(result)
+end
+
+-- AceComm reports each sent chunk; only failures are worth a log line.
+local function onSent(what, _, _, result)
+	if result ~= nil and result ~= 0 and result ~= true then
+		ns.Debug("send failed:", what, sendResultName(result))
+	end
+end
+
+--[[
+Whispers go to "First Last" on your own realm and "First Last-Realm"
+elsewhere, the way Blizzard builds whisper targets
+(ConcatinateServerNameToPlayerName). Forever names have a surname, and it
+is not proven that every name can be whispered: when the server answers "No
+player named ... is currently playing", that member gets messages on the
+GUILD channel instead, addressed to its GUID. The text then starts with
+"@<guid>@", and every other client skips it without decoding.
+]]
+P.unreachable = {}   -- ["Name-Realm"] = true: a whisper to this member failed
+P.whispered = {}     -- [whisper target] = { at = GetTime(), name, guid, sent = { {msg, prio}, ... } }
+P.RESEND_WINDOW = 10 -- seconds: whispers this recent are resent when they fail
+P.MAX_RESEND = 50
+
+function P.CanWhisper(name)
+	return name ~= nil and not P.unreachable[name]
+end
+
+function P.WhisperTarget(name)
+	return Util.ShortName(name)
+end
+
+local ADDRESS_PATTERN = "^@(Player%-%d+%-%x+)@"
+
+-- Recent whispers per target: the "No player named" error comes back after a
+-- moment, when a whole reply burst (ack + digests) may already be out.
+local function rememberWhisper(target, name, msg, prio, guid)
+	local entry = P.whispered[target]
+	if not entry or GetTime() - entry.at > P.RESEND_WINDOW then
+		entry = { sent = {} }
+		P.whispered[target] = entry
+	end
+	entry.at, entry.name, entry.guid = GetTime(), name, guid or entry.guid
+	if #entry.sent < P.MAX_RESEND then
+		table.insert(entry.sent, { msg, prio })
+	end
+end
+
+local function deliver(msg, channel, target, prio, addressee)
+	ns.Debug("send", msg.t, channel, target or addressee or "")
 	if P.transport then
-		P.transport(msg, channel, target, prio)
+		P.transport(msg, channel, target, prio, addressee)
 		return
 	end
 	local text = ns.Codec.Encode(msg)
 	if text then
-		P.comm:SendCommMessage(ns.PREFIX, text, channel, target, prio or "BULK")
+		if addressee then
+			text = "@" .. addressee .. "@" .. text
+		end
+		P.comm:SendCommMessage(ns.PREFIX, text, channel, target, prio or "BULK", onSent,
+			msg.t .. " " .. channel .. " " .. (target or addressee or ""))
 	end
 end
 
-function P.Send(msg, channel, target, prio)
+-- channel "WHISPER": target is a member's "Name-Realm"; targetGUID
+-- (optional) is used when the name can not be whispered and the roster does
+-- not know it.
+function P.Send(msg, channel, target, prio, targetGUID)
 	if not Roster.guildKey then return end
 	msg.p = ns.PROTO
 	msg.g = Roster.guildKey
 	msg.u = UnitGUID("player")
 	msg.av, msg.ab = ns.Versions.Mine()
+	local addressee
+	if channel == "WHISPER" and not P.CanWhisper(target) then
+		addressee = targetGUID or Roster.byName[target]
+		if not addressee then
+			ns.Debug("can not reach", tostring(target))
+			return
+		end
+		channel, target = "GUILD", nil
+	elseif channel == "WHISPER" then
+		local whisperTo = P.WhisperTarget(target)
+		rememberWhisper(whisperTo, target, msg, prio, targetGUID or Roster.byName[target])
+		target = whisperTo
+	end
 	if restricted() then
-		table.insert(P.outbox, { msg, channel, target, prio })
+		ns.Debug("queued", msg.t, "(chat messaging lockdown)")
+		table.insert(P.outbox, { msg, channel, target, prio, addressee })
 		if #P.outbox > P.MAX_OUTBOX then
 			table.remove(P.outbox, 1)
 		end
 		return
 	end
-	deliver(msg, channel, target, prio)
+	deliver(msg, channel, target, prio, addressee)
 end
 
 function P.FlushOutbox()
@@ -108,9 +191,42 @@ function P.FlushOutbox()
 	P.outbox = {}
 	for _, item in ipairs(queued) do
 		if item[1].g == Roster.guildKey then
-			deliver(item[1], item[2], item[3], item[4])
+			deliver(item[1], item[2], item[3], item[4], item[5])
 		end
 	end
+end
+
+-- "No player named 'X' is currently playing." after one of our addon
+-- whispers: X is unreachable by whisper from now on, and our recent whispers
+-- to X are sent again through the guild channel. The error itself is hidden
+-- (one would show up per lost message).
+local notFoundPattern
+local function whisperFailedName(text)
+	if not notFoundPattern then
+		local template = ERR_CHAT_PLAYER_NOT_FOUND_S or "No player named '%s' is currently playing."
+		notFoundPattern = "^" .. template:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1"):gsub("%%s", "(.+)") .. "$"
+	end
+	local target = type(text) == "string" and text:match(notFoundPattern)
+	local entry = target and P.whispered[target]
+	if entry and GetTime() - entry.at < P.RESEND_WINDOW then
+		return target, entry
+	end
+end
+
+function P.OnSystemMessage(_, text)
+	local target, entry = whisperFailedName(text)
+	if not target then return end
+	P.whispered[target] = nil
+	if P.unreachable[entry.name] then return end
+	P.unreachable[entry.name] = true
+	ns.Debug("whisper to", target, "failed, using the guild channel - resending", #entry.sent)
+	for _, item in ipairs(entry.sent) do
+		P.Send(item[1], "WHISPER", entry.name, item[2], entry.guid)
+	end
+end
+
+local function hideFailedWhisper(_, _, text)
+	return whisperFailedName(text) ~= nil
 end
 
 local function sendRecord(guid, channel, target, prio)
@@ -142,9 +258,8 @@ end
 -- Partner selection ------------------------------------------------------------
 
 -- GUIDs of online members believed to run the addon (seen sending messages,
--- or owners of a shared record), and of the other online members. Unknown
--- members are left out if the roster only shows a placeholder name for them
--- (nothing to whisper). Never yourself.
+-- or owners of a shared record), and of the other online members. Never
+-- yourself.
 function P.Candidates()
 	local gd = ns.GetGuildData()
 	local selfGUID = UnitGUID("player")
@@ -154,7 +269,7 @@ function P.Candidates()
 			local rec = gd and gd.chars[guid]
 			if P.peers[guid] or (rec and rec.ver > 0) then
 				known[#known + 1] = guid
-			elseif Util.IsPlausibleName(member.name) then
+			else
 				unknown[#unknown + 1] = guid
 			end
 		end
@@ -193,10 +308,10 @@ local function pickPartner(tried, explore)
 	return pool[math.random(#pool)]
 end
 
-function P.SendHello(partner)
+function P.SendHello(partnerName, partnerGUID)
 	local gd = ns.GetGuildData()
 	if not gd then return end
-	P.Send({ t = "H", b = Store.BucketHashes(gd, isMember) }, "WHISPER", partner, "NORMAL")
+	P.Send({ t = "H", b = Store.BucketHashes(gd, isMember) }, "WHISPER", partnerName, "NORMAL", partnerGUID)
 end
 
 -- Starts one pairwise sync. Falls back to a partner election broadcast.
@@ -219,10 +334,10 @@ function P.StartSync(explore)
 		end
 		sync.attempts = sync.attempts + 1
 		sync.tried[partner] = true
-		sync.partner, sync.answered = partner, false
+		sync.partner, sync.partnerName, sync.answered = partner, partnerName, false
 		P.lastPartner = partner
 		ns.Debug("sync with", partnerName)
-		P.SendHello(partnerName)
+		P.SendHello(partnerName, partner)
 		ns.Debounce("syncTimeout", P.PARTNER_TIMEOUT, function()
 			if P.sync == sync and not sync.answered then
 				ns.Debug("no answer from", partnerName)
@@ -246,7 +361,7 @@ end
 
 -- Rank of `me` (a GUID) among the clients that could answer `newcomer` (a
 -- GUID, or any key) (0 = first). GUIDs, not names: every client must build
--- the same list, and roster names can differ (placeholders).
+-- the same list, and name formats can differ.
 function P.ElectionRank(newcomer, me)
 	local list = { me }
 	for _, guid in ipairs((P.Candidates())) do
@@ -281,10 +396,9 @@ function P.RequestFacts(recipeIDs)
 		for rid in pairs(P.factAsk) do
 			local target
 			for _, c in ipairs(ns.Index.Crafters(rid)) do
-				if c.online and not c.isSelf then target = Roster.NameOf(c.guid) break end
+				if c.online and not c.isSelf then target = c.guid break end
 			end
-			local partner = not target and pickPartner({}, false)
-			target = target or (partner and Roster.NameOf(partner))
+			target = target or pickPartner({}, false)
 			if target then
 				byTarget[target] = byTarget[target] or {}
 				if #byTarget[target] < P.MAX_FACTS then
@@ -293,8 +407,8 @@ function P.RequestFacts(recipeIDs)
 			end
 		end
 		P.factAsk = {}
-		for target, list in pairs(byTarget) do
-			P.Send({ t = "Q", l = list }, "WHISPER", target, "NORMAL")
+		for guid, list in pairs(byTarget) do
+			P.Send({ t = "Q", l = list }, "WHISPER", Roster.NameOf(guid), "NORMAL", guid)
 		end
 	end)
 end
@@ -432,8 +546,8 @@ handlers.A = function(msg, channel, sender)
 	if msg.to == UnitGUID("player") and P.electionRound and not P.sync then
 		P.electionRound = nil
 		ns.Cancel("electionTimeout")
-		P.sync = { tried = { [msg.u] = true }, attempts = 1, partner = msg.u, answered = false }
-		P.SendHello(sender)
+		P.sync = { tried = { [msg.u] = true }, attempts = 1, partner = msg.u, partnerName = sender, answered = false }
+		P.SendHello(sender, msg.u)
 	end
 end
 
@@ -473,16 +587,14 @@ handlers.X = function(msg, channel)
 end
 
 --[[
-Senders are identified by the GUID in the message (u), not by name: the
-roster can show a placeholder instead of a member's real name. A sender may
-not claim a GUID whose real name is known to be someone else's.
+Senders are identified by the GUID in the message (u), not by name: name
+formats differ between the roster, the chat events and our own UnitName
+(Forever surnames). A sender may not claim a GUID while using a name that
+belongs to another member.
 ]]
 local function senderMismatch(guid, sender)
 	local named = Roster.byName[sender]
-	if named and named ~= guid then return true end
-	local member = Roster.Get(guid)
-	return member ~= nil and Util.IsPlausibleName(member.name) and member.name ~= sender
-		and Roster.realNames[guid] ~= sender
+	return named ~= nil and named ~= guid
 end
 
 -- "/gtb versions" from someone: answer by whisper (Versions). The answer (N)
@@ -497,8 +609,21 @@ handlers.N = function() end
 
 function P.Handle(msg, channel, sender)
 	sender = Util.NormalizeName(sender)
-	if not sender or sender == selfName() then return end
-	if type(msg) ~= "table" or msg.g ~= Roster.guildKey then return end
+	if not sender or type(msg) ~= "table" then return end
+	if msg.u ~= nil and msg.u == UnitGUID("player") then
+		-- Our own guild message, echoed by the server: its sender name is
+		-- exactly how everyone else sees us.
+		if Util.LearnPlayerName(sender) then
+			ns.Debug("own name:", sender)
+			ns.Emit("PlayerNameLearned", sender)
+		end
+		return
+	end
+	if sender == selfName() then return end
+	if msg.g ~= Roster.guildKey then
+		ns.Debug("ignored", tostring(msg.t), "from", sender, "- guild key", tostring(msg.g), "is not ours:", tostring(Roster.guildKey))
+		return
+	end
 	local guid = msg.u
 	if msg.p ~= ns.PROTO or not Store.IsValidGUID(guid) then
 		-- A build that can not talk to this one (another protocol, or older
@@ -523,9 +648,96 @@ end
 
 function P.OnComm(prefix, text, channel, sender)
 	if prefix ~= ns.PREFIX then return end
+	if type(text) == "string" and text:sub(1, #P.DIAG) == P.DIAG then
+		P.OnDiag(text, channel, sender)
+		return
+	end
+	-- Guild-channel message for one member (see P.Send): only that member
+	-- decodes it, as if it were a whisper.
+	local addressee = type(text) == "string" and text:match(ADDRESS_PATTERN)
+	if addressee then
+		if addressee ~= UnitGUID("player") then return end
+		text = text:sub(#addressee + 3)
+		channel = "WHISPER"
+	end
 	local msg = ns.Codec.Decode(text)
 	if msg then
+		ns.Debug("recv", tostring(msg.t), "from", tostring(sender), channel)
 		P.Handle(msg, channel, sender)
+	else
+		ns.Debug("undecodable message from", tostring(sender), "via", tostring(channel), "-", #(text or ""), "bytes")
+	end
+end
+
+-- Diagnostics ("/gtb diag [name]") ---------------------------------------------
+-- Plain test messages "GTB-DIAG:<guid>[:<whisper target>]".
+--   no name:   one to GUILD. The server echoes guild addon messages back to
+--              the sender, so one player alone can tell whether sending and
+--              receiving work; everyone else prints where it came from.
+--   a name:    one whisper per target form ("First Last", "First Last-Realm").
+--              The other side prints which forms arrived; the server answers
+--              "No player named ..." for forms that do not work.
+
+P.DIAG = "GTB-DIAG"
+P.DIAG_TIMEOUT = 5
+local DIAG_PATTERN = "^GTB%-DIAG:(Player%-%d+%-%x+):?(.*)$"
+
+function P.Diagnose(name)
+	local members, online = 0, 0
+	for _, m in pairs(Roster.members) do
+		members = members + 1
+		if m.online then online = online + 1 end
+	end
+	local registered = C_ChatInfo.IsAddonMessagePrefixRegistered and C_ChatInfo.IsAddonMessagePrefixRegistered(ns.PREFIX)
+	ns.Print(("diag: version %s, guild key %s, roster ready %s (%d members, %d online)"):format(
+		(ns.Versions.Mine()), tostring(Roster.guildKey), tostring(Roster.ready), members, online))
+	ns.Print(("diag: prefix registered %s, chat lockdown %s, queued %d, known addon users online %d"):format(
+		tostring(registered), tostring(restricted() or false), #P.outbox, #(P.Candidates())))
+	ns.Print(("diag: AreOutgoingAddonChatMessagesRestricted %s (not used)"):format(tostring(outgoingRestrictedFlag() or false)))
+	ns.Print(("diag: your name %s, members only reachable through the guild channel: %d"):format(
+		tostring(selfName()), Util.Count(P.unreachable)))
+	if not Roster.guildKey then return end
+	local tag = P.DIAG .. ":" .. UnitGUID("player")
+	if name and name ~= "" then
+		local full = Util.NormalizeName(name)
+		local forms = { Util.ShortName(full) }
+		if forms[1] ~= full then forms[2] = full end
+		for _, target in ipairs(forms) do
+			local sent = C_ChatInfo.SendAddonMessage(ns.PREFIX, tag .. ":" .. target, "WHISPER", target)
+			ns.Print(("diag: test whisper to '%s', result: %s"):format(target, sendResultName(sent)))
+		end
+		ns.Print("diag: the other side prints each test whisper it got; \"No player named\" means that form does not work")
+		return
+	end
+	local result = C_ChatInfo.SendAddonMessage(ns.PREFIX, tag, "GUILD")
+	ns.Print("diag: test message sent to the guild, result:", sendResultName(result))
+	P.diagSentAt = GetTime()
+	ns.Debounce("diagEcho", P.DIAG_TIMEOUT, function()
+		if P.diagSentAt then
+			P.diagSentAt = nil
+			ns.Print(("diag: |cffff4040no echo within %d s|r - the server did not deliver your guild addon message"):format(P.DIAG_TIMEOUT))
+		end
+	end)
+end
+
+function P.OnDiag(text, channel, sender)
+	local guid, target = text:match(DIAG_PATTERN)
+	local name = Util.NormalizeName(sender)
+	if not guid or not name then return end
+	if guid == UnitGUID("player") then
+		if Util.LearnPlayerName(name) then
+			ns.Emit("PlayerNameLearned", name)
+		end
+		if P.diagSentAt and channel == "GUILD" then
+			ns.Print(("diag: |cff20ff20echo received after %.1f s|r - sending and receiving work (the server calls you %s)"):format(
+				GetTime() - P.diagSentAt, name))
+			P.diagSentAt = nil
+			ns.Cancel("diagEcho")
+		end
+	elseif target ~= "" then
+		ns.Print(("diag: |cff20ff20test whisper received|r from %s (sent to '%s')"):format(Util.ShortName(name), target))
+	else
+		ns.Print("diag: test message received from", Util.ShortName(name), "via", tostring(channel))
 	end
 end
 
@@ -563,6 +775,11 @@ function P.Start()
 		P.comm:RegisterComm(ns.PREFIX, P.OnComm)
 	end
 
+	ns.RegisterEvent("CHAT_MSG_SYSTEM", P.OnSystemMessage)
+	local addFilter = (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or ChatFrame_AddMessageEventFilter
+	if addFilter then
+		addFilter("CHAT_MSG_SYSTEM", hideFailedWhisper)
+	end
 	ns.On("RosterReady", P.OnRosterReady)
 	ns.On("RosterUpdated", function() ns.Debounce("prune", 5, P.Prune) end)
 	ns.On("OwnChanged", P.OnOwnChanged)

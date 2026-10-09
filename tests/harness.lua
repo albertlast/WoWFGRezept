@@ -111,7 +111,10 @@ end
 --[[
 A world is one guild. Characters:
   char = { guid, name, class, level, account, profs = { [sl] = {rank, maxRank, name, recipes = {[rid]=itemID}} },
-           partition = 1, restricted = false }
+           partition = 1, restricted = false, noChatPosting = false }
+  restricted     chat messaging lockdown (addon messages wait in the outbox)
+  noChatPosting  AreOutgoingAddonChatMessagesRestricted() is true (as on the
+                 Forever beta realm, where everything still works)
 Accounts own SavedVariables, so alts on one account share them.
 ]]
 function H.NewWorld(opts)
@@ -126,6 +129,8 @@ function H.NewWorld(opts)
 		online = {},       -- [guid] = client
 		messages = 0,
 		badWhispers = 0,   -- whispers to a name no online character has
+		repeatedFailures = 0, -- failed whispers sent after the sender already got "No player named" for that name
+		failedAt = {},     -- ["sender>target"] = time the first failure was reported back
 		latency = opts.latency or 0.2,
 		guildName = opts.guildName or "Testguild",
 		serverProfs = {},  -- [guid] = {id1, id2} as the club API reports
@@ -166,27 +171,57 @@ function H.NewWorld(opts)
 
 	world.byType = {}
 	world.sentBy = {}
-	function world:Deliver(from, msg, channel, target)
+	-- Like the server: a whisper reaches the online character of that name
+	-- ("Name" means the sender's realm). It fails with "No player named ..."
+	-- for unwhisperable characters, and for names with a space unless
+	-- world.spaceWhispers (whether Forever allows that is not known yet).
+	-- addressee: a GUILD message for one GUID (Protocol's whisper fallback);
+	-- everyone receives it, only the addressee reads it.
+	world.addressed = 0
+	function world:Deliver(from, msg, channel, target, addressee)
 		self.messages = self.messages + 1
 		self.byType[msg.t] = (self.byType[msg.t] or 0) + 1
 		self.sentBy[from.char.name] = (self.sentBy[from.char.name] or 0) + 1
 		if channel == "WHISPER" then
 			local found = false
+			local full = target:find("-", 1, true) and target or (target .. "-" .. from.char.realm)
 			for guid in pairs(self.online) do
-				if self.chars[guid].name == target then found = true end
+				local c = self.chars[guid]
+				if c.name == full and not c.unwhisperable and (self.spaceWhispers or not c.name:find(" ")) then
+					found = true
+				end
 			end
-			if not found then self.badWhispers = self.badWhispers + 1 end
+			if not found then
+				self.badWhispers = self.badWhispers + 1
+				local key = from.char.name .. ">" .. target
+				local reported = self.failedAt[key]
+				if reported and reported <= self.clock.t then
+					self.repeatedFailures = self.repeatedFailures + 1
+				end
+				self.failedAt[key] = reported or (self.clock.t + self.latency)
+				self.clock:Add(self.latency, function()
+					from:Fire("CHAT_MSG_SYSTEM", ("No player named '%s' is currently playing."):format(target))
+				end, from.env)
+				return
+			end
+		end
+		if addressee then
+			self.addressed = self.addressed + 1
 		end
 		for guid, client in pairs(self.online) do
 			local c = self.chars[guid]
 			local ok = guid ~= from.guid and c.partition == from.char.partition and c.inGuild
 			if channel == "WHISPER" then
-				ok = ok and c.name == target
+				local full = target:find("-", 1, true) and target or (target .. "-" .. from.char.realm)
+				ok = ok and c.name == full
+			end
+			if addressee then
+				ok = ok and guid == addressee
 			end
 			if ok then
 				local copy = H.DeepCopy(msg)
 				self.clock:Add(self.latency, function()
-					client.ns.Protocol.Handle(copy, channel, from.char.name)
+					client.ns.Protocol.Handle(copy, addressee and "WHISPER" or channel, from.char.name)
 				end, client.env)
 			end
 		end
@@ -224,6 +259,7 @@ function H.NewWorld(opts)
 
 	function world:ResetCounters()
 		self.messages, self.byType, self.sentBy, self.badWhispers = 0, {}, {}, 0
+		self.repeatedFailures = 0
 	end
 
 	function world:Run(seconds)
@@ -279,7 +315,13 @@ function H.NewClient(world, char)
 		return frame
 	end
 	env.UnitGUID = function(unit) return unit == "player" and char.guid or nil end
-	env.UnitName = function() return (char.name:gsub("%-.*$", "")) end
+	-- Forever: first name and surname come back as two values.
+	env.UnitName = function()
+		local base = char.name:gsub("%-.*$", "")
+		local first, surname = base:match("^(%S+) (.+)$")
+		if first then return first, surname end
+		return base
+	end
 	env.UnitClass = function() return char.class, char.class end
 	env.UnitLevel = function() return char.level end
 	env.GetNormalizedRealmName = function() return char.realm end
@@ -294,8 +336,8 @@ function H.NewClient(world, char)
 	env.GetGuildRosterInfo = function(i)
 		local c = world.chars[world.order[i]]
 		if not c then return nil end
-		-- rosterName: what the roster shows instead of the real name (the
-		-- Forever beta returned placeholders like "Mira Stein").
+		-- rosterName: a roster name that differs from the name the server
+		-- puts on the character's messages (robustness against formats).
 		return c.rosterName or c.name, "Member", 1, c.level, c.class, "", "", "", world.online[c.guid] ~= nil, 0, c.class,
 			0, 0, false, false, 0, c.guid
 	end
@@ -319,8 +361,36 @@ function H.NewClient(world, char)
 		end,
 	}
 	env.C_ChatInfo = {
-		AreOutgoingAddonChatMessagesRestricted = function() return char.restricted end,
-		InChatMessagingLockdown = function() return false end,
+		AreOutgoingAddonChatMessagesRestricted = function() return char.noChatPosting end,
+		IsAddonMessagePrefixRegistered = function() return true end,
+		-- Raw sends (diagnostics). Like the server, GUILD messages also come
+		-- back to the sender. char.deaf: this client receives nothing.
+		SendAddonMessage = function(prefix, text, channel, target)
+			local reached = false
+			local full = target and (target:find("-", 1, true) and target or (target .. "-" .. char.realm))
+			for guid, other in pairs(world.online) do
+				local c = world.chars[guid]
+				local ok
+				if channel == "GUILD" then
+					ok = c.inGuild and c.partition == char.partition
+				else
+					ok = c.name == full and not c.unwhisperable and (world.spaceWhispers or not c.name:find(" "))
+				end
+				if ok and not c.deaf then
+					reached = true
+					clock:Add(world.latency, function()
+						other.ns.Protocol.OnComm(prefix, text, channel, char.name)
+					end, other.env)
+				end
+			end
+			if channel == "WHISPER" and not reached then
+				clock:Add(world.latency, function()
+					client:Fire("CHAT_MSG_SYSTEM", ("No player named '%s' is currently playing."):format(target))
+				end, env)
+			end
+			return 0
+		end,
+		InChatMessagingLockdown = function() return char.restricted end,
 		SendChatMessage = function(text, chatType)
 			if chatType == "GUILD" then world:GuildChat(char.name, text) end
 		end,
@@ -427,14 +497,14 @@ function H.NewClient(world, char)
 		ns.Settings = { Register = function() end, Open = function() end }
 		ns.MinimapButton = { Start = function() end, SetShown = function() end }
 		ns.UI = { Toggle = function() end, Show = function() end }
-		ns.Protocol.transport = function(msg, channel, target)
+		ns.Protocol.transport = function(msg, channel, target, _, addressee)
 			if char.legacy then
 				-- A build from before the sender GUID and version fields; it
 				-- knows nothing about version requests either.
 				if msg.t == "V" or msg.t == "N" then return end
 				msg.u, msg.av, msg.ab = nil, nil, nil
 			end
-			world:Deliver(client, msg, channel, target)
+			world:Deliver(client, msg, channel, target, addressee)
 		end
 		self:Fire("ADDON_LOADED", "GuildTradebook")
 		self:Fire("PLAYER_LOGIN")
