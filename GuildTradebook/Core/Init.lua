@@ -105,23 +105,35 @@ end
 
 -- Output -----------------------------------------------------------------------
 
-local LOG_SIZE = 200
+-- The log ("/gtb log", a copyable window) keeps debug lines and printed
+-- messages, with the time.
+local LOG_SIZE = 500
 ns.log = {}
 
-function ns.Print(...)
-	print("|cff33ff99" .. ns.L.TITLE .. "|r:", ...)
-end
-
-function ns.Debug(...)
+local function joined(...)
 	local parts = {}
 	for i = 1, select("#", ...) do
 		parts[#parts + 1] = tostring((select(i, ...)))
 	end
-	local line = table.concat(parts, " ")
-	table.insert(ns.log, line)
+	return table.concat(parts, " ")
+end
+
+local function addToLog(line)
+	local stamp = date and date("%H:%M:%S")
+	table.insert(ns.log, stamp and (stamp .. " " .. line) or line)
 	if #ns.log > LOG_SIZE then
 		table.remove(ns.log, 1)
 	end
+end
+
+function ns.Print(...)
+	addToLog(joined(...))
+	print("|cff33ff99" .. ns.L.TITLE .. "|r:", ...)
+end
+
+function ns.Debug(...)
+	local line = joined(...)
+	addToLog(line)
 	if ns.db and ns.db.options.debug then
 		print("|cff999999[GTB]|r " .. line)
 	end

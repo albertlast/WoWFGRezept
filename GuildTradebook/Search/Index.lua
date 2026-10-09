@@ -158,9 +158,17 @@ local function charInfo(guid, recipeID)
 	}
 end
 
--- Name to whisper for a crafter entry: the crafter, or its online sibling.
-function Index.ContactName(c)
-	return c.via and c.via.name or c.name
+--[[
+Whom to whisper about a character entry ({name, online, via, isSelf, isAlt}):
+the character when online, else the same player's online character. nil
+for your own characters (you, your alts) and for players who are not online
+on any character; the second value is the reason, for tooltips.
+]]
+function Index.ContactFor(c)
+	if c.isSelf or c.isAlt then return nil, ns.L.YOUR_CHARACTER end
+	if c.online then return c.name end
+	if c.via then return c.via.name end
+	return nil, ns.L.NOT_REACHABLE
 end
 
 -- Display info for one character (name, class, online, ...).

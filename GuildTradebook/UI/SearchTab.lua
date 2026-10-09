@@ -310,8 +310,9 @@ local function build(content)
 		row.text:SetPoint("LEFT", 4, 0)
 		row.text:SetPoint("RIGHT", -4, 0)
 		row:SetScript("OnClick", function(self)
-			if not self.data.isSelf then
-				W.SendTell(Index.ContactName(self.data))
+			local target = Index.ContactFor(self.data)
+			if target then
+				W.SendTell(target)
 			end
 		end)
 	end, function(row, data)

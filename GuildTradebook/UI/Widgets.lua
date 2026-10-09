@@ -98,6 +98,47 @@ function W.GuildRecipeFor(itemID)
 	return rids and rids[1]
 end
 
+-- A window with selectable text (Ctrl+A, Ctrl+C) for logs and diagnostics:
+-- easier to share than screenshots. Color codes are removed.
+function W.ShowText(title, text)
+	local f = W.textFrame
+	if not f then
+		f = CreateFrame("Frame", "GuildTradebookTextFrame", UIParent, "BasicFrameTemplateWithInset")
+		f:SetSize(640, 420)
+		f:SetPoint("CENTER")
+		f:SetFrameStrata("DIALOG")
+		f:SetMovable(true)
+		f:EnableMouse(true)
+		f:RegisterForDrag("LeftButton")
+		f:SetScript("OnDragStart", f.StartMoving)
+		f:SetScript("OnDragStop", f.StopMovingOrSizing)
+		f.title = W.Text(f, "GameFontHighlight")
+		f.title:SetPoint("TOP", 0, -5)
+		f.hint = W.Text(f, "GameFontDisableSmall")
+		f.hint:SetPoint("BOTTOMLEFT", 12, 10)
+		f.hint:SetText(ns.L.COPY_HINT)
+		local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+		scroll:SetPoint("TOPLEFT", 12, -30)
+		scroll:SetPoint("BOTTOMRIGHT", -32, 28)
+		local edit = CreateFrame("EditBox", nil, scroll)
+		edit:SetMultiLine(true)
+		edit:SetAutoFocus(false)
+		edit:SetFontObject(ChatFontNormal)
+		edit:SetWidth(580)
+		edit:SetScript("OnEscapePressed", function() f:Hide() end)
+		scroll:SetScrollChild(edit)
+		f.edit = edit
+		table.insert(UISpecialFrames, "GuildTradebookTextFrame")
+		W.textFrame = f
+	end
+	text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+	f.title:SetText(title)
+	f.edit:SetText(text)
+	f:Show()
+	f.edit:SetFocus()
+	f.edit:HighlightText()
+end
+
 -- Item behavior for any frame with .itemID: the game's item tooltip on hover
 -- (so price addons like Auctioneer or TSM add their lines) and shift-click
 -- to link the item in chat. onOpenRecipe(recipeID), if given, makes a plain

@@ -161,6 +161,16 @@ test("tabs, rows and tooltip run against real pool data", function()
 	end
 	truthy(rendered >= 4, "rows rendered: " .. rendered)
 
+	-- Copyable log window (twice: created once, then reused).
+	cb.ns.Widgets.ShowText("log", "a |cffff0000red|r line")
+	cb.ns.Widgets.ShowText("log", "again")
+	truthy(cb.ns.Widgets.textFrame, "log window created")
+	local registered = 0
+	for _, name in ipairs(cb.env.UISpecialFrames) do
+		if name == "GuildTradebookTextFrame" then registered = registered + 1 end
+	end
+	eq(registered, 1, "Esc closes it, registered once")
+
 	cb.ns.Tooltip.Start()
 	local lines = {}
 	local tooltip = setmetatable({ AddLine = function(_, text) table.insert(lines, text) end }, mockMeta)

@@ -10,7 +10,7 @@ sends a tiny addon message (X) so the others cancel their pending answer.
 ]]
 local _, ns = ...
 
-local L, Index, Util = ns.L, ns.Index, ns.Util
+local L, Index, Util, Store = ns.L, ns.Index, ns.Util, ns.Store
 local ChatResponder = { answered = {}, lastAnswer = 0 }
 ns.ChatResponder = ChatResponder
 
@@ -44,12 +44,14 @@ local function crafterNames(crafters, max)
 			break
 		end
 		local name = Util.ShortName(c.name)
+		-- Same person, online on another character: "Bobalt (Bob*)". For the
+		-- asker, your own offline alts are reachable through you.
+		local via = c.via and c.via.name or (c.isAlt and not c.online and Util.PlayerName())
 		if c.online then
 			name = name .. "*"
 			anyOnline = true
-		elseif c.via then
-			-- Same person, online on another character: "Bobalt (Bob*)".
-			name = name .. " (" .. Util.ShortName(c.via.name) .. "*)"
+		elseif via then
+			name = name .. " (" .. Util.ShortName(via) .. "*)"
 			anyOnline = true
 		end
 		names[#names + 1] = name
@@ -103,11 +105,13 @@ local function lockedDown()
 	return C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()
 end
 
+-- Errors are logged instead of raised: script errors are often hidden, and
+-- a failing answer must not go unnoticed in "/gtb log".
 local function sendGuildChat(text)
-	if C_ChatInfo.SendChatMessage then
-		C_ChatInfo.SendChatMessage(text, "GUILD")
-	else
-		SendChatMessage(text, "GUILD")
+	local send = C_ChatInfo.SendChatMessage or SendChatMessage
+	local ok, err = pcall(send, text, "GUILD")
+	if not ok then
+		ns.Debug("!craft: posting the answer failed:", tostring(err))
 	end
 end
 
@@ -117,7 +121,14 @@ local function recentlyAnswered(key)
 end
 
 function ChatResponder.Answer(key, query)
-	if recentlyAnswered(key) or lockedDown() then return end
+	if recentlyAnswered(key) then
+		ns.Debug("!craft:", query, "- answered meanwhile")
+		return
+	end
+	if lockedDown() then
+		ns.Debug("!craft:", query, "- chat lockdown, not answering")
+		return
+	end
 	local wait = ChatResponder.MIN_GAP - (GetTime() - ChatResponder.lastAnswer)
 	if wait > 0 then
 		ns.Debounce("craftq" .. key, wait, function() ChatResponder.Answer(key, query) end)
@@ -126,24 +137,51 @@ function ChatResponder.Answer(key, query)
 	ChatResponder.answered[key] = GetTime()
 	ChatResponder.lastAnswer = GetTime()
 	ns.Protocol.Send({ t = "X", k = key }, "GUILD", nil, "ALERT")
-	sendGuildChat(ChatResponder.BuildAnswer(query, Index.Search(query, 0), Index.Crafters))
+	local answer = ChatResponder.BuildAnswer(query, Index.Search(query, 0), Index.Crafters)
+	ns.Debug("!craft:", query, "- answering:", answer)
+	sendGuildChat(answer)
 end
 
-function ChatResponder.OnGuildChat(_, text, playerName)
-	if not ns.db or not ns.db.options.chatResponder or not ns.GetGuildData() then return end
-	local query = ChatResponder.ParseQuery(text)
-	if not query then return end
-	local key = Util.Hash(query:lower() .. "|" .. (Util.NormalizeName(playerName) or ""))
-	if recentlyAnswered(key) then return end
+-- The key names one question on every client: the query and the asker's
+-- GUID (12th event value). Not the name: clients see it in different forms
+-- (with or without realm), and the "answered" signal (X) must match.
+function ChatResponder.QueryKey(query, askerGUID, playerName)
+	return Util.Hash(query:lower() .. "|" .. (askerGUID or Util.NormalizeName(playerName) or ""))
+end
+
+function ChatResponder.OnGuildChat(_, text, playerName, _, _, _, _, _, _, _, _, _, askerGUID)
+	local ok, query = pcall(ChatResponder.ParseQuery, text)
+	if not ok or not query then return end
+	if not ns.db or not ns.GetGuildData() then return end
+	if not ns.db.options.chatResponder then
+		ns.Debug("!craft:", query, "- answering is turned off (/gtb chatbot)")
+		return
+	end
+	if type(askerGUID) ~= "string" or askerGUID == "" then askerGUID = nil end
+	local key = ChatResponder.QueryKey(query, askerGUID, playerName)
+	if recentlyAnswered(key) then
+		ns.Debug("!craft:", query, "- already answered within a minute")
+		return
+	end
 	local rank = ns.Protocol.ElectionRank("craft:" .. key, UnitGUID("player"))
-	if not rank or rank >= ChatResponder.RANKS then return end
+	if not rank or rank >= ChatResponder.RANKS then
+		ns.Debug("!craft:", query, "- rank", tostring(rank), ", others answer first")
+		return
+	end
 	local delay = rank * ChatResponder.SLOT + ns.RandomDelay(0.3, 0.8)
+	ns.Debug("!craft:", query, "from", tostring(playerName), "- rank", rank, ", answering in", ("%.1f s"):format(delay),
+		"(key " .. Store.FormatInt(key) .. ")")
 	ns.Debounce("craftq" .. key, delay, function() ChatResponder.Answer(key, query) end)
 end
 
 -- Another addon user answered this question.
 function ChatResponder.OnAnswered(key)
 	ChatResponder.answered[key] = GetTime()
+	if ns.IsPending("craftq" .. key) then
+		ns.Debug("!craft: another client answered first")
+	else
+		ns.Debug("!craft: answered by another client (key " .. Store.FormatInt(key) .. ")")
+	end
 	ns.Cancel("craftq" .. key)
 end
 

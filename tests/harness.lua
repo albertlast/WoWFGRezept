@@ -228,11 +228,21 @@ function H.NewWorld(opts)
 	end
 
 	-- A guild chat line, seen by every online client (like CHAT_MSG_GUILD).
+	-- The 12th event value is the sender's GUID. world.chatNameFormats: each
+	-- client sees the sender's name in another form (realm suffix or not).
 	function world:GuildChat(fromName, text)
 		table.insert(self.chat, { from = fromName, text = text })
-		for _, client in pairs(self.online) do
+		local fromGUID
+		for guid, c in pairs(self.chars) do
+			if c.name == fromName then fromGUID = guid end
+		end
+		for guid, client in pairs(self.online) do
+			local shown = fromName
+			if self.chatNameFormats and guid ~= fromGUID then
+				shown = fromName:gsub("%-.*$", "") .. "-" .. guid
+			end
 			self.clock:Add(self.latency, function()
-				client:Fire("CHAT_MSG_GUILD", text, fromName)
+				client:Fire("CHAT_MSG_GUILD", text, shown, "", "", shown, "", 0, 0, "", 0, 0, fromGUID)
 			end, client.env)
 		end
 	end

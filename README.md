@@ -32,7 +32,8 @@ Each crafter has to open the professions window once and click each profession t
 | `/gtb resync` | sync with a guild member now |
 | `/gtb diag [name]` | test whether addon messages reach the guild (the server echoes them back to you); with a name, test addon whispers to that member in both name forms |
 | `/gtb dump <name>` | show what is known about a character |
-| `/gtb stats`, `/gtb debug`, `/gtb log` | diagnostics |
+| `/gtb log` | open the log (debug lines and addon messages, with times) as copyable text |
+| `/gtb stats`, `/gtb debug` | diagnostics |
 
 - **Recipes:** free-text search plus a profession filter. Selecting a recipe shows the crafters (online first, then the most recently confirmed; click to whisper) and the reagents.
 - **Upgrades:** pick an item type (Cloth, Leather, …), a slot and your favorite stats. You get items guild members can craft that beat what you have equipped. Rings and trinkets are compared with your weaker one. Bind-on-pickup items are hidden by default, because a crafter cannot hand them over.

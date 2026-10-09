@@ -80,7 +80,9 @@ local function slash(input)
 		ns.db.options.debug = not ns.db.options.debug
 		ns.Print("debug:", tostring(ns.db.options.debug))
 	elseif cmd == "log" then
-		for _, line in ipairs(ns.log) do print(line) end
+		local header = ("%s %s - %s - %s"):format(L.TITLE, (ns.Versions.Mine()), tostring(Util.PlayerName()),
+			date and date("%Y-%m-%d %H:%M") or "")
+		ns.Widgets.ShowText(L.LOG_TITLE, header .. "\n" .. table.concat(ns.log, "\n"))
 	elseif cmd == "dump" then
 		dump(rest)
 	elseif cmd == "stats" then

@@ -100,6 +100,8 @@ local function refresh()
 				level = (member and member.level) or rec.level or 0,
 				online = (member and member.online) or false,
 				via = Index.Via(guid),
+				isSelf = guid == UnitGUID("player"),
+				isAlt = guid ~= UnitGUID("player") and ns.db.account.chars[guid] ~= nil,
 				ver = rec.ver,
 				profs = professionText(rec),
 			}
@@ -146,8 +148,8 @@ local function build(content)
 	end
 
 	-- Two click areas: the name whispers (the character, or the same person's
-	-- online character), the professions open the member's recipes in the
-	-- Recipes tab.
+	-- online character; never yourself or someone offline), the professions
+	-- open the member's recipes in the Recipes tab.
 	ui.list = W.CreateList(content, 20, function(row)
 		row.nameButton = CreateFrame("Button", nil, row)
 		row.nameButton:SetPoint("TOPLEFT")
@@ -155,12 +157,16 @@ local function build(content)
 		row.nameButton:SetWidth(248)
 		row.nameButton:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
 		row.nameButton:SetScript("OnClick", function(self)
-			local data = self:GetParent().data
-			W.SendTell(data.via and data.via.name or data.name)
+			local target = Index.ContactFor(self:GetParent().data)
+			if target then
+				W.SendTell(target)
+			end
 		end)
 		hint(row.nameButton, function(self)
-			local via = self:GetParent().data.via
-			return via and L.CLICK_WHISPER_VIA:format(Util.ShortName(via.name)) or L.CLICK_WHISPER
+			local data = self:GetParent().data
+			local target, reason = Index.ContactFor(data)
+			if not target then return reason end
+			return data.via and L.CLICK_WHISPER_VIA:format(Util.ShortName(data.via.name)) or L.CLICK_WHISPER
 		end)
 		row.name = W.Text(row.nameButton)
 		row.name:SetWidth(150)

@@ -490,7 +490,7 @@ test("roster name differs from the sender's name: sync still works", function()
 	end
 	-- Whispers and displays use the name the server puts on messages.
 	local crafter = cc.ns.Index.Crafters(3914)[1]
-	eq(cc.ns.Index.ContactName(crafter), "Anna-Realm")
+	eq(cc.ns.Index.ContactFor(crafter), "Anna-Realm")
 	eq(world.repeatedFailures, 0, "a name that failed once is not whispered again")
 end)
 
@@ -681,7 +681,19 @@ test("characters of one account are grouped; an offline crafter is reached via t
 	falsy(c.online)
 	eq(c.via and c.via.guid, main.guid)
 	truthy(c.reachable)
-	eq(co.ns.Index.ContactName(c), "Mainy-Realm")
+	eq(co.ns.Index.ContactFor(c), "Mainy-Realm")
+	-- On the player's own client the crafter is an own alt: never whispered.
+	local cm = world.online[main.guid]
+	local own = cm.ns.Index.Crafters(3914)[1]
+	local target, reason = cm.ns.Index.ContactFor(own)
+	falsy(target, "your own alt is never whispered")
+	eq(reason, "Your character")
+	-- A !craft answer from the owner's client still tells others whom to ask.
+	co.env.GuildTradebookDB.options.chatResponder = false
+	world:GuildChat("Otto-Realm", "!craft Recipe 3914")
+	world:Run(15)
+	local answer = world.chat[#world.chat].text
+	truthy(answer:find("Crafty (Mainy*)", 1, true), answer)
 	-- The crafter's owner logs off completely: no longer reachable.
 	world:Logout(main.guid)
 	world:Run(150)
@@ -916,6 +928,46 @@ test("AreOutgoingAddonChatMessagesRestricted is true (Forever beta): sync and !c
 		if line.text:find("[Guild Tradebook]", 1, true) then answers[#answers + 1] = line end
 	end
 	eq(#answers, 1, "exactly one answer")
+end)
+
+test("!craft: clients see the asker's name in different forms, still exactly one answer", function()
+	local world = bigGuild(12, 25)
+	world.chatNameFormats = true
+	local asker = world:AddChar({ guid = guid(901), name = "Joerg Falk" })
+	world:Login(asker.guid)
+	world:Run(60)
+	world:GuildChat(asker.name, "!craft Recipe 3005")
+	world:Run(30)
+	local answers = 0
+	for _, line in ipairs(world.chat) do
+		if line.text:find("[Guild Tradebook]", 1, true) then answers = answers + 1 end
+	end
+	eq(answers, 1, "the answered signal matches on every client")
+end)
+
+test("partner request: a client that missed the first round answers a later one", function()
+	math.randomseed(26)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = { [TAILORING] = tailoring(150, { [3914] = 2568 }) } })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(120)
+	-- Anna is in a loading screen while Bert's first request goes out.
+	a.partition = 2
+	world:ResetCounters()
+	local cb = world:Login(b.guid)
+	for _ = 1, 120 do
+		if world.byType.P then break end
+		world:Run(1)
+	end
+	eq(world.byType.P, 1, "first round sent")
+	world:Run(3)
+	falsy(cb:Record(a.guid), "first round missed")
+	a.partition = 1
+	world:Run(60)
+	truthy(cb:Record(a.guid), "Anna answered a later round")
 end)
 
 test("!craft is silent when every client disabled it", function()

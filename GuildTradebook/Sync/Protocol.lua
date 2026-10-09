@@ -348,7 +348,9 @@ function P.StartSync(explore)
 	try()
 end
 
--- Election round `round` covers ranks [round*N, round*N+N).
+-- Election round `round` covers ranks [0, round*N+N): the new ranks of this
+-- round, and the earlier ones again (they may have missed an earlier round,
+-- e.g. in a loading screen) - those answer right away.
 function P.RequestPartner(round)
 	P.electionRound = round
 	P.Send({ t = "P", n = round }, "GUILD", nil, "NORMAL")
@@ -530,8 +532,8 @@ handlers.P = function(msg, channel)
 	P.accepted[newcomer] = nil
 	local rank = P.ElectionRank(newcomer, UnitGUID("player"))
 	local first = msg.n * P.ELECTION_RANKS
-	if not rank or rank < first or rank >= first + P.ELECTION_RANKS then return end
-	local delay = (rank - first) * P.ELECTION_SLOT + ns.RandomDelay(0, 0.5)
+	if not rank or rank >= first + P.ELECTION_RANKS then return end
+	local delay = math.max(0, rank - first) * P.ELECTION_SLOT + ns.RandomDelay(0, 0.5)
 	ns.Debounce("elect" .. newcomer, delay, function()
 		if not P.accepted[newcomer] then
 			P.Send({ t = "A", to = newcomer }, "GUILD", nil, "NORMAL")
@@ -693,7 +695,8 @@ function P.Diagnose(name)
 		(ns.Versions.Mine()), tostring(Roster.guildKey), tostring(Roster.ready), members, online))
 	ns.Print(("diag: prefix registered %s, chat lockdown %s, queued %d, known addon users online %d"):format(
 		tostring(registered), tostring(restricted() or false), #P.outbox, #(P.Candidates())))
-	ns.Print(("diag: AreOutgoingAddonChatMessagesRestricted %s (not used)"):format(tostring(outgoingRestrictedFlag() or false)))
+	ns.Print(("diag: AreOutgoingAddonChatMessagesRestricted %s (not used), !craft answers %s"):format(
+		tostring(outgoingRestrictedFlag() or false), ns.db.options.chatResponder and "on" or "off (/gtb chatbot)"))
 	ns.Print(("diag: your name %s, members only reachable through the guild channel: %d"):format(
 		tostring(selfName()), Util.Count(P.unreachable)))
 	if not Roster.guildKey then return end
