@@ -171,6 +171,46 @@ local function requestRoster()
 	end
 end
 
+-- Lua pattern for a localized message template; each %s becomes a capture.
+local function templatePattern(template)
+	return "^" .. template:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1"):gsub("%%s", "(.-)") .. "$"
+end
+
+local onlinePattern, offlinePattern
+
+-- Name from "[Name] has come online." / "Name has gone offline.", and the new
+-- state; nil for other messages.
+function Roster.ParseOnlineMessage(text)
+	if type(text) ~= "string" then return nil end
+	onlinePattern = onlinePattern or templatePattern(ERR_FRIEND_ONLINE_SS or "|Hplayer:%s|h[%s]|h has come online.")
+	offlinePattern = offlinePattern or templatePattern(ERR_FRIEND_OFFLINE_S or "%s has gone offline.")
+	local name = text:match(onlinePattern)
+	if name then return name, true end
+	name = text:match(offlinePattern)
+	if name then return name, false end
+	return nil
+end
+
+--[[
+The server tells about guild members logging in or out in a system message
+right away, while the roster's online flags change only with the next
+refresh (up to REFRESH_INTERVAL later). The flag is set at once; a roster
+refresh is requested to confirm it.
+]]
+function Roster.OnSystemMessage(_, text)
+	local name, online = Roster.ParseOnlineMessage(text)
+	if not name then return end
+	local guid = Roster.GuidByName(name)
+	local member = guid and Roster.members[guid]
+	if not member then return end
+	if member.online ~= online then
+		member.online = online
+		ns.Debug(name, online and "came online" or "went offline", "(system message)")
+		ns.Emit("RosterUpdated")
+	end
+	ns.ScheduleEarliest("rosterConfirm", 3, requestRoster)
+end
+
 function Roster.Start()
 	ns.RegisterEvent("GUILD_ROSTER_UPDATE", function()
 		ns.Debounce("roster", 1, Roster.Refresh)
@@ -179,6 +219,7 @@ function Roster.Start()
 		ns.Debounce("roster", 1, Roster.Refresh)
 		requestRoster()
 	end)
+	ns.RegisterEvent("CHAT_MSG_SYSTEM", Roster.OnSystemMessage)
 	requestRoster()
 	-- A second request makes the roster count stable (see Refresh).
 	ns.After(15, requestRoster)

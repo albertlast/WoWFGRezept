@@ -136,6 +136,13 @@ local function updateIdentity(own)
 		own.level = level
 		kind = kind or "minor"
 	end
+	-- Client language: !craft answers come from a client that knows the
+	-- names in the asker's language (ChatResponder).
+	local loc = GetLocale and GetLocale()
+	if loc and own.loc ~= loc then
+		own.loc = loc
+		kind = kind or "minor"
+	end
 	return kind
 end
 

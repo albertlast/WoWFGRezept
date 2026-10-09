@@ -114,6 +114,17 @@ local function craftersOf(rid)
 	return Index.byRecipe[rid]
 end
 
+-- The notice sound, on the master channel so it plays with sound effects
+-- turned down. Logged: a missing sound is otherwise invisible.
+local function playSound()
+	if not ns.db.options.wishSound or not PlaySound then return end
+	local id = SOUNDKIT and SOUNDKIT.TELL_MESSAGE or 3081
+	local ok, willPlay = pcall(PlaySound, id, "Master")
+	if not (ok and willPlay) then
+		ns.Debug("wishlist sound", id, "did not play:", tostring(willPlay))
+	end
+end
+
 function Wishlist.Check()
 	if not Roster.ready or not ns.charDB or not ns.db.options.wishAlerts then
 		Wishlist.onlineBefore = nil
@@ -135,6 +146,7 @@ function Wishlist.Check()
 		end
 		if count > 0 then
 			ns.Print(L.WISH_SUMMARY:format(count))
+			playSound()
 		end
 		return
 	end
@@ -157,17 +169,19 @@ function Wishlist.Check()
 				who = who .. " (" .. Util.ClassColored(Util.ShortName(c.via.name), c.via.class) .. ")"
 			end
 			ns.Print(L.WISH_ALERT:format(who, table.concat(names, ", ")))
-			if ns.db.options.wishSound and PlaySound and SOUNDKIT and SOUNDKIT.TELL_MESSAGE then
-				PlaySound(SOUNDKIT.TELL_MESSAGE)
-			end
+			playSound()
 		end
 	end
 end
 
 function Wishlist.Start()
-	ns.On("RosterUpdated", function()
-		ns.Debounce("wishlistCheck", 2, Wishlist.Check)
-	end)
+	local function checkSoon()
+		ns.ScheduleEarliest("wishlistCheck", 2, Wishlist.Check)
+	end
+	ns.On("RosterUpdated", checkSoon)
+	-- Synced records can make a crafter reachable without a roster change:
+	-- their record arrives, or links them to a character that is online.
+	ns.On("RecordsChanged", checkSoon)
 	ns.On("GuildChanged", function()
 		Wishlist.onlineBefore = nil
 	end)

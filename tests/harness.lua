@@ -132,6 +132,10 @@ function H.NewWorld(opts)
 		repeatedFailures = 0, -- failed whispers sent after the sender already got "No player named" for that name
 		failedAt = {},     -- ["sender>target"] = time the first failure was reported back
 		latency = opts.latency or 0.2,
+		-- slowRoster: like the real server, the roster changes only when a
+		-- client asks for it (GuildRoster); logins and logouts are announced
+		-- right away by a system message.
+		slowRoster = opts.slowRoster,
 		guildName = opts.guildName or "Testguild",
 		serverProfs = {},  -- [guid] = {id1, id2} as the club API reports
 		log = {},
@@ -274,7 +278,10 @@ function H.NewWorld(opts)
 		self.online[guid] = client
 		client:Boot()
 		for _, other in pairs(self.online) do
-			if other ~= client then other:Fire("GUILD_ROSTER_UPDATE") end
+			if other ~= client then
+				other:Fire("CHAT_MSG_SYSTEM", "|Hplayer:" .. char.name .. "|h[" .. char.name .. "]|h has come online.")
+				if not self.slowRoster then other:Fire("GUILD_ROSTER_UPDATE") end
+			end
 		end
 		return client
 	end
@@ -286,6 +293,9 @@ function H.NewWorld(opts)
 		self.charDBs[guid] = client.env.GuildTradebookCharDB
 		client.env.dead = true
 		self.online[guid] = nil
+		for _, other in pairs(self.online) do
+			other:Fire("CHAT_MSG_SYSTEM", client.char.name .. " has gone offline.")
+		end
 	end
 
 	function world:ResetCounters()
@@ -322,7 +332,8 @@ function H.NewClient(world, char)
 		for i = 1, select("#", ...) do parts[#parts + 1] = tostring((select(i, ...))) end
 		table.insert(world.log, char.name .. ": " .. table.concat(parts, " "))
 	end
-	env.GetLocale = function() return "enUS" end
+	-- char.locale (default enUS): German clients see recipe names as "Rezept <id>".
+	env.GetLocale = function() return char.locale or "enUS" end
 	-- Chat filters (client.chatFilters[event] = the last one registered).
 	env.ChatFrame_AddMessageEventFilter = function(event, fn)
 		client.chatFilters = client.chatFilters or {}
@@ -435,10 +446,16 @@ function H.NewClient(world, char)
 			end
 		end,
 	}
-	env.C_Spell = { GetSpellName = function(id) return "Recipe " .. id end }
+	env.C_Spell = {
+		GetSpellName = function(id)
+			return ((char.locale or "enUS"):sub(1, 2) == "de" and "Rezept " or "Recipe ") .. id
+		end,
+	}
 	-- world.bindTypes[itemID] = 1 (BoP) / 2 (BoE); missing = not loaded yet.
 	env.C_Item = {
-		GetItemNameByID = function(id) return "Item " .. id end,
+		GetItemNameByID = function(id)
+			return ((char.locale or "enUS"):sub(1, 2) == "de" and "Gegenstand " or "Item ") .. id
+		end,
 		GetItemCount = function(id) return (char.bags or {})[id] or 0 end,
 		GetItemInfo = function(id)
 			local bind = (world.bindTypes or {})[id]
@@ -448,7 +465,11 @@ function H.NewClient(world, char)
 		end,
 		RequestLoadItemDataByID = function() end,
 	}
-	env.PlaySound = function() end
+	client.sounds = {}
+	env.PlaySound = function(id, channel)
+		table.insert(client.sounds, { id = id, channel = channel })
+		return true, 1
+	end
 	env.SOUNDKIT = { TELL_MESSAGE = 1 }
 
 	-- Professions

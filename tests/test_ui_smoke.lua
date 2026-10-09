@@ -283,11 +283,22 @@ test("tabs, rows and tooltip run against real pool data", function()
 			Hide = function() calls.shown = false end,
 			GetMinimapButton = function() return fakeButton end,
 		},
-		["LibCustomGlow-1.0"] = {
+		["LibCustomGlowGargul-1.0"] = {
 			ButtonGlow_Start = function(b) if b == fakeButton then calls.glowStarted = calls.glowStarted + 1 end end,
 			ButtonGlow_Stop = function(b) if b == fakeButton then calls.glowStopped = calls.glowStopped + 1 end end,
 		},
 	}
+	-- The stubbed names must be the ones the embedded copies register.
+	for name, file in pairs({
+		["LibDataBroker-1.1"] = "LibDataBroker-1.1/LibDataBroker-1.1.lua",
+		["LibDBIcon-1.0"] = "LibDBIcon-1.0/LibDBIcon-1.0.lua",
+		["LibCustomGlowGargul-1.0"] = "LibCustomGlow-1.0/LibCustomGlow-1.0.lua",
+	}) do
+		local f = assert(io.open(H.ADDON_DIR .. "Libs/" .. file, "rb"))
+		local src = f:read("*a")
+		f:close()
+		truthy(src:find('"' .. name:gsub("%p", "%%%0") .. '"'), name .. " is registered by " .. file)
+	end
 	cb.env.LibStub = function(name) return stubs[name] end
 	local MB = cb.ns.MinimapButton
 	MB.Start()

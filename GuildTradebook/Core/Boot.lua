@@ -60,6 +60,8 @@ local function slash(input)
 		ns.UI.Show("wishlist")
 	elseif cmd == "options" or cmd == "settings" then
 		ns.Settings.Open()
+	elseif cmd == "glow" then
+		ns.MinimapButton.Report()
 	elseif cmd == "minimap" then
 		ns.db.options.minimapButton = not ns.db.options.minimapButton
 		ns.MinimapButton.SetShown(ns.db.options.minimapButton)

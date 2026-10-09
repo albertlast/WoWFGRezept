@@ -196,6 +196,16 @@ test("wire round trip preserves content and hash", function()
 	local back = assert(Store.FromWire(H.DeepCopy(Store.ToWire(r))))
 	eq(back.h, r.h)
 	eq(back.player, "00ab12cd34ef")
+	-- The client locale travels along but is not hashed (0.1.0 compatibility).
+	r.loc = "deDE"
+	local withLoc = assert(Store.FromWire(H.DeepCopy(Store.ToWire(r))))
+	eq(withLoc.loc, "deDE")
+	eq(Store.Hash(withLoc), r.h)
+	local old = Store.ToWire(r)
+	old[9] = nil -- a 0.1.0 client sends 8 fields
+	eq(assert(Store.FromWire(old)).loc, nil)
+	old[9] = "not a locale"
+	falsy(Store.FromWire(old))
 	eq(back.profs[171].recipes, nil)
 	truthy(back.profs[164].unverified)
 	truthy(back.profs[164].primary)

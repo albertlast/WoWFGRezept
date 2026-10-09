@@ -3,11 +3,22 @@
 The answer is a whisper to the asker, so guild chat only shows the question.
 
 Asked in guild chat: all addon users see the question at the same time.
-They rank themselves with the same deterministic hash ranking as the sync
-partner election (Protocol.ElectionRank): rank 0 answers after a short
-delay, rank 1 a few seconds later only if nobody answered, and so on. The
-answering client first sends a tiny addon message (X) so the others cancel
-their pending answer.
+Item names are searched in each client's own language, so a German question
+is only found by German clients. Every client searches first:
+  - found something: rank among the clients of the same language (their
+    records carry the client locale; unknown ones count as the same) and
+    answer in that order - rank 0 after a short delay, rank 1 a few seconds
+    later only if nobody answered, and so on;
+  - found nothing: wait until every client that found something had its
+    chance; then rank 0 of all clients answers "nobody", naming its language.
+Linked items ("!craft [Brauner Leinenwams]") are looked up by item ID, so
+every client finds them. The link text is the item name in the asker's
+language: clients whose own name for the item is the same answer first
+(among clients of their language); the others wait like "found nothing",
+and the first of all clients answers if nobody of the asker's language did.
+The ranking is the same deterministic hash ranking as the sync partner
+election (Protocol.ElectionRank). The answering client first sends a tiny
+addon message (X) so the others cancel their pending answer.
 
 Whispered to an addon user: only that user sees it and answers right away -
 if the asker is in the guild. Guild recipes are not told to strangers.
@@ -40,6 +51,45 @@ function ChatResponder.ParseQuery(text)
 	return nil
 end
 
+ChatResponder.MAX_LINKS = 3
+
+--[[
+Pure: chat links in a query, in order, at most MAX_LINKS:
+  { { kind = "item" | "enchant" | "spell", id = number, name = "link text" }, ... }
+Item links name the crafted item; enchant and spell links name the recipe
+(recipeID = spellID).
+]]
+function ChatResponder.ParseLinks(query)
+	local links = {}
+	for kind, id, name in query:gmatch("|H(%a+):(%d+)[^|]*|h%[(.-)%]|h") do
+		if (kind == "item" or kind == "enchant" or kind == "spell") and #links < ChatResponder.MAX_LINKS then
+			links[#links + 1] = { kind = kind, id = tonumber(id), name = name }
+		end
+	end
+	return links
+end
+
+-- Language of a locale ("deDE" -> "de"), and its own name for answers.
+local function language(locale)
+	return type(locale) == "string" and locale:sub(1, 2) or nil
+end
+
+ChatResponder.LANGUAGE_NAMES = {
+	de = "Deutsch", en = "English", fr = "Fran\195\167ais", es = "Espa\195\177ol",
+	it = "Italiano", pt = "Portugu\195\170s", ru = "\208\160\209\131\209\129\209\129\208\186\208\184\208\185",
+}
+
+-- " (client language: English)" for "nobody" answers; private (whispered)
+-- questions also suggest asking in guild chat, where other languages answer.
+function ChatResponder.NoneSuffix(locale, private)
+	local lang = language(locale)
+	local text = L.CHAT_NONE_LANGUAGE:format(ChatResponder.LANGUAGE_NAMES[lang] or tostring(locale))
+	if private then
+		text = text .. L.CHAT_NONE_ASK_GUILD
+	end
+	return text
+end
+
 local function crafterNames(crafters, max)
 	local names, anyOnline = {}, false
 	for i, c in ipairs(crafters) do
@@ -67,8 +117,9 @@ end
 Pure core: builds the chat answer.
   results        = Index.Search(query, 0) entries ({recipeID, name})
   craftersOf(id) = Index.Crafters(id)
+  noneSuffix     = optional text after a "nobody" answer
 ]]
-function ChatResponder.BuildAnswer(query, results, craftersOf)
+function ChatResponder.BuildAnswer(query, results, craftersOf, noneSuffix)
 	local q = query:lower()
 	local picks = {}
 	for _, r in ipairs(results) do
@@ -78,7 +129,7 @@ function ChatResponder.BuildAnswer(query, results, craftersOf)
 
 	local text
 	if #picks == 0 then
-		text = L.CHAT_NONE:format(query)
+		text = L.CHAT_NONE:format(query) .. (noneSuffix or "")
 	elseif #picks > 3 then
 		local names = {}
 		for i = 1, 3 do names[i] = picks[i].name end
@@ -131,6 +182,52 @@ local function hideOwnAnswer(_, _, text)
 	return at ~= nil and GetTime() - at < 10
 end
 
+-- Search results for a query: by item/recipe ID for links, by name else.
+-- Returns { results, display, links (nil without links) }.
+function ChatResponder.Resolve(query)
+	local links = ChatResponder.ParseLinks(query)
+	if #links == 0 then
+		return { results = Index.Search(query, 0), display = query }
+	end
+	Index.Ensure()
+	local results, seen, names = {}, {}, {}
+	for _, link in ipairs(links) do
+		names[#names + 1] = link.name
+		local rids
+		if link.kind == "item" then
+			rids = Index.RecipesForItem(link.id) or {}
+		else
+			rids = Index.byRecipe[link.id] and { link.id } or {}
+		end
+		for _, rid in ipairs(rids) do
+			if not seen[rid] then
+				seen[rid] = true
+				results[#results + 1] = { recipeID = rid, name = link.name }
+			end
+		end
+	end
+	return { results = results, display = table.concat(names, ", "), links = links }
+end
+
+-- True if this client calls a linked thing by the same name as the link,
+-- i.e. reads names in the asker's language. Items not loaded yet count as
+-- "not the same" (their load is requested).
+function ChatResponder.SharesLinkLanguage(links)
+	for _, link in ipairs(links) do
+		local own
+		if link.kind == "item" then
+			own = C_Item.GetItemNameByID(link.id)
+			if not own then C_Item.RequestLoadItemDataByID(link.id) end
+		else
+			own = Index.RecipeName(link.id)
+		end
+		if own and own:lower() == link.name:lower() then
+			return true
+		end
+	end
+	return false
+end
+
 local function recentlyAnswered(key)
 	local at = ChatResponder.answered[key]
 	return at and GetTime() - at < ChatResponder.REPEAT_WINDOW
@@ -157,8 +254,11 @@ function ChatResponder.Answer(key, query, asker, private)
 	if not private then
 		ns.Protocol.Send({ t = "X", k = key }, "GUILD", nil, "ALERT")
 	end
-	local answer = ChatResponder.BuildAnswer(query, Index.Search(query, 0), Index.Crafters)
-	ns.Debug("!craft:", query, "- whispering", tostring(asker) .. ":", answer)
+	local q = ChatResponder.Resolve(query)
+	-- Links are found in every language: no language hint for "nobody".
+	local suffix = not q.links and ChatResponder.NoneSuffix(GetLocale(), private) or nil
+	local answer = ChatResponder.BuildAnswer(q.display, q.results, Index.Crafters, suffix)
+	ns.Debug("!craft:", q.display, "- whispering", tostring(asker) .. ":", answer)
 	whisper(answer, asker)
 end
 
@@ -189,14 +289,42 @@ function ChatResponder.OnGuildChat(_, text, playerName, _, _, _, _, _, _, _, _, 
 		ns.Debug("!craft:", query, "- already answered within a minute")
 		return
 	end
-	local rank = ns.Protocol.ElectionRank("craft:" .. key, UnitGUID("player"))
+	--[[ Two turns:
+	  first:  clients that read the question in the asker's language - those
+	          that found the typed name, or call a linked item by the link's
+	          name. They rank among clients of their own language.
+	  second: everyone else, after the first turn had its chance; ranked
+	          among all clients.
+	]]
+	local q = ChatResponder.Resolve(query)
+	local me = UnitGUID("player")
+	local mine = language(GetLocale())
+	local function sameLanguage(guid)
+		local loc = Index.LocaleOf(guid)
+		return loc == nil or language(loc) == mine
+	end
+	local firstTurn, why
+	if q.links then
+		firstTurn = ChatResponder.SharesLinkLanguage(q.links)
+		why = firstTurn and "link in my language" or "link in another language"
+	else
+		firstTurn = #q.results > 0
+		why = firstTurn and "found" or "nothing found"
+	end
+	local rank
+	if firstTurn then
+		rank = ns.Protocol.ElectionRank("craft:" .. key, me, sameLanguage)
+	else
+		rank = ns.Protocol.ElectionRank("craft:" .. key, me)
+	end
 	if not rank or rank >= ChatResponder.RANKS then
-		ns.Debug("!craft:", query, "- rank", tostring(rank), ", others answer first")
+		ns.Debug("!craft:", q.display, "-", why, ", rank", tostring(rank), ", others answer first")
 		return
 	end
-	local delay = rank * ChatResponder.SLOT + ns.RandomDelay(0.3, 0.8)
-	ns.Debug("!craft:", query, "from", tostring(playerName), "- rank", rank, ", answering in", ("%.1f s"):format(delay),
-		"(key " .. Store.FormatInt(key) .. ")")
+	local slots = firstTurn and rank or (ChatResponder.RANKS + rank)
+	local delay = slots * ChatResponder.SLOT + ns.RandomDelay(0.3, 0.8)
+	ns.Debug("!craft:", q.display, "from", tostring(playerName), "-", why, ", rank", rank,
+		", answering in", ("%.1f s"):format(delay), "(key " .. Store.FormatInt(key) .. ")")
 	local asker = askerName(askerGUID, playerName)
 	ns.Debounce("craftq" .. key, delay, function() ChatResponder.Answer(key, query, asker) end)
 end

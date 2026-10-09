@@ -2,7 +2,12 @@
 
 ## 0.2.0 (in development)
 
-- Nothing yet.
+- `!craft` in mixed-language guilds: item names are searched in each client's own language. Clients that find something answer first (in the order of clients with the same language); "nobody" is only answered once no client found anything, and names the language that was searched. A whispered question that finds nothing suggests asking in guild chat.
+- `!craft` understands linked items and recipes (up to three per question): looked up by ID, so they work in every client language. A client that calls the item by the linked name (the asker's language) answers first; otherwise one client of another language answers after a short wait. The answer uses the linked name.
+- Minimap button glow works on Forever: it was never shown (the embedded glow library was looked up by the wrong name, and the Forever client lacks a function its animation uses).
+- Wishlist notice and minimap glow react within seconds: guild members logging in or out are taken from the "has come online" / "has gone offline" messages instead of waiting for the next roster refresh (up to two minutes), and the notice also follows synced data (it could lag the glow).
+- Wishlist sound plays on the master channel, also for the summary after login; a sound that does not play is logged.
+- Records carry the owner's client language (not part of the content hash, so 0.1.0 clients stay compatible).
 
 ## 0.1.0 (2026-10-09)
 

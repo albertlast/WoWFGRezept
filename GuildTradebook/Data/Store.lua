@@ -10,7 +10,7 @@ records unchanged. Records are ordered by (ver, seq, h):
   h   = content hash, total order for the (theoretical) equal ver+seq case
 
 Internal record:
-  { guid, name, class, level, ver, seq, player?,
+  { guid, name, class, level, ver, seq, player?, loc?,
     profs = { [skillLineID] = { rank, maxRank, primary?, scannedAt?, unverified?,
                                 recipes = { [recipeID] = outputItemID or 0 } | nil,
                                 cds = { [recipeID] = readyAt (server time, 0 = ready) } | nil } },
@@ -522,6 +522,11 @@ end
 -- Wire format ------------------------------------------------------------------
 -- Records travel as compact arrays (CBOR handles arrays more reliably than
 -- sparse integer-keyed maps):
+--   { guid, name, class, level, ver, seq, player|"", profs, loc|""}
+-- loc (client locale, e.g. "deDE") came after 0.1.0: it is not part of the
+-- content hash, so 0.1.0 clients (which drop it) compute the same hash and
+-- versions stay comparable. It changes only with a new version anyway.
+-- Older layout comment:
 --   { guid, name, class, level, ver, seq, player|"",
 --     { {sl, rank, maxRank, scannedAt, unverified(0/1), {rid, item, ...}|false, primary(0/1),
 --        {rid, readyAt, ...}}, ... } }
@@ -549,23 +554,24 @@ function Store.ToWire(rec)
 		end
 		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds }
 	end
-	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.player or "", profs }
+	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.player or "", profs, rec.loc or "" }
 end
 
 -- Validates untrusted input. Returns record or nil, reason.
 function Store.FromWire(w)
 	if type(w) ~= "table" then return nil, "not a table" end
-	local guid, name, class, level, ver, seq, player, profs = w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8]
+	local guid, name, class, level, ver, seq, player, profs, loc = w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9]
 	if not Store.IsValidGUID(guid) then return nil, "guid" end
 	if not Util.IsString(name, 64) or not Util.IsString(class, 20) then return nil, "name/class" end
 	if not Util.IsInt(level, 0, 1000) then return nil, "level" end
 	if not Util.IsInt(ver, 0, 2 ^ 40) or not Util.IsInt(seq, 0, 2 ^ 31) then return nil, "version" end
 	if player ~= "" and not Store.IsValidPlayerId(player) then return nil, "player" end
+	if loc ~= nil and loc ~= "" and not (type(loc) == "string" and loc:match("^%a%a%a%a$")) then return nil, "loc" end
 	if type(profs) ~= "table" or #profs > Store.MAX_PROFS then return nil, "profs" end
 
 	local rec = {
 		guid = guid, name = name, class = class, level = level, ver = ver, seq = seq,
-		player = player ~= "" and player or nil, profs = {},
+		player = player ~= "" and player or nil, loc = (loc ~= nil and loc ~= "") and loc or nil, profs = {},
 	}
 	for i = 1, #profs do
 		local p = profs[i]

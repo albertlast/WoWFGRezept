@@ -171,6 +171,13 @@ function Index.ContactFor(c)
 	return nil, ns.L.NOT_REACHABLE
 end
 
+-- Client locale of a member ("deDE"), from its record; nil if unknown.
+function Index.LocaleOf(guid)
+	local gd = ns.GetGuildData()
+	local rec = gd and gd.chars[guid]
+	return rec and rec.loc
+end
+
 -- Display info for one character (name, class, online, ...).
 function Index.CrafterInfo(guid)
 	return charInfo(guid)

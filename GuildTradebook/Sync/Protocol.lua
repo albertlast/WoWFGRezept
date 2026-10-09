@@ -364,10 +364,11 @@ end
 -- Rank of `me` (a GUID) among the clients that could answer `newcomer` (a
 -- GUID, or any key) (0 = first). GUIDs, not names: every client must build
 -- the same list, and name formats can differ.
-function P.ElectionRank(newcomer, me)
+-- include(guid), optional: only candidates for which it returns true.
+function P.ElectionRank(newcomer, me, include)
 	local list = { me }
 	for _, guid in ipairs((P.Candidates())) do
-		if guid ~= newcomer and guid ~= me then list[#list + 1] = guid end
+		if guid ~= newcomer and guid ~= me and (not include or include(guid)) then list[#list + 1] = guid end
 	end
 	table.sort(list, function(a, b)
 		local ha, hb = Util.Hash(newcomer .. ">" .. a), Util.Hash(newcomer .. ">" .. b)

@@ -82,6 +82,20 @@ test("!craft parsing", function()
 	eq(Chat.ParseQuery("hello !craft bag"), nil)
 end)
 
+test("!craft links: item, enchant and recipe links, at most three", function()
+	local q = Chat.ParseQuery("!craft |cff1eff00|Hitem:2568::::::::60:::::|h[Brauner Leinenwams]|h|r und |cffffd000|Henchant:7457|h[Verzauberung]|h|r")
+	local links = Chat.ParseLinks(q)
+	eq(#links, 2)
+	eq(links[1].kind, "item")
+	eq(links[1].id, 2568)
+	eq(links[1].name, "Brauner Leinenwams")
+	eq(links[2].kind, "enchant")
+	eq(links[2].id, 7457)
+	eq(#Chat.ParseLinks("plain text"), 0)
+	local many = ("|Hitem:1|h[a]|h "):rep(5)
+	eq(#Chat.ParseLinks(many), 3)
+end)
+
 local function crafters(map)
 	return function(rid) return map[rid] or {} end
 end

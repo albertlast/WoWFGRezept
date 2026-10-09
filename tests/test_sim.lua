@@ -34,9 +34,9 @@ local function craftAnswers(world, to)
 	return list
 end
 
-local function threeMembers()
+local function threeMembers(opts)
 	math.randomseed(42)
-	local world = H.NewWorld()
+	local world = H.NewWorld(opts)
 	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = { [TAILORING] = tailoring(150, { [3914] = 2568, [3915] = 2569 }) } })
 	local b = world:AddChar({ guid = guid(2), name = "Bert", profs = { [COOKING] = { rank = 50, maxRank = 75, name = "Cooking", secondary = true, recipes = { [2538] = 2679 } } } })
 	local c = world:AddChar({ guid = guid(3), name = "Cleo" })
@@ -178,6 +178,87 @@ test("wishlist: notice when a crafter comes online", function()
 		end
 	end
 	truthy(found, "B was told that Anna can craft the wished recipe")
+end)
+
+test("wishlist: notice as soon as sync data shows the crafter's player is online on another character", function()
+	math.randomseed(23)
+	local world = H.NewWorld()
+	local crafter = world:AddChar({ guid = guid(1), name = "Crafty", account = "acc1", profs = { [TAILORING] = tailoring(100, { [3914] = 2568 }) } })
+	local main = world:AddChar({ guid = guid(2), name = "Mainy", account = "acc1" })
+	local other = world:AddChar({ guid = guid(3), name = "Otto" })
+	local cc = world:Login(crafter.guid)
+	world:Run(60)
+	cc:OpenTradeSkill(TAILORING)
+	world:Run(120)
+	local co = world:Login(other.guid)
+	world:Run(180)
+	world:Logout(crafter.guid)
+	world:Run(150)
+	co.ns.Wishlist.Toggle(3914)
+	world.log = {}
+	-- Otto has never seen Mainy: only Mainy's record links it to Crafty.
+	world:Login(main.guid)
+	local linkedAt, noticedAt
+	for _ = 1, 300 do
+		world:Run(1)
+		local rm = co:Record(main.guid)
+		if not linkedAt and rm and rm.player and rm.player == co:Record(crafter.guid).player then
+			linkedAt = world.clock.t
+		end
+		for _, line in ipairs(world.log) do
+			if not noticedAt and line:find("Otto", 1, true) == 1 and line:find("can craft", 1, true) then
+				noticedAt = world.clock.t
+			end
+		end
+		if noticedAt then break end
+	end
+	truthy(linkedAt, "Mainy's record arrived")
+	truthy(noticedAt, "Otto was told")
+	truthy(noticedAt - linkedAt <= 5, ("told %d s after the data arrived, not at the next roster update"):format(noticedAt - linkedAt))
+end)
+
+test("wishlist: notice and sound right at login, not at the next roster refresh; gone at logout", function()
+	math.randomseed(24)
+	local world, a, b = threeMembers({ slowRoster = true })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(150)
+	world:Logout(a.guid)
+	local cb = world.online[b.guid]
+	world:Run(5)
+	eq(#cb.ns.Wishlist.ReadyNow(), 0, "offline at once (wishlist still empty)")
+	cb.ns.Wishlist.Toggle(3914)
+	world:Run(300)
+	eq(#cb.ns.Wishlist.ReadyNow(), 0, "Anna is offline")
+	world.log = {}
+	cb.sounds = {}
+	world:Login(a.guid)
+	world:Run(5)
+	local found = false
+	for _, line in ipairs(world.log) do
+		if line:find("Bert", 1, true) == 1 and line:find("can craft", 1, true) then found = true end
+	end
+	truthy(found, "B was told within 5 s")
+	eq(#cb.sounds, 1, "one sound")
+	eq(cb.sounds[1].channel, "Master")
+	eq(#cb.ns.Wishlist.ReadyNow(), 1, "glow on")
+	world:Logout(a.guid)
+	world:Run(5)
+	eq(#cb.ns.Wishlist.ReadyNow(), 0, "glow off within 5 s of the logout")
+end)
+
+test("roster: login and logout messages are recognized", function()
+	local world = H.NewWorld()
+	local c = world:Login(world:AddChar({ guid = guid(1), name = "Anna" }).guid)
+	local R = c.ns.Roster
+	eq(select(1, R.ParseOnlineMessage("|Hplayer:Jörg Falk|h[Jörg Falk]|h has come online.")), "Jörg Falk")
+	eq(select(2, R.ParseOnlineMessage("|Hplayer:Jörg Falk|h[Jörg Falk]|h has come online.")), true)
+	eq(select(1, R.ParseOnlineMessage("Jörg Falk has gone offline.")), "Jörg Falk")
+	eq(select(2, R.ParseOnlineMessage("Jörg Falk has gone offline.")), false)
+	eq(R.ParseOnlineMessage("No player named 'X' is currently playing."), nil)
+	eq(R.ParseOnlineMessage(nil), nil)
 end)
 
 test("tab switch with a stale recipe list: recipes stay in their profession", function()
@@ -993,6 +1074,114 @@ test("partner request: a client that missed the first round answers a later one"
 	a.partition = 1
 	world:Run(60)
 	truthy(cb:Record(a.guid), "Anna answered a later round")
+end)
+
+-- 8 English clients and 1 German one; the German client is usually not
+-- first in the overall ranking.
+local function mixedGuild(seed)
+	local world = bigGuild(8, seed)
+	local de = world:AddChar({ guid = guid(950), name = "Greta", locale = "deDE",
+		profs = { [TAILORING] = tailoring(100, { [3005] = 3005 }) } })
+	world:Login(de.guid)
+	world:Run(400)
+	return world, de
+end
+
+test("!craft in German: answered by the German client, not 'nobody' from an English one", function()
+	for seed = 30, 34 do
+		local world, de = mixedGuild(seed)
+		local nora = world:AddChar({ guid = guid(904), name = "Nora" })
+		world:Run(130)
+		world:GuildChat(nora.name, "!craft Rezept 3005")
+		world:Run(30)
+		local answers = {}
+		for _, w in ipairs(world.whispers) do
+			if w.to == nora.name then answers[#answers + 1] = w end
+		end
+		eq(#answers, 1, "one answer (seed " .. seed .. ")")
+		eq(answers[1].from, de.name, "from the German client")
+		truthy(answers[1].text:find("Rezept 3005: M3", 1, true), answers[1].text)
+	end
+end)
+
+test("!craft that no client finds: one late 'nobody' answer naming the language", function()
+	local world = mixedGuild(35)
+	local nora = world:AddChar({ guid = guid(905), name = "Nora" })
+	world:Run(130)
+	local asked = world.clock.t
+	world:GuildChat(nora.name, "!craft Thunderfury")
+	local answered
+	for _ = 1, 30 do
+		world:Run(1)
+		if #craftAnswers(world, nora.name) > 0 then answered = world.clock.t break end
+	end
+	local answers = craftAnswers(world, nora.name)
+	world:Run(20)
+	eq(#craftAnswers(world, nora.name), 1, "exactly one")
+	truthy(answers[1]:find("Nobody", 1, true) or answers[1]:find("Niemand", 1, true), answers[1])
+	truthy(answers[1]:find("(client language: English)", 1, true) or answers[1]:find("(Client-Sprache: Deutsch)", 1, true), answers[1])
+	truthy(answered - asked >= 8, "waited for clients that might have found it: " .. (answered - asked))
+end)
+
+test("!craft in German whispered to an English client: 'nobody', with a hint to ask the guild", function()
+	local world = mixedGuild(36)
+	local nora = world:AddChar({ guid = guid(906), name = "Nora" })
+	world:Run(130)
+	world:Whisper(nora.name, "M1", "!craft Rezept 3005")
+	world:Run(5)
+	local answer = craftAnswers(world, nora.name)[1] or "no answer"
+	truthy(answer:find('Nobody in the guild can craft "Rezept 3005". (client language: English) - ask in guild chat', 1, true), answer)
+end)
+
+local function link(id, name)
+	return "|cffffffff|Hitem:" .. id .. "::::::::|h[" .. name .. "]|h|r"
+end
+
+test("!craft with a German item link: answered first by the German client, in German", function()
+	for seed = 40, 43 do
+		local world, de = mixedGuild(seed)
+		local nora = world:AddChar({ guid = guid(907), name = "Nora" })
+		world:Run(130)
+		local asked = world.clock.t
+		world:GuildChat(nora.name, "!craft " .. link(3005, "Gegenstand 3005"))
+		world:Run(30)
+		local answers = {}
+		for _, w in ipairs(world.whispers) do
+			if w.to == nora.name then answers[#answers + 1] = w end
+		end
+		eq(#answers, 1, "one answer (seed " .. seed .. ")")
+		eq(answers[1].from, de.name, "from the German client")
+		truthy(answers[1].text:find("Gegenstand 3005: M3", 1, true), answers[1].text)
+	end
+end)
+
+test("!craft with a German item link, no German client online: one answer from another language", function()
+	local world = bigGuild(6, 44)
+	local nora = world:AddChar({ guid = guid(908), name = "Nora" })
+	world:Run(130)
+	local asked = world.clock.t
+	world:GuildChat(nora.name, "!craft " .. link(3005, "Gegenstand 3005"))
+	local answeredAt
+	for _ = 1, 30 do
+		world:Run(1)
+		if #craftAnswers(world, nora.name) > 0 then answeredAt = world.clock.t break end
+	end
+	world:Run(20)
+	local answers = craftAnswers(world, nora.name)
+	eq(#answers, 1, "exactly one")
+	truthy(answers[1]:find("Gegenstand 3005: M3", 1, true), "found by ID, named as linked: " .. answers[1])
+	truthy(answeredAt - asked >= 8, "waited for the asker's language first")
+end)
+
+test("!craft with a link nobody can craft: one 'nobody' with the linked name", function()
+	local world = bigGuild(6, 45)
+	local nora = world:AddChar({ guid = guid(909), name = "Nora" })
+	world:Run(130)
+	world:GuildChat(nora.name, "!craft " .. link(19019, "Item 19019"))
+	world:Run(30)
+	local answers = craftAnswers(world, nora.name)
+	eq(#answers, 1)
+	eq(answers[1], '[Guild Tradebook] Nobody in the guild can craft "Item 19019".')
 end)
 
 test("!craft is silent when every client disabled it", function()

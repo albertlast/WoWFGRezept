@@ -532,6 +532,36 @@ local function AnimIn_OnStop(group)
     frame.outerGlowOver:SetAlpha(0.0)
 end
 
+-- Guild Tradebook: the WoW: Forever client has no AnimateTexCoords (FrameXML);
+-- the same flipbook stepping as Blizzard's, used only when it is missing.
+local AnimateTexCoords = AnimateTexCoords or function(texture, textureWidth, textureHeight, frameWidth, frameHeight, numFrames, elapsed, throttle)
+    if not texture.frame then
+        texture.frame = 1
+        texture.throttle = throttle
+        texture.numColumns = math.floor(textureWidth / frameWidth)
+        texture.numRows = math.floor(textureHeight / frameHeight)
+        texture.columnWidth = frameWidth / textureWidth
+        texture.rowHeight = frameHeight / textureHeight
+    end
+    local frame = texture.frame
+    if not texture.throttle or texture.throttle > throttle then
+        local framesToAdvance = math.floor((texture.throttle or throttle) / throttle)
+        while frame + framesToAdvance > numFrames do
+            frame = frame - numFrames
+        end
+        frame = frame + framesToAdvance
+        texture.throttle = 0
+        local left = ((frame - 1) % texture.numColumns) * texture.columnWidth
+        local right = left + texture.columnWidth
+        local bottom = math.ceil(frame / texture.numColumns) * texture.rowHeight
+        local top = bottom - texture.rowHeight
+        texture:SetTexCoord(left, right, top, bottom)
+        texture.frame = frame
+    else
+        texture.throttle = texture.throttle + elapsed
+    end
+end
+
 local function bgHide(self)
     if self.animOut:IsPlaying() then
         self.animOut:Stop()
