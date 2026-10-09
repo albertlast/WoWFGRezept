@@ -131,7 +131,7 @@ function ChatResponder.OnGuildChat(_, text, playerName)
 	if not query then return end
 	local key = Util.Hash(query:lower() .. "|" .. (Util.NormalizeName(playerName) or ""))
 	if recentlyAnswered(key) then return end
-	local rank = ns.Protocol.ElectionRank("craft:" .. key, Util.NormalizeName(UnitName("player")))
+	local rank = ns.Protocol.ElectionRank("craft:" .. key, UnitGUID("player"))
 	if not rank or rank >= ChatResponder.RANKS then return end
 	local delay = rank * ChatResponder.SLOT + ns.RandomDelay(0.3, 0.8)
 	ns.Debounce("craftq" .. key, delay, function() ChatResponder.Answer(key, query) end)

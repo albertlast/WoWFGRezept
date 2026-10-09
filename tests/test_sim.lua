@@ -469,6 +469,78 @@ test("alts are shared from the account while playing another character", functio
 	truthy(r and r.profs[TAILORING].recipes[3914], "main's recipes came from the alt's client")
 end)
 
+test("roster shows placeholder names instead of real names: sync still works", function()
+	math.randomseed(21)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", rosterName = "Mira Stein-Realm", profs = { [TAILORING] = tailoring(150, { [3914] = 2568 }) } })
+	local b = world:AddChar({ guid = guid(2), name = "Bert", rosterName = "Ein Magier-Realm" })
+	local c = world:AddChar({ guid = guid(3), name = "Cleo", rosterName = "Mira Stein-Realm" })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(120)
+	truthy(world.online[b.guid]:Record(a.guid), "B received A's broadcast")
+	-- A late login knows nobody yet and must find a partner through the guild.
+	local cc = world:Login(c.guid)
+	world:Run(200)
+	assertConverged(world, a.guid, "with placeholder roster names")
+	for name in pairs(world.sentBy) do
+		truthy(name == "Anna-Realm" or name == "Bert-Realm" or name == "Cleo-Realm", name)
+	end
+	-- Whispers and displays use the real name, not the placeholder.
+	local crafter = cc.ns.Index.Crafters(3914)[1]
+	eq(cc.ns.Index.ContactName(crafter), "Anna-Realm")
+	eq(world.badWhispers, 0, "no whisper to a name that does not exist")
+end)
+
+test("/gtb versions lists every online addon user; an outdated build is named", function()
+	math.randomseed(41)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", version = "0.1.0-aaaaaaa", build = 100 })
+	local b = world:AddChar({ guid = guid(2), name = "Bert", version = "0.1.0-bbbbbbb", build = 200 })
+	local c = world:AddChar({ guid = guid(3), name = "Cleo", version = "0.1.0-aaaaaaa", build = 100 })
+	local old = world:AddChar({ guid = guid(4), name = "Olli", legacy = true })
+	local ca = world:Login(a.guid)
+	world:Login(b.guid)
+	world:Login(c.guid)
+	world:Run(200)
+	world:Login(old.guid) -- knows nobody: asks the guild for a partner
+	world:Run(60)
+	local logBefore = #world.log
+	world:ResetCounters()
+	ca.ns.Versions.Request()
+	world:Run(10)
+	eq(world.byType.V, 1, "one request")
+	eq(world.byType.N, 2, "one whispered answer per compatible client")
+	local seen = ca.ns.Versions.byName
+	eq(seen["Bert-Realm"].version, "0.1.0-bbbbbbb")
+	eq(seen["Cleo-Realm"].version, "0.1.0-aaaaaaa")
+	truthy(seen["Olli-Realm"].incompatible, "the old build is noticed, not silently ignored")
+	local report = {}
+	for i = logBefore + 1, #world.log do
+		if world.log[i]:find("^Anna%-Realm: ") then report[#report + 1] = world.log[i] end
+	end
+	local text = table.concat(report, "\n")
+	truthy(text:find("Bert: 0.1.0-bbbbbbb", 1, true) and text:find("newer", 1, true), text)
+	truthy(text:find("Cleo: 0.1.0-aaaaaaa", 1, true), text)
+	truthy(text:find("Olli: ", 1, true) and text:find("outdated", 1, true), text)
+	-- Notices: one about the newer build, one about the outdated guildmate.
+	local function told(pattern)
+		for _, line in ipairs(world.log) do
+			if line:find("^Anna%-Realm: ") and line:find(pattern, 1, true) then return true end
+		end
+		return false
+	end
+	truthy(told("Bert uses a newer Guild Tradebook"), "newer notice")
+	truthy(told("Olli uses an outdated Guild Tradebook"), "outdated notice")
+	-- Asking again right away does not make everyone answer again.
+	world:ResetCounters()
+	ca.ns.Versions.Request()
+	world:Run(10)
+	falsy(world.byType.N, "no second round of answers")
+end)
+
 test("characters of one account are grouped; an offline crafter is reached via the online one", function()
 	math.randomseed(11)
 	local world = H.NewWorld()

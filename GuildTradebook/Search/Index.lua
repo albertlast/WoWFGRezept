@@ -130,7 +130,7 @@ function Index.Via(guid)
 	for _, other in ipairs(Index.Siblings(guid)) do
 		local m = Roster.Get(other)
 		if other ~= selfGUID and m and m.online then
-			return { guid = other, name = m.name, class = m.class }
+			return { guid = other, name = Roster.NameOf(other) or m.name, class = m.class }
 		end
 	end
 	return nil
@@ -146,7 +146,7 @@ local function charInfo(guid, recipeID)
 	local via = not online and Index.Via(guid) or nil
 	return {
 		guid = guid,
-		name = (member and member.name) or (rec and rec.name) or "?",
+		name = Roster.NameOf(guid) or "?",
 		class = (member and member.class) or (rec and rec.class),
 		online = online,
 		via = via,                         -- same person, online on another character

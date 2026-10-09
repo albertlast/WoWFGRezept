@@ -27,15 +27,17 @@ Guild chat "!craft" (see Features/ChatResponder.lua):
   X  ANSWERED {k = question key}        GUILD: "I answer this one", others stay silent
 
 A client starts a sync on login and every 20 minutes with a random partner.
-Every message carries the protocol major version (p) and the guild key (g).
+Every message carries the protocol major version (p), the guild key (g), the
+sender's GUID (u) and addon version and build (av, ab; see Versions). Other
+fields belong to the message type, so these names must not be reused.
 ]]
 local _, ns = ...
 
 local Store, Util, Roster = ns.Store, ns.Util, ns.Roster
 local P = {
-	peers = {},         -- ["Name-Realm"] = GetTime(): seen sending addon messages
-	sync = nil,         -- { partner, answered, tried = {}, attempts }
-	accepted = {},      -- [newcomer] = true: someone already accepted (election)
+	peers = {},         -- [guid] = GetTime(): seen sending addon messages
+	sync = nil,         -- { partner (guid), answered, tried = {[guid]}, attempts }
+	accepted = {},      -- [newcomer guid] = true: someone already accepted (election)
 	factAsk = {},       -- [recipeID] = true: facts we are about to request
 	factRequested = {}, -- [recipeID] = GetTime() of the last request
 	pushQueue = {},     -- [guid] = true: account alts to broadcast with the next PushOwn
@@ -88,6 +90,8 @@ function P.Send(msg, channel, target, prio)
 	if not Roster.guildKey then return end
 	msg.p = ns.PROTO
 	msg.g = Roster.guildKey
+	msg.u = UnitGUID("player")
+	msg.av, msg.ab = ns.Versions.Mine()
 	if restricted() then
 		table.insert(P.outbox, { msg, channel, target, prio })
 		if #P.outbox > P.MAX_OUTBOX then
@@ -137,23 +141,26 @@ end
 
 -- Partner selection ------------------------------------------------------------
 
--- Online members believed to run the addon (seen sending messages, or owners
--- of a shared record), and the other online members.
+-- GUIDs of online members believed to run the addon (seen sending messages,
+-- or owners of a shared record), and of the other online members. Unknown
+-- members are left out if the roster only shows a placeholder name for them
+-- (nothing to whisper). Never yourself.
 function P.Candidates()
 	local gd = ns.GetGuildData()
-	local me = selfName()
+	local selfGUID = UnitGUID("player")
 	local known, unknown = {}, {}
 	for guid, member in pairs(Roster.members) do
-		if member.online and member.name ~= me then
+		if member.online and guid ~= selfGUID then
 			local rec = gd and gd.chars[guid]
-			if P.peers[member.name] or (rec and rec.ver > 0) then
-				known[#known + 1] = member.name
-			else
-				unknown[#unknown + 1] = member.name
+			if P.peers[guid] or (rec and rec.ver > 0) then
+				known[#known + 1] = guid
+			elseif Util.IsPlausibleName(member.name) then
+				unknown[#unknown + 1] = guid
 			end
 		end
 	end
 	table.sort(known)
+	table.sort(unknown)
 	return known, unknown
 end
 
@@ -166,16 +173,16 @@ local function pickPartner(tried, explore)
 	local known, unknown = P.Candidates()
 	local function untried(list)
 		local out = {}
-		for _, name in ipairs(list) do
-			if not tried[name] then out[#out + 1] = name end
+		for _, guid in ipairs(list) do
+			if not tried[guid] then out[#out + 1] = guid end
 		end
 		return out
 	end
 	known, unknown = untried(known), untried(unknown)
 	-- Avoid the previous partner if anyone else is available.
 	if #known > 1 then
-		for i, name in ipairs(known) do
-			if name == P.lastPartner then table.remove(known, i) break end
+		for i, guid in ipairs(known) do
+			if guid == P.lastPartner then table.remove(known, i) break end
 		end
 	end
 	local pool = known
@@ -202,7 +209,8 @@ function P.StartSync(explore)
 	local function try()
 		if P.sync ~= sync then return end
 		local partner = sync.attempts < P.MAX_PARTNER_TRIES and pickPartner(sync.tried, explore)
-		if not partner then
+		local partnerName = partner and Roster.NameOf(partner)
+		if not partnerName then
 			P.sync = nil
 			if not explore then
 				P.RequestPartner(0)
@@ -213,11 +221,11 @@ function P.StartSync(explore)
 		sync.tried[partner] = true
 		sync.partner, sync.answered = partner, false
 		P.lastPartner = partner
-		ns.Debug("sync with", partner)
-		P.SendHello(partner)
+		ns.Debug("sync with", partnerName)
+		P.SendHello(partnerName)
 		ns.Debounce("syncTimeout", P.PARTNER_TIMEOUT, function()
 			if P.sync == sync and not sync.answered then
-				ns.Debug("no answer from", partner)
+				ns.Debug("no answer from", partnerName)
 				try()
 			end
 		end)
@@ -236,19 +244,21 @@ function P.RequestPartner(round)
 	end)
 end
 
--- Rank of `me` among the clients that could answer `newcomer` (0 = first).
+-- Rank of `me` (a GUID) among the clients that could answer `newcomer` (a
+-- GUID, or any key) (0 = first). GUIDs, not names: every client must build
+-- the same list, and roster names can differ (placeholders).
 function P.ElectionRank(newcomer, me)
 	local list = { me }
-	for _, name in ipairs((P.Candidates())) do
-		if name ~= newcomer then list[#list + 1] = name end
+	for _, guid in ipairs((P.Candidates())) do
+		if guid ~= newcomer and guid ~= me then list[#list + 1] = guid end
 	end
 	table.sort(list, function(a, b)
 		local ha, hb = Util.Hash(newcomer .. ">" .. a), Util.Hash(newcomer .. ">" .. b)
 		if ha ~= hb then return ha < hb end
 		return a < b
 	end)
-	for i, name in ipairs(list) do
-		if name == me then return i - 1 end
+	for i, guid in ipairs(list) do
+		if guid == me then return i - 1 end
 	end
 end
 
@@ -271,9 +281,10 @@ function P.RequestFacts(recipeIDs)
 		for rid in pairs(P.factAsk) do
 			local target
 			for _, c in ipairs(ns.Index.Crafters(rid)) do
-				if c.online and not c.isSelf then target = c.name break end
+				if c.online and not c.isSelf then target = Roster.NameOf(c.guid) break end
 			end
-			target = target or pickPartner({}, false)
+			local partner = not target and pickPartner({}, false)
+			target = target or (partner and Roster.NameOf(partner))
 			if target then
 				byTarget[target] = byTarget[target] or {}
 				if #byTarget[target] < P.MAX_FACTS then
@@ -323,9 +334,9 @@ handlers.H = function(msg, channel, sender, gd)
 	end
 end
 
-handlers.K = function(_, _, sender)
+handlers.K = function(msg)
 	local sync = P.sync
-	if sync and sync.partner == sender then
+	if sync and sync.partner == msg.u then
 		sync.answered = true
 		ns.Cancel("syncTimeout")
 		-- The exchange continues with D/W/R; the sync slot is free again.
@@ -399,28 +410,29 @@ handlers.R = function(msg, channel, sender, gd)
 	end
 end
 
-handlers.P = function(msg, channel, sender)
+handlers.P = function(msg, channel)
 	if channel ~= "GUILD" or not Util.IsInt(msg.n, 0, 2) then return end
-	P.accepted[sender] = nil
-	local rank = P.ElectionRank(sender, selfName())
+	local newcomer = msg.u
+	P.accepted[newcomer] = nil
+	local rank = P.ElectionRank(newcomer, UnitGUID("player"))
 	local first = msg.n * P.ELECTION_RANKS
 	if not rank or rank < first or rank >= first + P.ELECTION_RANKS then return end
 	local delay = (rank - first) * P.ELECTION_SLOT + ns.RandomDelay(0, 0.5)
-	ns.Debounce("elect" .. sender, delay, function()
-		if not P.accepted[sender] then
-			P.Send({ t = "A", to = sender }, "GUILD", nil, "NORMAL")
+	ns.Debounce("elect" .. newcomer, delay, function()
+		if not P.accepted[newcomer] then
+			P.Send({ t = "A", to = newcomer }, "GUILD", nil, "NORMAL")
 		end
 	end)
 end
 
 handlers.A = function(msg, channel, sender)
-	if channel ~= "GUILD" or type(msg.to) ~= "string" then return end
+	if channel ~= "GUILD" or not Store.IsValidGUID(msg.to) then return end
 	P.accepted[msg.to] = true
 	ns.Cancel("elect" .. msg.to)
-	if msg.to == selfName() and P.electionRound and not P.sync then
+	if msg.to == UnitGUID("player") and P.electionRound and not P.sync then
 		P.electionRound = nil
 		ns.Cancel("electionTimeout")
-		P.sync = { tried = { [sender] = true }, attempts = 1, partner = sender, answered = false }
+		P.sync = { tried = { [msg.u] = true }, attempts = 1, partner = msg.u, answered = false }
 		P.SendHello(sender)
 	end
 end
@@ -460,12 +472,48 @@ handlers.X = function(msg, channel)
 	end
 end
 
+--[[
+Senders are identified by the GUID in the message (u), not by name: the
+roster can show a placeholder instead of a member's real name. A sender may
+not claim a GUID whose real name is known to be someone else's.
+]]
+local function senderMismatch(guid, sender)
+	local named = Roster.byName[sender]
+	if named and named ~= guid then return true end
+	local member = Roster.Get(guid)
+	return member ~= nil and Util.IsPlausibleName(member.name) and member.name ~= sender
+		and Roster.realNames[guid] ~= sender
+end
+
+-- "/gtb versions" from someone: answer by whisper (Versions). The answer (N)
+-- has no content; Handle reads the version from its envelope.
+handlers.V = function(_, channel, sender)
+	if channel == "GUILD" then
+		ns.Versions.OnRequest(sender)
+	end
+end
+
+handlers.N = function() end
+
 function P.Handle(msg, channel, sender)
 	sender = Util.NormalizeName(sender)
 	if not sender or sender == selfName() then return end
-	if type(msg) ~= "table" or msg.p ~= ns.PROTO or msg.g ~= Roster.guildKey then return end
-	if Roster.IsMemberName(sender) == false then return end
-	P.peers[sender] = GetTime()
+	if type(msg) ~= "table" or msg.g ~= Roster.guildKey then return end
+	local guid = msg.u
+	if msg.p ~= ns.PROTO or not Store.IsValidGUID(guid) then
+		-- A build that can not talk to this one (another protocol, or older
+		-- than the sender GUID): unreadable, but worth telling the user.
+		ns.Versions.SeenIncompatible(sender, msg.av, msg.p)
+		return
+	end
+	if guid == UnitGUID("player") then return end
+	if Roster.IsMember(guid) == false or senderMismatch(guid, sender) then
+		ns.Debug("ignored message from", sender)
+		return
+	end
+	Roster.LearnName(guid, sender)
+	P.peers[guid] = GetTime()
+	ns.Versions.Seen(sender, msg.av, msg.ab)
 	local gd = ns.GetGuildData()
 	local handler = handlers[msg.t]
 	if gd and handler then

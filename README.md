@@ -28,6 +28,7 @@ Each crafter has to open the professions window once and click each profession t
 | `/gtb options` | open the settings (also under Options → AddOns → Guild Tradebook) |
 | `/gtb minimap` | show/hide the minimap button |
 | `/gtb chatbot` | toggle answering `!craft <item>` in guild chat |
+| `/gtb versions` | ask the guild which addon version everyone runs; builds that can not exchange data with yours are named |
 | `/gtb resync` | sync with a guild member now |
 | `/gtb dump <name>` | show what is known about a character |
 | `/gtb stats`, `/gtb debug`, `/gtb log` | diagnostics |
@@ -76,6 +77,16 @@ lua tests/run.lua
 ```
 
 This runs unit tests for the merge rules, upgrade finder tests, a UI smoke test, and a multi-client network simulation. The simulation covers split brain, partitions, lost SavedVariables, forged copies, members leaving, alts, and 100-member traffic. Any Lua 5.1–5.4 works; the addon code itself stays Lua 5.1 compatible.
+
+### Sharing a build
+
+```
+python tools/package.py
+```
+
+This writes `dist/GuildTradebook-<version>.zip`. Its TOC carries the commit as version (`0.1.0-d8dcb0e`) and the commit time as build number, so `/gtb versions` tells builds apart and notices newer ones. Uncommitted changes are included and marked `-dirty`. The copy in the repo reports `0.1.0-dev` (build 0).
+
+Every addon message carries the sender's version. A guildmate whose build can not exchange data with yours (another protocol, or a build from before the sender GUID) is reported once in chat instead of being silently ignored.
 
 ### To verify in game
 

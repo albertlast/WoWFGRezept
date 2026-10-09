@@ -39,6 +39,15 @@ function Util.NormalizeName(name, realm)
 	return name .. "-" .. realm
 end
 
+-- Character names never contain spaces. The roster sometimes shows a
+-- placeholder like "Mira Stein" ("a rogue") instead of the real name;
+-- such a name can not be whispered.
+function Util.IsPlausibleName(name)
+	if type(name) ~= "string" or name == "" then return false end
+	local base = name:match("^([^%-]+)") or name
+	return not base:find("%s")
+end
+
 -- Display name: without the realm when it is your own realm, so players
 -- only see a realm for members from another (connected) realm.
 function Util.ShortName(name)

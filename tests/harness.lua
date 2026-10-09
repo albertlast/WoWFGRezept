@@ -18,6 +18,7 @@ H.FILES = {
 	"Scan/Scanner.lua",
 	"Sync/Codec.lua",
 	"Sync/Protocol.lua",
+	"Sync/Versions.lua",
 	"Search/Index.lua",
 	"Search/Upgrades.lua",
 	"Features/Wishlist.lua",
@@ -124,6 +125,7 @@ function H.NewWorld(opts)
 		chat = {},         -- guild chat lines { from, text }
 		online = {},       -- [guid] = client
 		messages = 0,
+		badWhispers = 0,   -- whispers to a name no online character has
 		latency = opts.latency or 0.2,
 		guildName = opts.guildName or "Testguild",
 		serverProfs = {},  -- [guid] = {id1, id2} as the club API reports
@@ -168,6 +170,13 @@ function H.NewWorld(opts)
 		self.messages = self.messages + 1
 		self.byType[msg.t] = (self.byType[msg.t] or 0) + 1
 		self.sentBy[from.char.name] = (self.sentBy[from.char.name] or 0) + 1
+		if channel == "WHISPER" then
+			local found = false
+			for guid in pairs(self.online) do
+				if self.chars[guid].name == target then found = true end
+			end
+			if not found then self.badWhispers = self.badWhispers + 1 end
+		end
 		for guid, client in pairs(self.online) do
 			local c = self.chars[guid]
 			local ok = guid ~= from.guid and c.partition == from.char.partition and c.inGuild
@@ -214,7 +223,7 @@ function H.NewWorld(opts)
 	end
 
 	function world:ResetCounters()
-		self.messages, self.byType, self.sentBy = 0, {}, {}
+		self.messages, self.byType, self.sentBy, self.badWhispers = 0, {}, {}, 0
 	end
 
 	function world:Run(seconds)
@@ -247,6 +256,13 @@ function H.NewClient(world, char)
 		table.insert(world.log, char.name .. ": " .. table.concat(parts, " "))
 	end
 	env.GetLocale = function() return "enUS" end
+	-- char.version / char.build: what this client's TOC says.
+	env.C_AddOns = {
+		GetAddOnMetadata = function(_, field)
+			if field == "Version" then return char.version or "0.1.0-dev" end
+			if field == "X-Build" then return tostring(char.build or 0) end
+		end,
+	}
 	env.GetBuildInfo = function() return "1.60.1", "70245" end
 	env.GetTime = function() return clock.t end
 	env.GetServerTime = function() return math.floor(clock.t) end
@@ -278,7 +294,9 @@ function H.NewClient(world, char)
 	env.GetGuildRosterInfo = function(i)
 		local c = world.chars[world.order[i]]
 		if not c then return nil end
-		return c.name, "Member", 1, c.level, c.class, "", "", "", world.online[c.guid] ~= nil, 0, c.class,
+		-- rosterName: what the roster shows instead of the real name (the
+		-- Forever beta returned placeholders like "Mira Stein").
+		return c.rosterName or c.name, "Member", 1, c.level, c.class, "", "", "", world.online[c.guid] ~= nil, 0, c.class,
 			0, 0, false, false, 0, c.guid
 	end
 	env.GetGuildRosterLastOnline = function() return 0, 0, 1, 0 end
@@ -410,6 +428,12 @@ function H.NewClient(world, char)
 		ns.MinimapButton = { Start = function() end, SetShown = function() end }
 		ns.UI = { Toggle = function() end, Show = function() end }
 		ns.Protocol.transport = function(msg, channel, target)
+			if char.legacy then
+				-- A build from before the sender GUID and version fields; it
+				-- knows nothing about version requests either.
+				if msg.t == "V" or msg.t == "N" then return end
+				msg.u, msg.av, msg.ab = nil, nil, nil
+			end
 			world:Deliver(client, msg, channel, target)
 		end
 		self:Fire("ADDON_LOADED", "GuildTradebook")

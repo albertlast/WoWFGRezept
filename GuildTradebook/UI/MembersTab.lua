@@ -95,7 +95,7 @@ local function refresh()
 			rows[#rows + 1] = {
 				guid = guid,
 				player = rec.player,
-				name = (member and member.name) or rec.name,
+				name = Roster.NameOf(guid) or "?",
 				class = (member and member.class) or rec.class,
 				level = (member and member.level) or rec.level or 0,
 				online = (member and member.online) or false,
@@ -130,10 +130,16 @@ local function build(content)
 	ui.header = W.Text(content, "GameFontNormal")
 	ui.header:SetPoint("TOPLEFT", 6, -2)
 
+	-- Click hint, plus the member's addon version when known.
 	local function hint(frame, text)
 		frame:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetText(text(self), 1, 1, 1)
+			local row = self.data and self or self:GetParent()
+			local version = ns.Versions.Describe(ns.Versions.Get(row.data and row.data.name))
+			if version then
+				GameTooltip:AddLine(L.VERSION_TOOLTIP:format(version), 0.6, 0.6, 0.6)
+			end
 			GameTooltip:Show()
 		end)
 		frame:SetScript("OnLeave", GameTooltip_Hide)

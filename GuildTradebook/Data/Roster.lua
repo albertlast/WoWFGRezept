@@ -4,6 +4,7 @@ local Util = ns.Util
 local Roster = {
 	members = {},   -- [guid] = { name, online, level, class, index }
 	byName = {},    -- ["Name-Realm"] = guid
+	realNames = {}, -- [guid] = "Name-Realm" seen on the member's addon messages
 	ready = false,  -- roster fully loaded; membership answers are trustworthy
 	guildKey = nil,
 	lastCount = 0,
@@ -21,7 +22,7 @@ function Roster.ComputeGuildKey()
 end
 
 function Roster.Reset()
-	Roster.members, Roster.byName = {}, {}
+	Roster.members, Roster.byName, Roster.realNames = {}, {}, {}
 	Roster.ready = false
 	Roster.lastCount = 0
 end
@@ -32,9 +33,29 @@ function Roster.IsMember(guid)
 	return Roster.members[guid] ~= nil
 end
 
-function Roster.IsMemberName(name)
-	if not Roster.ready then return nil end
-	return Roster.byName[name] ~= nil
+--[[
+Members are identified by GUID. Names are only for whispering and display,
+and the roster's name is not always the real one (placeholders like
+"Mira Stein"). Best source first:
+  1. the sender name of the member's own addon messages (always real)
+  2. the name the owner put into its record
+  3. the roster's name
+]]
+function Roster.NameOf(guid)
+	local real = Roster.realNames[guid]
+	if real then return real end
+	local gd = ns.GetGuildData and ns.GetGuildData()
+	local rec = gd and gd.chars[guid]
+	if rec and rec.name and rec.name ~= "" then return rec.name end
+	local m = Roster.members[guid]
+	return m and m.name
+end
+
+function Roster.LearnName(guid, name)
+	if Roster.realNames[guid] ~= name then
+		Roster.realNames[guid] = name
+		Roster.byName[name] = guid
+	end
 end
 
 function Roster.GuidByName(name)
@@ -120,6 +141,9 @@ function Roster.Refresh()
 			members[guid] = { name = name, online = online and true or false, level = level, class = classFile, index = i }
 			byName[name] = guid
 		end
+	end
+	for guid, name in pairs(Roster.realNames) do
+		if members[guid] then byName[name] = guid end
 	end
 	Roster.members, Roster.byName = members, byName
 	Roster.RefreshServerProfessions()

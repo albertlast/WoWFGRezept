@@ -66,6 +66,8 @@ local function slash(input)
 	elseif cmd == "chatbot" then
 		ns.db.options.chatResponder = not ns.db.options.chatResponder
 		ns.Print("!craft:", tostring(ns.db.options.chatResponder))
+	elseif cmd == "versions" or cmd == "version" or cmd == "ver" then
+		ns.Versions.Request()
 	elseif cmd == "resync" then
 		ns.Protocol.sync = nil
 		ns.Protocol.StartSync()

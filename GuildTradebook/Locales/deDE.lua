@@ -96,12 +96,26 @@ L.SETTINGS_MINIMAP_DESC = "Der Button leuchtet, solange ein Gildenmitglied onlin
 L.MINIMAP_WISH_READY = "Jetzt online für deine Wunschliste:"
 L.MINIMAP_HINT = "Linksklick: öffnen (die Wunschliste, solange er leuchtet) - Rechtsklick: Einstellungen - Ziehen: verschieben"
 
+L.VERSION_HEADER = "Guild-Tradebook-Versionen (du: %s):"
+L.VERSION_CHECKING = "Frage die Gilde nach Addon-Versionen..."
+L.VERSION_NO_GUILD = "Du bist in keiner Gilde."
+L.VERSION_NOBODY = "Kein anderer Addon-Nutzer hat geantwortet."
+L.VERSION_NO_ANSWER = "Keine Antwort von: %s (Addon veraltet oder nicht aktiv)"
+L.VERSION_STATE_NEWER = "neuer"
+L.VERSION_STATE_OLDER = "älter"
+L.VERSION_STATE_OUTDATED = "veraltet, kein Datenaustausch möglich"
+L.VERSION_STATE_NEWER_PROTOCOL = "neuer und inkompatibel, bitte deines aktualisieren"
+L.VERSION_NEWER = "%s nutzt ein neueres Guild Tradebook (%s). Bitte aktualisieren."
+L.VERSION_INCOMPATIBLE = "%s nutzt ein veraltetes Guild Tradebook: kein Datenaustausch, bis es aktualisiert ist."
+L.VERSION_UPDATE_NEEDED = "%s nutzt ein neueres, inkompatibles Guild Tradebook: bitte aktualisieren, um Daten auszutauschen."
+L.VERSION_TOOLTIP = "Addon-Version: %s"
 L.SLASH_HELP = [[/gtb - Fenster öffnen
 /gtb options - Einstellungen öffnen
 /gtb minimap - Minimap-Button ein/aus
 /gtb search <Text> - Rezepte suchen
 /gtb wishlist - Wunschliste öffnen
 /gtb chatbot - Antworten auf "!craft <Gegenstand>" bzw. "!herstellen" im Gildenchat ein/aus
+/gtb versions - zeigt, welche Addon-Version die Gildenmitglieder nutzen
 /gtb resync - vollständige Synchronisierung anfordern
 /gtb tooltip - Tooltip-Zeilen ein/aus
 /gtb debug - Debug-Ausgabe ein/aus

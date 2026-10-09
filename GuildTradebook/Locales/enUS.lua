@@ -100,12 +100,26 @@ L.SETTINGS_MINIMAP_DESC = "The button glows while a guild member who can craft s
 L.MINIMAP_WISH_READY = "Online now for your wishlist:"
 L.MINIMAP_HINT = "Left-click: open (the Wishlist while glowing) - right-click: settings - drag: move"
 
+L.VERSION_HEADER = "Guild Tradebook versions (you: %s):"
+L.VERSION_CHECKING = "Asking the guild for addon versions..."
+L.VERSION_NO_GUILD = "You are not in a guild."
+L.VERSION_NOBODY = "No other addon user answered."
+L.VERSION_NO_ANSWER = "No answer from: %s (addon outdated or not running)"
+L.VERSION_STATE_NEWER = "newer"
+L.VERSION_STATE_OLDER = "older"
+L.VERSION_STATE_OUTDATED = "outdated, can not exchange data"
+L.VERSION_STATE_NEWER_PROTOCOL = "newer and incompatible, please update yours"
+L.VERSION_NEWER = "%s uses a newer Guild Tradebook (%s). Please update."
+L.VERSION_INCOMPATIBLE = "%s uses an outdated Guild Tradebook: you can not exchange data until they update."
+L.VERSION_UPDATE_NEEDED = "%s uses a newer, incompatible Guild Tradebook: please update to exchange data."
+L.VERSION_TOOLTIP = "Addon version: %s"
 L.SLASH_HELP = [[/gtb - open window
 /gtb options - open the settings
 /gtb minimap - show/hide the minimap button
 /gtb search <text> - search recipes
 /gtb wishlist - open your wishlist
 /gtb chatbot - toggle answering "!craft <item>" in guild chat
+/gtb versions - show which addon version guild members use
 /gtb resync - ask the guild for a full sync
 /gtb tooltip - toggle tooltip lines
 /gtb debug - toggle debug output
