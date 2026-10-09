@@ -86,7 +86,12 @@ This runs unit tests for the merge rules, upgrade finder tests, a UI smoke test,
 python tools/package.py
 ```
 
-This writes `dist/GuildTradebook-<version>.zip`. Its TOC carries the commit as version (`0.1.0-d8dcb0e`) and the commit time as build number, so `/gtb versions` tells builds apart and notices newer ones. Uncommitted changes are included and marked `-dirty`. The copy in the repo reports `0.1.0-dev` (build 0).
+This writes `dist/GuildTradebook-<version>.zip`.
+
+- **Release:** set `## Version:` in the TOC to e.g. `0.1.0` (no `-dev`), commit, tag `v0.1.0`, then package. The zip carries exactly that version. After the release, set the TOC to the next `-dev` version. What changed goes into `CHANGELOG.md`.
+- **Test build:** with a `-dev` version in the TOC, the zip's version names the commit (`0.2.0-d8dcb0e`); uncommitted changes are included and marked `-dirty`.
+
+The commit time becomes the build number, so `/gtb versions` notices newer builds. The copy in the repo reports its TOC version with build 0.
 
 Every addon message carries the sender's version. A guildmate whose build can not exchange data with yours (another protocol, or a build from before the sender GUID) is reported once in chat instead of being silently ignored.
 

@@ -1,12 +1,15 @@
 """Builds dist/GuildTradebook-<version>.zip for sharing with guild members.
 
-The zip's TOC gets a version that names the commit, e.g. "0.1.0-d8dcb0e",
-and the commit time as build number (X-Build), so "/gtb versions" can tell
-builds apart and which one is newer. The development copy in the repo keeps
-"0.1.0-dev" / build 0.
+Release: the TOC says "## Version: 0.1.0" (no "-dev"). The zip keeps that
+version, and the tree must be committed. Tag the commit "v0.1.0".
 
-Uncommitted changes are packaged too, marked "-dirty" and stamped with the
-current time.
+Test build: the TOC says "0.2.0-dev". The zip gets a version naming the
+commit, e.g. "0.2.0-d8dcb0e"; uncommitted changes are included and marked
+"-dirty".
+
+Either way the commit time becomes the build number (X-Build), so
+"/gtb versions" can tell which build is newer. The development copy in the
+repo itself reports its TOC version with build 0.
 
 Usage: python tools/package.py
 """
@@ -30,14 +33,18 @@ def main():
     toc_path = os.path.join(ROOT, ADDON, ADDON + ".toc")
     with open(toc_path, encoding="utf-8", newline="") as f:
         toc = f.read()
-    match = re.search(r"^## Version: ([^\r\n]+?)(?:-dev)?\r?$", toc, re.M)
+    match = re.search(r"^## Version: ([^\r\n]+?)(-dev)?\r?$", toc, re.M)
     if not match:
         sys.exit("no '## Version:' line in the TOC")
-    base = match.group(1)
+    base, release = match.group(1), match.group(2) is None
 
     commit = git("rev-parse", "--short", "HEAD")
     dirty = git("status", "--porcelain", "--", ADDON) != ""
-    if dirty:
+    if release:
+        if dirty:
+            sys.exit(f"release {base}: commit all changes first")
+        version, build = base, int(git("log", "-1", "--format=%ct"))
+    elif dirty:
         version, build = f"{base}-{commit}-dirty", int(time.time())
     else:
         version, build = f"{base}-{commit}", int(git("log", "-1", "--format=%ct"))
