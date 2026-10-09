@@ -23,12 +23,18 @@ Sync\Codec.lua
 Sync\Protocol.lua
 Search\Index.lua
 Search\Upgrades.lua
+Features\Wishlist.lua
+Features\Reagents.lua
+Features\ChatResponder.lua
 
 UI\Widgets.lua
 UI\Main.lua
 UI\SearchTab.lua
 UI\UpgradeTab.lua
+UI\WishlistTab.lua
 UI\MembersTab.lua
 UI\Tooltip.lua
+UI\Settings.lua
+UI\MinimapButton.lua
 
 Core\Boot.lua

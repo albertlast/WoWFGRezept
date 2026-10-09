@@ -39,12 +39,20 @@ function Util.NormalizeName(name, realm)
 	return name .. "-" .. realm
 end
 
+-- Display name: without the realm when it is your own realm, so players
+-- only see a realm for members from another (connected) realm.
 function Util.ShortName(name)
 	if not name then return "?" end
-	if Ambiguate then
-		return Ambiguate(name, "guild")
+	local base, realm = name:match("^(.-)%-([^%-]+)$")
+	if not base then return name end
+	local own = GetNormalizedRealmName and GetNormalizedRealmName()
+	if not own and UnitFullName then
+		own = select(2, UnitFullName("player"))
 	end
-	return (name:gsub("%-.*$", ""))
+	if realm == own then
+		return base
+	end
+	return name
 end
 
 function Util.ClassColored(name, classFile)

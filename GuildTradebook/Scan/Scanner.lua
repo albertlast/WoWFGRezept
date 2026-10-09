@@ -175,6 +175,24 @@ function Scanner.Reconcile(allowRemove)
 	remindUnscanned(own, snapshot)
 end
 
+-- The profession a recipe belongs to, according to the game (or nil).
+local function skillLineForRecipe(recipeID)
+	local info = C_TradeSkillUI.GetProfessionInfoByRecipeID and C_TradeSkillUI.GetProfessionInfoByRecipeID(recipeID)
+	if not info then return nil end
+	if info.parentProfessionID and info.parentProfessionID ~= 0 then
+		return info.parentProfessionID
+	end
+	return info.professionID
+end
+
+-- True if the game says the recipe belongs to ANOTHER profession this
+-- character has. Unknown or unexpected IDs never count as foreign, so a
+-- mapping quirk can not wipe a real recipe list.
+local function isForeign(own, skillLine, recipeID)
+	local owner = skillLineForRecipe(recipeID)
+	return owner ~= nil and owner ~= skillLine and own.profs[owner] ~= nil
+end
+
 -- Resolves static recipe facts from the local client and caches them.
 function Scanner.ResolveFact(recipeID, info)
 	local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
@@ -195,9 +213,31 @@ function Scanner.ResolveFact(recipeID, info)
 	return fact
 end
 
+--[[
+Cooldown of one recipe: seconds remaining (0 = ready), or nil if the recipe
+has no known cooldown. A ready cooldown recipe looks like any other recipe,
+so a recipe counts as a cooldown recipe once it was seen on cooldown or
+reports charges; that knowledge is kept in recipeFacts and in the record.
+]]
+function Scanner.ReadCooldown(recipeID, knownCooldown)
+	if not C_TradeSkillUI.GetRecipeCooldown then return nil end
+	local cooldown, _, charges, maxCharges = C_TradeSkillUI.GetRecipeCooldown(recipeID)
+	local onCooldown = cooldown ~= nil and cooldown > 0 and not (charges and charges > 0)
+	local fact = ns.db.recipeFacts[recipeID]
+	if onCooldown or (maxCharges and maxCharges > 0) then
+		if fact then fact.cd = true end
+	elseif not (knownCooldown or (fact and fact.cd)) then
+		return nil
+	end
+	return onCooldown and cooldown or 0
+end
+
 -- Reads the open profession window, if it is the player's own.
 function Scanner.ScanTradeSkill()
 	if not C_TradeSkillUI.IsTradeSkillReady() then return end
+	-- While switching tabs the window can briefly return the previous
+	-- profession's recipes; the debounced scan runs again afterwards.
+	if C_TradeSkillUI.IsDataSourceChanging and C_TradeSkillUI.IsDataSourceChanging() then return end
 	if C_TradeSkillUI.IsTradeSkillLinked() or C_TradeSkillUI.IsTradeSkillGuild() then return end
 	if C_TradeSkillUI.IsNPCCrafting and C_TradeSkillUI.IsNPCCrafting() then return end
 
@@ -223,31 +263,34 @@ function Scanner.ScanTradeSkill()
 	end
 	if not ids or #ids == 0 then return end
 
-	local recipes, count = {}, 0
+	local prof = own.profs[skillLine]
+	local recipes, cooldowns, count = {}, {}, 0
 	for _, recipeID in ipairs(ids) do
 		local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
 		if info and info.learned and not info.isDummyRecipe and not info.isGatheringRecipe
-			and not info.isSalvageRecipe and not info.isRecraft then
+			and not info.isSalvageRecipe and not info.isRecraft and not isForeign(own, skillLine, recipeID) then
 			local fact = Scanner.ResolveFact(recipeID, info)
 			recipes[recipeID] = fact and fact.item or 0
+			cooldowns[recipeID] = Scanner.ReadCooldown(recipeID, prof.cds and prof.cds[recipeID] ~= nil)
 			count = count + 1
 		end
 	end
 	if count == 0 then return end
 
 	ns.Debug("scanned", skillLine, count, "recipes", complete and "complete" or "partial")
-	if Store.ApplyScan(own, skillLine, recipes, complete, ns.Now()) then
-		Scanner.Commit(own, Store.ChangeKind(own.profs[skillLine]))
+	local now = ns.Now()
+	local recipesChanged = Store.ApplyScan(own, skillLine, recipes, complete, now)
+	-- Clean up recipes stored under the wrong profession by older versions.
+	if Store.RemoveRecipes(own, skillLine, function(rid) return isForeign(own, skillLine, rid) end) then
+		recipesChanged = true
 	end
-end
-
-local function skillLineForRecipe(recipeID)
-	local info = C_TradeSkillUI.GetProfessionInfoByRecipeID and C_TradeSkillUI.GetProfessionInfoByRecipeID(recipeID)
-	if not info then return nil end
-	if info.parentProfessionID and info.parentProfessionID ~= 0 then
-		return info.parentProfessionID
+	local cooldownsChanged = Store.ApplyCooldowns(own, skillLine, cooldowns, now)
+	if recipesChanged then
+		Scanner.Commit(own, Store.ChangeKind(prof))
+	elseif cooldownsChanged then
+		-- A started cooldown is not urgent: it rides the 60 s batch.
+		Scanner.Commit(own, "minor")
 	end
-	return info.professionID
 end
 
 function Scanner.OnRecipeLearned(_, recipeID)

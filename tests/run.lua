@@ -2,7 +2,7 @@
 local dir = (arg and arg[0] and arg[0]:match("^(.*)[/\\]")) or "tests"
 local H = dofile(dir .. "/harness.lua")
 
-for _, file in ipairs({ "test_store.lua", "test_upgrades.lua", "test_sim.lua", "test_ui_smoke.lua" }) do
+for _, file in ipairs({ "test_store.lua", "test_upgrades.lua", "test_features.lua", "test_sim.lua", "test_ui_smoke.lua" }) do
 	local chunk = assert(loadfile(dir .. "/" .. file))
 	chunk(H)
 end

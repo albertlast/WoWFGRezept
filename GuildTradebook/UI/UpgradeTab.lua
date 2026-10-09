@@ -195,19 +195,25 @@ local function build(content)
 			if self.data.bop then
 				GameTooltip:AddLine(L.BOP_WARNING, 1, 0.3, 0.3, true)
 			end
+			GameTooltip:AddLine(L.UPGRADE_HINT, 0.6, 0.6, 0.6, true)
 			GameTooltip:Show()
 		end)
 		row:SetScript("OnLeave", GameTooltip_Hide)
-		row:SetScript("OnClick", function(self)
+		row:SetScript("OnClick", function(self, button)
 			local rids = Index.RecipesForItem(self.data.itemID)
-			if rids and rids[1] then
+			if not (rids and rids[1]) then return end
+			if button == "RightButton" then
+				ns.Wishlist.Toggle(rids[1])
+			else
 				ns.UI.ShowRecipe(rids[1])
 			end
 		end)
 	end, function(row, data)
 		row.data = data
 		row.icon:SetTexture(data.info.icon)
-		row.name:SetText(data.info.link)
+		local rids = Index.RecipesForItem(data.itemID)
+		local wished = rids and rids[1] and ns.Wishlist.Has(rids[1])
+		row.name:SetText(wished and (W.WISH_MARK .. " " .. data.info.link) or data.info.link)
 		local color = data.delta > 0 and "|cff20ff20+" or (data.delta < 0 and "|cffff4040" or "|cffcccccc")
 		local text = color .. data.delta .. "|r"
 		if data.ilvlDelta ~= 0 then

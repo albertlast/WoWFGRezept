@@ -5,6 +5,7 @@ local L = ns.L
 L.TAB_SEARCH = "Rezepte"
 L.TAB_UPGRADES = "Verbesserungen"
 L.TAB_MEMBERS = "Mitglieder"
+L.TAB_WISHLIST = "Wunschliste"
 
 L.SEARCH_HINT = "Rezept oder Gegenstand suchen"
 L.ALL_PROFESSIONS = "Alle Berufe"
@@ -14,6 +15,23 @@ L.CRAFTERS = "Hersteller"
 L.REAGENTS = "Reagenzien"
 L.REAGENTS_LOADING = "Reagenzien werden geladen..."
 L.REAGENTS_UNKNOWN = "Reagenzien unbekannt."
+L.REAGENTS_FOR = "Reagenzien für %d Herstellung(en) - vorhanden/benötigt:"
+
+L.CD_READY = "bereit"
+L.CD_REMAINING = "Abklingzeit %s"
+
+L.WISH_ADD = "Auf die Wunschliste"
+L.WISH_REMOVE = "Von der Wunschliste"
+L.WISH_EMPTY = "Deine Wunschliste ist leer. Füge Rezepte im Reiter Rezepte hinzu oder klicke eine Verbesserung mit rechts an."
+L.WISH_HINT = "Klick: Rezept öffnen - Rechtsklick: entfernen. Du wirst benachrichtigt, wenn ein Hersteller online kommt."
+L.WISH_NO_CRAFTER = "derzeit kann das niemand herstellen"
+L.WISH_ALERT = "%s ist online und kann herstellen: %s"
+L.WISH_SUMMARY = "Wunschliste: %d Gegenstand/Gegenstände können von Gildenmitgliedern hergestellt werden, die jetzt online sind (/gtb wishlist)."
+L.UPGRADE_HINT = "Klick: Rezept öffnen - Rechtsklick: Wunschliste"
+
+L.CHAT_NONE = "[Guild Tradebook] Niemand in der Gilde kann \"%s\" herstellen."
+L.CHAT_MANY = "[Guild Tradebook] %d Treffer für \"%s\" (%s, ...) - bitte genauer suchen."
+L.CHAT_ONLINE_HINT = "(* = online)"
 L.OPTIONAL = "optional"
 L.WHISPER = "Flüstern"
 L.ONLINE = "online"
@@ -42,15 +60,48 @@ L.NO_FAV_STATS = "Wähle mindestens einen bevorzugten Wert."
 L.MEMBERS_HEADER = "%d Mitglieder teilen Rezepte (%d Rezepte)"
 
 L.TOOLTIP_CRAFTABLE = "Herstellbar in der Gilde:"
-L.TOOLTIP_KNOWN = "Bekannt in der Gilde:"
+L.TOOLTIP_KNOWN_BY = "In deiner Gilde bekannt bei %d:"
+L.TOOLTIP_NOT_KNOWN = "In deiner Gilde noch unbekannt"
+L.TOOLTIP_MEMBERS = "%d Mitglieder"
+L.TOOLTIP_ONLINE = "online: %s"
+L.TOOLTIP_NONE_ONLINE = "niemand online"
+L.CLICK_OPEN_RECIPE = "Klick: Gildenrezept öffnen"
+L.BACK = "Zurück"
+L.FILTER_CRAFTER = "Hersteller: %s"
+L.CLICK_WHISPER = "Klick: anflüstern"
+L.CLICK_SHOW_RECIPES = "Klick: Rezepte dieses Mitglieds anzeigen"
+L.NO_ADDON_DATA = "keine Addon-Daten"
 L.TOOLTIP_MORE = "(+%d weitere)"
 
 L.REMIND_SCAN = "Öffne das Berufsfenster und klicke einmal auf den Reiter %s, damit deine Rezepte mit der Gilde geteilt werden."
 
+L.SETTINGS_HIDE_BOP = "Beim Aufheben gebundene Gegenstände anderer ausblenden"
+L.SETTINGS_HIDE_BOP_DESC = "Rezeptliste: blendet Rezepte aus, deren Gegenstand beim Aufheben gebunden wird, wenn dieser Charakter ihn nicht selbst herstellen kann - solche Gegenstände kann dir niemand geben, auch nicht deine Twinks."
+L.SETTINGS_TOOLTIP = "Hersteller im Gegenstands-Tooltip"
+L.SETTINGS_TOOLTIP_DESC = "Zeigt \"Herstellbar in der Gilde: ...\" bei Gegenständen, die Gildenmitglieder herstellen können."
+L.SETTINGS_TOOLTIP_RECIPES = "Gildenwissen bei Rezepten"
+L.SETTINGS_TOOLTIP_RECIPES_DESC = "Bei Mustern, Rezepten, Formeln und Plänen: wer in deiner Gilde es schon kennt, oder \"In deiner Gilde noch unbekannt\"."
+L.SETTINGS_CHAT = "Auf !craft im Gildenchat antworten"
+L.SETTINGS_CHAT_DESC = "Mitglieder ohne Addon können \"!craft <Gegenstand>\" fragen. Pro Frage antwortet nur ein Addon-Nutzer."
+L.SETTINGS_WISH_ALERTS = "Wunschlisten-Hinweise"
+L.SETTINGS_WISH_ALERTS_DESC = "Meldet im Chat, wenn ein Gildenmitglied online kommt, das etwas von deiner Wunschliste herstellen kann."
+L.SETTINGS_WISH_SOUND = "Wunschlisten-Ton"
+L.SETTINGS_WISH_SOUND_DESC = "Spielt beim Wunschlisten-Hinweis einen Ton ab."
+L.SETTINGS_DEBUG = "Debug-Ausgabe"
+L.SETTINGS_DEBUG_DESC = "Schreibt Synchronisationsnachrichten in den Chat (zum Testen)."
+L.SETTINGS_MINIMAP = "Minimap-Button anzeigen"
+L.SETTINGS_MINIMAP_DESC = "Der Button leuchtet, solange ein Gildenmitglied online ist, das etwas von deiner Wunschliste herstellen kann."
+L.MINIMAP_WISH_READY = "Jetzt online für deine Wunschliste:"
+L.MINIMAP_HINT = "Linksklick: öffnen (die Wunschliste, solange er leuchtet) - Rechtsklick: Einstellungen - Ziehen: verschieben"
+
 L.SLASH_HELP = [[/gtb - Fenster öffnen
+/gtb options - Einstellungen öffnen
+/gtb minimap - Minimap-Button ein/aus
 /gtb search <Text> - Rezepte suchen
 /gtb main <Name> - diesen Charakter mit deinem Main verknüpfen
 /gtb main - Main-Verknüpfung entfernen
+/gtb wishlist - Wunschliste öffnen
+/gtb chatbot - Antworten auf "!craft <Gegenstand>" bzw. "!herstellen" im Gildenchat ein/aus
 /gtb resync - vollständige Synchronisierung anfordern
 /gtb tooltip - Tooltip-Zeilen ein/aus
 /gtb debug - Debug-Ausgabe ein/aus

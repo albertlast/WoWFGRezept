@@ -15,7 +15,8 @@ local function dump(name)
 		ns.Print("no data for", name)
 		return
 	end
-	ns.Print(("%s ver=%d seq=%d h=%d from=%s gone=%s"):format(rec.name, rec.ver, rec.seq, rec.h or 0,
+	local int = Store.FormatInt
+	ns.Print(("%s ver=%s seq=%s h=%s from=%s gone=%s"):format(rec.name, int(rec.ver), int(rec.seq), int(rec.h),
 		tostring(rec.recvFrom), tostring(rec.goneSince)))
 	for sl, p in pairs(rec.profs) do
 		local count = p.recipes and Util.Count(p.recipes) or -1
@@ -73,6 +74,16 @@ local function slash(input)
 		ns.UI.Show("search", rest)
 	elseif cmd == "upgrades" then
 		ns.UI.Show("upgrades")
+	elseif cmd == "wishlist" then
+		ns.UI.Show("wishlist")
+	elseif cmd == "options" or cmd == "settings" then
+		ns.Settings.Open()
+	elseif cmd == "minimap" then
+		ns.db.options.minimapButton = not ns.db.options.minimapButton
+		ns.MinimapButton.SetShown(ns.db.options.minimapButton)
+	elseif cmd == "chatbot" then
+		ns.db.options.chatResponder = not ns.db.options.chatResponder
+		ns.Print("!craft:", tostring(ns.db.options.chatResponder))
 	elseif cmd == "main" then
 		setMain(rest)
 	elseif cmd == "resync" then
@@ -117,5 +128,9 @@ ns.RegisterEvent("PLAYER_LOGIN", function()
 	Roster.Start()
 	ns.Scanner.Start()
 	ns.Protocol.Start()
+	ns.Wishlist.Start()
+	ns.ChatResponder.Start()
 	ns.Tooltip.Start()
+	ns.Settings.Register()
+	ns.MinimapButton.Start()
 end)

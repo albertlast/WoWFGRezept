@@ -20,8 +20,30 @@ H.FILES = {
 	"Sync/Protocol.lua",
 	"Search/Index.lua",
 	"Search/Upgrades.lua",
+	"Features/Wishlist.lua",
+	"Features/Reagents.lua",
+	"Features/ChatResponder.lua",
 	"Core/Boot.lua",
 }
+
+-- Behave like WoW's Lua: string.format("%d") only accepts 32-bit signed
+-- integers there ("integer overflow attempting to store"); stock Lua 5.3+
+-- accepts 64-bit and would hide such bugs.
+do
+	local format = string.format
+	string.format = function(spec, ...)
+		local args, i = { ... }, 0
+		for flagsAndType in spec:gmatch("%%([%-+ #0]*%d*%.?%d*%a)") do
+			i = i + 1
+			local conv = flagsAndType:sub(-1)
+			if (conv == "d" or conv == "i") and type(args[i]) == "number"
+				and (args[i] > 2147483647 or args[i] < -2147483648) then
+				error("integer overflow attempting to store " .. format("%.0f", args[i]), 2)
+			end
+		end
+		return format(spec, ...)
+	end
+end
 
 local function loadInto(path, env)
 	local chunk, err
@@ -98,6 +120,8 @@ function H.NewWorld(opts)
 		chars = {},        -- by guid
 		order = {},        -- guild roster order
 		accounts = {},     -- [account] = saved DB table (or nil)
+		charDBs = {},      -- [guid] = per-character saved DB
+		chat = {},         -- guild chat lines { from, text }
 		online = {},       -- [guid] = client
 		messages = 0,
 		latency = opts.latency or 0.2,
@@ -159,6 +183,16 @@ function H.NewWorld(opts)
 		end
 	end
 
+	-- A guild chat line, seen by every online client (like CHAT_MSG_GUILD).
+	function world:GuildChat(fromName, text)
+		table.insert(self.chat, { from = fromName, text = text })
+		for _, client in pairs(self.online) do
+			self.clock:Add(self.latency, function()
+				client:Fire("CHAT_MSG_GUILD", text, fromName)
+			end, client.env)
+		end
+	end
+
 	function world:Login(guid)
 		local char = self.chars[guid]
 		local client = H.NewClient(self, char)
@@ -174,6 +208,7 @@ function H.NewWorld(opts)
 		local client = self.online[guid]
 		if not client then return end
 		self.accounts[client.char.account] = client.env.GuildTradebookDB
+		self.charDBs[guid] = client.env.GuildTradebookCharDB
 		client.env.dead = true
 		self.online[guid] = nil
 	end
@@ -267,7 +302,26 @@ function H.NewClient(world, char)
 	}
 	env.C_ChatInfo = {
 		AreOutgoingAddonChatMessagesRestricted = function() return char.restricted end,
+		InChatMessagingLockdown = function() return false end,
+		SendChatMessage = function(text, chatType)
+			if chatType == "GUILD" then world:GuildChat(char.name, text) end
+		end,
 	}
+	env.C_Spell = { GetSpellName = function(id) return "Recipe " .. id end }
+	-- world.bindTypes[itemID] = 1 (BoP) / 2 (BoE); missing = not loaded yet.
+	env.C_Item = {
+		GetItemNameByID = function(id) return "Item " .. id end,
+		GetItemCount = function(id) return (char.bags or {})[id] or 0 end,
+		GetItemInfo = function(id)
+			local bind = (world.bindTypes or {})[id]
+			if not bind then return nil end
+			return "Item " .. id, "|Hitem:" .. id .. "|h[Item " .. id .. "]|h", 2, 20, 10, "Armor", "Cloth", 1,
+				"INVTYPE_CHEST", 1, 0, 4, 1, bind
+		end,
+		RequestLoadItemDataByID = function() end,
+	}
+	env.PlaySound = function() end
+	env.SOUNDKIT = { TELL_MESSAGE = 1 }
 
 	-- Professions
 	-- Like the real API: prim1, prim2, then secondary slots (nil where empty).
@@ -302,12 +356,23 @@ function H.NewClient(world, char)
 		GetBaseProfessionInfo = function() return { professionID = client.openSkill } end,
 		GetAllRecipeIDs = function()
 			local ids = {}
-			local p = char.profs[client.openSkill]
+			-- char.staleTabSwitch: the first read after a tab switch still
+			-- returns the previous profession's list (seen in the beta).
+			local skill = client.openSkill
+			if char.staleTabSwitch and client.staleSkill then
+				skill, client.staleSkill = client.staleSkill, nil
+			end
+			local p = char.profs[skill]
 			for rid in pairs(p and p.recipes or {}) do ids[#ids + 1] = rid end
 			table.sort(ids)
 			return ids
 		end,
 		GetRecipeInfo = function(rid) return { recipeID = rid, learned = true } end,
+		-- char.cooldowns[rid] = seconds remaining (0 = ready but has a cooldown)
+		GetRecipeCooldown = function(rid)
+			local cd = (char.cooldowns or {})[rid]
+			if cd and cd > 0 then return cd, true, 0, 0 end
+		end,
 		GetRecipeSchematic = function(rid)
 			for _, p in pairs(char.profs) do
 				if p.recipes and p.recipes[rid] then
@@ -336,10 +401,13 @@ function H.NewClient(world, char)
 		local ns = {}
 		self.ns = ns
 		env.GuildTradebookDB = H.DeepCopy(world.accounts[char.account])
+		env.GuildTradebookCharDB = H.DeepCopy(world.charDBs[char.guid])
 		for _, file in ipairs(H.FILES) do
 			loadInto(H.ADDON_DIR .. file, env)("GuildTradebook", ns)
 		end
 		ns.Tooltip = { Start = function() end }
+		ns.Settings = { Register = function() end, Open = function() end }
+		ns.MinimapButton = { Start = function() end, SetShown = function() end }
 		ns.UI = { Toggle = function() end, Show = function() end }
 		ns.Protocol.transport = function(msg, channel, target)
 			world:Deliver(client, msg, channel, target)
@@ -350,6 +418,7 @@ function H.NewClient(world, char)
 
 	-- Simulates opening the profession window.
 	function client:OpenTradeSkill(skillLine)
+		self.staleSkill = self.openSkill
 		self.openSkill = skillLine
 		self:Fire("TRADE_SKILL_SHOW")
 	end
@@ -415,8 +484,10 @@ function H.LoadPure()
 		CreateFrame = function() return { RegisterEvent = function() end, SetScript = function() end } end,
 		GetLocale = function() return "enUS" end,
 		GetTime = function() return 0 end,
+		GetNormalizedRealmName = function() return "Realm" end,
 	}, { __index = _G })
-	for _, file in ipairs({ "Locales/enUS.lua", "Core/Init.lua", "Core/Util.lua", "Data/Store.lua", "Search/Upgrades.lua" }) do
+	for _, file in ipairs({ "Locales/enUS.lua", "Core/Init.lua", "Core/Util.lua", "Data/Store.lua", "Search/Upgrades.lua",
+		"Features/Wishlist.lua", "Features/Reagents.lua", "Features/ChatResponder.lua" }) do
 		loadInto(H.ADDON_DIR .. file, env)("GuildTradebook", ns)
 	end
 	return ns

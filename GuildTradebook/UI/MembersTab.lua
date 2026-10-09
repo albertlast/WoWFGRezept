@@ -19,6 +19,16 @@ local function professionText(rec)
 				text = text .. " |cffff8000" .. L.UNVERIFIED .. "|r"
 			end
 		end
+		if p.cds and next(p.cds) then
+			local now, cds = ns.Now(), {}
+			for _, rid in ipairs(Util.SortedKeys(p.cds)) do
+				local readyAt = p.cds[rid]
+				local state = readyAt <= now and ("|cff20ff20" .. L.CD_READY .. "|r")
+					or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
+				cds[#cds + 1] = (Index.RecipeName(rid) or ("#" .. rid)) .. " " .. state
+			end
+			text = text .. " [" .. table.concat(cds, ", ") .. "]"
+		end
 		if Roster.IsProfessionContradicted(rec.guid, sl) then
 			text = "|cff808080" .. text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") .. " (server: -)|r"
 		elseif not p.primary then
@@ -42,6 +52,7 @@ local function refresh()
 				recipeTotal = recipeTotal + (p.recipes and Util.Count(p.recipes) or 0)
 			end
 			rows[#rows + 1] = {
+				guid = guid,
 				name = (member and member.name) or rec.name,
 				class = (member and member.class) or rec.class,
 				online = member and member.online,
@@ -59,8 +70,8 @@ local function refresh()
 			for sl in pairs(server) do names[#names + 1] = Index.SkillLineName(sl) end
 			table.sort(names)
 			rows[#rows + 1] = {
-				name = member.name, class = member.class, online = member.online, ver = 0,
-				profs = "|cff808080" .. table.concat(names, ", ") .. " (no addon data)|r",
+				guid = guid, name = member.name, class = member.class, online = member.online, ver = 0,
+				profs = "|cff808080" .. table.concat(names, ", ") .. " (" .. L.NO_ADDON_DATA .. ")|r",
 			}
 		end
 	end
@@ -76,17 +87,42 @@ local function build(content)
 	ui.header = W.Text(content, "GameFontNormal")
 	ui.header:SetPoint("TOPLEFT", 6, -2)
 
+	local function hint(frame, text)
+		frame:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText(text(self), 1, 1, 1)
+			GameTooltip:Show()
+		end)
+		frame:SetScript("OnLeave", GameTooltip_Hide)
+	end
+
+	-- Two click areas: the name whispers, the professions open the member's
+	-- recipes in the Recipes tab.
 	ui.list = W.CreateList(content, 20, function(row)
-		row.name = W.Text(row)
+		row.nameButton = CreateFrame("Button", nil, row)
+		row.nameButton:SetPoint("TOPLEFT")
+		row.nameButton:SetPoint("BOTTOMLEFT")
+		row.nameButton:SetWidth(248)
+		row.nameButton:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+		row.nameButton:SetScript("OnClick", function(self) W.SendTell(self:GetParent().data.name) end)
+		hint(row.nameButton, function() return L.CLICK_WHISPER end)
+		row.name = W.Text(row.nameButton)
 		row.name:SetPoint("LEFT", 4, 0)
 		row.name:SetWidth(150)
-		row.age = W.Text(row, "GameFontDisableSmall")
+		row.age = W.Text(row.nameButton, "GameFontDisableSmall")
 		row.age:SetPoint("LEFT", row.name, "RIGHT", 4, 0)
 		row.age:SetWidth(90)
 		row.profs = W.Text(row)
-		row.profs:SetPoint("LEFT", row.age, "RIGHT", 4, 0)
+		row.profs:SetPoint("LEFT", row.nameButton, "RIGHT", 4, 0)
 		row.profs:SetPoint("RIGHT", -4, 0)
-		row:SetScript("OnClick", function(self) W.SendTell(self.data.name) end)
+		row:SetScript("OnClick", function(self)
+			if self.data.ver > 0 then
+				ns.UI.ShowCrafter(self.data.guid)
+			end
+		end)
+		hint(row, function(self)
+			return self.data.ver > 0 and L.CLICK_SHOW_RECIPES or L.NO_ADDON_DATA
+		end)
 	end, function(row, data)
 		row.data = data
 		local name = Util.ClassColored(Util.ShortName(data.name), data.class)

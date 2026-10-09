@@ -24,15 +24,26 @@ Each crafter has to open the professions window once and click each profession t
 |---|---|
 | `/gtb` or `/tradebook` | open the window (Recipes, Upgrades, Members) |
 | `/gtb search <text>` | search recipes and items |
+| `/gtb wishlist` | open your wishlist |
+| `/gtb options` | open the settings (also under Options → AddOns → Guild Tradebook) |
+| `/gtb minimap` | show/hide the minimap button |
 | `/gtb main <name>` | link this character to your main (`/gtb main` clears it) |
+| `/gtb chatbot` | toggle answering `!craft <item>` in guild chat |
 | `/gtb resync` | sync with a guild member now |
-| `/gtb tooltip` | toggle the "Craftable by guild" tooltip lines |
 | `/gtb dump <name>` | show what is known about a character |
 | `/gtb stats`, `/gtb debug`, `/gtb log` | diagnostics |
 
 - **Recipes:** free-text search plus a profession filter. Selecting a recipe shows the crafters (online first, then the most recently confirmed; click to whisper) and the reagents.
 - **Upgrades:** pick an item type (Cloth, Leather, …), a slot and your favorite stats. You get items guild members can craft that beat what you have equipped. Rings and trinkets are compared with your weaker one. Bind-on-pickup items are hidden by default, because a crafter cannot hand them over.
 - **Members:** who shares what and how fresh it is. It also lists members whose professions the server knows but who share no addon data.
+- **Tooltips:** items guild members can craft show "Craftable by guild: Anna*, Bert". With more than 4 crafters it shows the count and who is online: "23 members (online: Anna, Bert, Cleo +2)". Patterns, recipes, formulas and plans show "Known in your guild by 3: …" or "Not known in your guild yet", which helps decide whether to learn one or pass it on. The match is by name.
+- **Minimap button:** left-click opens the window, right-click opens the settings, drag to move. It **glows** while a guild member who can craft something on your wishlist is online; hovering shows what and who, and a click then opens the Wishlist.
+- **Settings:** under Options → AddOns. Turn the two tooltip types, `!craft` answers, wishlist notices and sound, and debug output on or off.
+- **Wishlist:** add a recipe from the Recipes tab, or right-click an upgrade. When a guild member who can craft it comes online, you get a chat notice.
+- **Reagent check:** the recipe detail shows how many of each reagent you own (bags and bank; the bank counts after you've opened it) against what you need for 1–50 crafts, plus what's missing.
+- **Reagents are clickable:** hover for the item tooltip (price addons included), shift-click to link. A reagent a guild member can craft is marked `»`; clicking it opens that recipe, and **Back** returns.
+- **Cooldowns:** for recipes with a cooldown (transmutes, Mooncloth, …), crafter lists show who is ready now or when they will be. Ready crafters are listed first.
+- **`!craft <item>` in guild chat:** members without the addon can ask who crafts something (`!herstellen` works too). Exactly one addon user answers: they elect themselves with the same deterministic ranking as the sync partner. Turn it off with `/gtb chatbot`.
 
 ## How the data stays correct
 
@@ -55,7 +66,7 @@ Built for about 100 members online at once:
 - Every 20 minutes each client re-syncs with one random partner.
 - Reagents are not part of the records. They are fetched on demand from an online crafter of that recipe and cached.
 
-Messages are CBOR, compressed with Deflate and Base64-encoded (native `C_EncodingUtil`). They go through AceComm and ChatThrottleLib, which are included under `Libs/`.
+Messages are CBOR, compressed with Deflate and Base64-encoded (native `C_EncodingUtil`). They go through AceComm and ChatThrottleLib. The minimap button uses LibDataBroker-1.1, LibDBIcon-1.0 and LibCustomGlow-1.0, the same versions as Gargul. All libraries are included under `Libs/`.
 
 ## Development
 

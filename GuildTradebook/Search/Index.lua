@@ -31,6 +31,7 @@ function Index.Rebuild()
 	if gd then
 		for guid, rec in pairs(gd.chars) do
 			if Store.IsShareable(rec, isMember) then
+				local listed = {} -- a character appears once per recipe
 				for sl, p in pairs(rec.profs) do
 					if p.primary then
 						primarySkill[sl] = true
@@ -49,7 +50,10 @@ function Index.Rebuild()
 									table.insert(byItem[itemID], rid)
 								end
 							end
-							list[#list + 1] = guid
+							if not listed[rid] then
+								listed[rid] = true
+								list[#list + 1] = guid
+							end
 						end
 					end
 				end
@@ -83,7 +87,17 @@ function Index.RecipeName(recipeID)
 	return name
 end
 
-local function charInfo(guid)
+-- readyAt of the crafter's cooldown for recipeID (0 = ready), or nil.
+local function cooldownOf(rec, recipeID)
+	if not rec or not recipeID then return nil end
+	for _, p in pairs(rec.profs) do
+		if p.cds and p.cds[recipeID] then
+			return p.cds[recipeID]
+		end
+	end
+end
+
+local function charInfo(guid, recipeID)
 	local gd = ns.GetGuildData()
 	local rec = gd and gd.chars[guid]
 	local member = Roster.Get(guid)
@@ -97,19 +111,30 @@ local function charInfo(guid)
 		ver = rec and rec.ver or 0,
 		isSelf = guid == selfGUID,
 		isAlt = acc ~= nil and guid ~= selfGUID,
+		readyAt = cooldownOf(rec, recipeID),
 	}
 end
 
--- Crafters of a recipe: you first, then online, then most recently confirmed.
+-- Display info for one character (name, class, online, ...).
+function Index.CrafterInfo(guid)
+	return charInfo(guid)
+end
+
+-- Crafters of a recipe: you first, then online, then (for cooldown recipes)
+-- ready ones, then most recently confirmed.
 function Index.Crafters(recipeID)
 	Index.Ensure()
+	local now = ns.Now()
 	local out = {}
 	for _, guid in ipairs(Index.byRecipe[recipeID] or {}) do
-		out[#out + 1] = charInfo(guid)
+		local c = charInfo(guid, recipeID)
+		c.ready = c.readyAt == nil or c.readyAt <= now
+		out[#out + 1] = c
 	end
 	table.sort(out, function(a, b)
 		if a.isSelf ~= b.isSelf then return a.isSelf end
 		if a.online ~= b.online then return a.online end
+		if a.ready ~= b.ready then return a.ready end
 		if a.ver ~= b.ver then return a.ver > b.ver end
 		return a.name < b.name
 	end)
@@ -121,18 +146,40 @@ function Index.RecipesForItem(itemID)
 	return Index.byItem[itemID]
 end
 
--- Free-text search over recipe and item names; skillLine 0 = all professions.
-function Index.Search(text, skillLine)
+-- true / false, or nil while the item is not loaded yet (a load is requested).
+function Index.IsBindOnPickup(itemID)
+	local bindType = select(14, C_Item.GetItemInfo(itemID))
+	if bindType == nil then
+		C_Item.RequestLoadItemDataByID(itemID)
+		return nil
+	end
+	return bindType == 1
+end
+
+--[[
+Free-text search over recipe and item names.
+  skillLine             0 = all professions
+  crafterGUID           optional: only recipes this character knows
+  hideForeignBoP        optional: hide recipes whose item binds on pickup
+                        unless the logged-in character can craft it
+                        (items still loading stay visible)
+]]
+function Index.Search(text, skillLine, crafterGUID, hideForeignBoP)
 	Index.Ensure()
+	local selfGUID = UnitGUID("player")
 	local needle = text and text:lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
 	local results = {}
 	for rid, guids in pairs(Index.byRecipe) do
-		if skillLine == 0 or Index.recipeSkill[rid] == skillLine then
+		if (skillLine == 0 or Index.recipeSkill[rid] == skillLine)
+			and (not crafterGUID or Util.Contains(guids, crafterGUID)) then
 			local name = Index.RecipeName(rid) or ("#" .. rid)
-			if needle == "" or name:lower():find(needle, 1, true) then
+			local itemID = Index.OutputItem(rid)
+			local hidden = hideForeignBoP and itemID > 0 and not Util.Contains(guids, selfGUID)
+				and Index.IsBindOnPickup(itemID)
+			if not hidden and (needle == "" or name:lower():find(needle, 1, true)) then
 				results[#results + 1] = {
 					recipeID = rid,
-					itemID = Index.OutputItem(rid),
+					itemID = itemID,
 					skillLine = Index.recipeSkill[rid],
 					name = name,
 					count = #guids,

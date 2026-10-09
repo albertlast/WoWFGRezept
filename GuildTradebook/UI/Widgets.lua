@@ -3,6 +3,10 @@ local _, ns = ...
 local W = {}
 ns.Widgets = W
 
+-- Marks wishlist entries in lists: Blizzard's favorite star, or a text star.
+W.WISH_MARK = (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("auctionhouse-icon-favorite")
+	and CreateAtlasMarkup and CreateAtlasMarkup("auctionhouse-icon-favorite", 13, 13)) or "|cffffd100(W)|r"
+
 -- Scrolling list. initRow(row, data) is called for every visible row; rows are
 -- plain Buttons, built once via buildRow(row).
 function W.CreateList(parent, rowHeight, buildRow, initRow)
@@ -16,6 +20,7 @@ function W.CreateList(parent, rowHeight, buildRow, initRow)
 	view:SetElementInitializer("Button", function(row, data)
 		if not row.built then
 			row.built = true
+			row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 			row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
 			buildRow(row)
 		end
@@ -87,7 +92,54 @@ function W.Text(parent, template, justify)
 	return fs
 end
 
+-- First recipe in the guild pool that makes itemID, or nil.
+function W.GuildRecipeFor(itemID)
+	local rids = itemID and itemID > 0 and ns.Index.RecipesForItem(itemID)
+	return rids and rids[1]
+end
+
+-- Item behavior for any frame with .itemID: the game's item tooltip on hover
+-- (so price addons like Auctioneer or TSM add their lines) and shift-click
+-- to link the item in chat. onOpenRecipe(recipeID), if given, makes a plain
+-- click open the guild recipe that crafts the item.
+function W.AttachItem(frame, onOpenRecipe)
+	frame:SetScript("OnEnter", function(self)
+		if self.itemID and self.itemID > 0 then
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetItemByID(self.itemID)
+			if onOpenRecipe and W.GuildRecipeFor(self.itemID) then
+				GameTooltip:AddLine(ns.L.CLICK_OPEN_RECIPE, 0.4, 0.8, 1)
+			end
+			GameTooltip:Show()
+		elseif self.spellID then
+			-- Recipes without an item (enchants): the recipe spell's tooltip.
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetSpellByID(self.spellID)
+			GameTooltip:Show()
+		end
+	end)
+	frame:SetScript("OnLeave", GameTooltip_Hide)
+	frame:SetScript("OnClick", function(self)
+		if not (self.itemID and self.itemID > 0) then return end
+		if IsModifiedClick and IsModifiedClick("CHATLINK") then
+			local _, link = C_Item.GetItemInfo(self.itemID)
+			if not link then return end
+			if ChatFrameUtil and ChatFrameUtil.InsertLink then
+				ChatFrameUtil.InsertLink(link)
+			elseif ChatEdit_InsertLink then
+				ChatEdit_InsertLink(link)
+			end
+		elseif onOpenRecipe then
+			local rid = W.GuildRecipeFor(self.itemID)
+			if rid then onOpenRecipe(rid) end
+		end
+	end)
+end
+
+-- Opens a whisper like the game does: just "Name" for your own realm,
+-- "Name-Realm" only for other realms (needed to reach them).
 function W.SendTell(name)
+	name = ns.Util.ShortName(name)
 	if ChatFrameUtil and ChatFrameUtil.SendTell then
 		ChatFrameUtil.SendTell(name)
 	elseif ChatFrame_SendTell then
@@ -104,6 +156,13 @@ function W.CrafterLabel(c)
 		tags[#tags + 1] = L.YOU
 	elseif c.isAlt then
 		tags[#tags + 1] = L.ALT
+	end
+	if c.readyAt then
+		if c.ready then
+			tags[#tags + 1] = "|cff20ff20" .. L.CD_READY .. "|r"
+		else
+			tags[#tags + 1] = "|cffff8000" .. L.CD_REMAINING:format(ns.Util.FormatAge(c.readyAt - ns.Now())) .. "|r"
+		end
 	end
 	if c.online then
 		tags[#tags + 1] = "|cff20ff20" .. L.ONLINE .. "|r"

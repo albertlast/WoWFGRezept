@@ -123,6 +123,153 @@ test("primary recipe changes go out fast, secondary ones are batched", function(
 	eq(cb:Record(a.guid).profs[TAILORING].recipes[3915], 2569, "primary change sent within seconds")
 end)
 
+test("cooldowns reach the guild and show who is ready", function()
+	math.randomseed(21)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = {
+		[ALCHEMY] = { rank = 300, maxRank = 300, name = "Alchemy", recipes = { [17187] = 12360, [2330] = 118 } },
+	}, cooldowns = { [17187] = 86400 } })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(ALCHEMY)
+	world:Run(150)
+	local cb = world.online[b.guid]
+	local readyAt = cb:Record(a.guid).profs[ALCHEMY].cds[17187]
+	truthy(readyAt and readyAt > world.clock.t + 80000, "B knows when the transmute is ready")
+	local c = cb.ns.Index.Crafters(17187)[1]
+	falsy(c.ready, "on cooldown")
+	eq(cb.ns.Index.Crafters(2330)[1].readyAt, nil, "normal recipe has no cooldown")
+
+	-- A day later the cooldown is over, without any new message.
+	world:Run(86400)
+	truthy(cb.ns.Index.Crafters(17187)[1].ready, "ready after the cooldown")
+end)
+
+test("wishlist: notice when a crafter comes online", function()
+	math.randomseed(22)
+	local world, a, b = threeMembers()
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(150)
+	world:Logout(a.guid)
+	world:Run(300)
+	local cb = world.online[b.guid]
+	cb.ns.Wishlist.Toggle(3914)
+	world.log = {}
+	world:Login(a.guid)
+	world:Run(30)
+	local found = false
+	for _, line in ipairs(world.log) do
+		if line:find("Bert", 1, true) == 1 and line:find("can craft", 1, true) and line:find("Recipe 3914", 1, true) then
+			found = true
+		end
+	end
+	truthy(found, "B was told that Anna can craft the wished recipe")
+end)
+
+test("tab switch with a stale recipe list: recipes stay in their profession", function()
+	math.randomseed(31)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", staleTabSwitch = true, profs = {
+		[TAILORING] = tailoring(150, { [3914] = 2568, [3915] = 2569 }),
+		[COOKING] = { rank = 50, maxRank = 75, name = "Cooking", secondary = true, recipes = { [2538] = 2679 } },
+	} })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(3)
+	ca:OpenTradeSkill(COOKING) -- first read returns the tailoring list
+	world:Run(150)
+	local own = ca:Record(a.guid)
+	eq(own.profs[COOKING].recipes[3914], nil, "tailoring recipe not stored under cooking")
+	truthy(own.profs[COOKING].recipes[2538], "cooking recipe stored")
+	eq(#world.online[b.guid].ns.Index.Crafters(3914), 1, "Anna listed once")
+end)
+
+test("recipes stored under the wrong profession are cleaned up and listed once", function()
+	math.randomseed(32)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = {
+		[TAILORING] = tailoring(150, { [3914] = 2568 }),
+		[COOKING] = { rank = 50, maxRank = 75, name = "Cooking", secondary = true, recipes = { [2538] = 2679 } },
+	} })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(3)
+	ca:OpenTradeSkill(COOKING)
+	world:Run(150)
+	-- Damage as written by the previous version: a tailoring recipe under cooking.
+	local own = ca:Record(a.guid)
+	own.profs[COOKING].recipes[3914] = 2568
+	ca.ns.Store.Rehash(own)
+	ca.ns.Index.dirty = true
+	eq(#ca.ns.Index.Crafters(3914), 1, "listed once even with damaged data")
+	ca:OpenTradeSkill(COOKING)
+	world:Run(150)
+	eq(ca:Record(a.guid).profs[COOKING].recipes[3914], nil, "cleaned up by the next scan")
+	assertConverged(world, a.guid, "cleaned record reached the guild")
+end)
+
+test("search by crafter", function()
+	math.randomseed(33)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = { [TAILORING] = tailoring(150, { [3914] = 2568, [3915] = 2569 }) } })
+	local b = world:AddChar({ guid = guid(2), name = "Bert", profs = { [TAILORING] = tailoring(100, { [3914] = 2568 }) } })
+	local ca = world:Login(a.guid)
+	local cb = world:Login(b.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	cb:OpenTradeSkill(TAILORING)
+	world:Run(150)
+	local Index = ca.ns.Index
+	eq(#Index.Search("", 0), 2)
+	eq(#Index.Search("", 0, a.guid), 2)
+	eq(#Index.Search("", 0, b.guid), 1)
+	eq(Index.Search("", 0, b.guid)[1].recipeID, 3914)
+	eq(#Index.Search("", 197, b.guid), 1, "combines with the profession filter")
+end)
+
+test("recipe list hides bind-on-pickup items only others can craft", function()
+	math.randomseed(34)
+	local world = H.NewWorld()
+	world.bindTypes = { [2568] = 1, [2569] = 2 } -- 2570 not loaded yet
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = {
+		[TAILORING] = tailoring(150, { [3914] = 2568, [3915] = 2569, [3916] = 2570 }) } })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	local ca = world:Login(a.guid)
+	local cb = world:Login(b.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(150)
+	local function ids(results)
+		local out = {}
+		for _, r in ipairs(results) do out[#out + 1] = r.recipeID end
+		return table.concat(out, ",")
+	end
+	eq(ids(cb.ns.Index.Search("", 0, nil, true)), "3915,3916", "Bert: Anna's BoP item hidden, unloaded item kept")
+	eq(ids(cb.ns.Index.Search("", 0, nil, false)), "3914,3915,3916", "setting off: everything")
+	eq(ids(ca.ns.Index.Search("", 0, nil, true)), "3914,3915,3916", "Anna sees her own BoP recipe")
+	eq(cb.env.GuildTradebookDB.options.hideForeignBoP, true, "on by default")
+end)
+
+test("names: own realm hidden, other realms shown", function()
+	local world, a = threeMembers()
+	local ca = world:Login(a.guid)
+	eq(ca.ns.Util.ShortName("Bert-Realm"), "Bert")
+	eq(ca.ns.Util.ShortName("Mira Stein-Realm"), "Mira Stein")
+	eq(ca.ns.Util.ShortName("Bert-OtherRealm"), "Bert-OtherRealm")
+	eq(ca.ns.Util.ShortName("Bert"), "Bert")
+end)
+
 test("offline owner's data is relayed to later logins", function()
 	local world, a, b, c = threeMembers()
 	world:Login(b.guid)
@@ -419,4 +566,35 @@ test("idle guild: periodic sync stays cheap", function()
 	local perRound = world.messages / 3
 	print(("       idle: %.0f messages per 20 min for 30 clients"):format(perRound))
 	truthy(perRound <= 30 * 2 + 10, "about one hello + ack per client and round")
+end)
+
+test("!craft from a member without the addon: exactly one answer", function()
+	local world = bigGuild(30, 23)
+	local nora = world:AddChar({ guid = guid(900), name = "Nora" }) -- no addon, never logs in
+	world:GuildChat(nora.name, "!craft Recipe 3005")
+	world:Run(30)
+	local answers = {}
+	for _, line in ipairs(world.chat) do
+		if line.text:find("[Guild Tradebook]", 1, true) then answers[#answers + 1] = line.text end
+	end
+	eq(#answers, 1, "one answer for 30 addon users")
+	truthy(answers[1]:find("Recipe 3005: M3", 1, true), "names the crafter: " .. answers[1])
+
+	world:GuildChat(nora.name, "!craft Recipe 3005")
+	world:Run(30)
+	local again = 0
+	for _, line in ipairs(world.chat) do
+		if line.text:find("[Guild Tradebook]", 1, true) then again = again + 1 end
+	end
+	eq(again, 1, "the same question within a minute is not answered twice")
+end)
+
+test("!craft is silent when every client disabled it", function()
+	local world = bigGuild(5, 24)
+	for _, client in pairs(world.online) do
+		client.env.GuildTradebookDB.options.chatResponder = false
+	end
+	world:GuildChat("Nora-Realm", "!craft Recipe 1001")
+	world:Run(30)
+	eq(#world.chat, 1, "only the question")
 end)

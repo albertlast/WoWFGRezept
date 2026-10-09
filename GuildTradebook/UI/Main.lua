@@ -1,7 +1,7 @@
 local _, ns = ...
 
 local L = ns.L
-local UI = { tabs = {}, order = { "search", "upgrades", "members" } }
+local UI = { tabs = {}, order = { "search", "upgrades", "wishlist", "members" } }
 ns.UI = UI
 
 -- Tab modules register themselves: UI.RegisterTab(key, label, build(content), refresh(content, arg))
@@ -113,3 +113,4 @@ ns.On("RecordsChanged", refreshSoon)
 ns.On("FactsChanged", refreshSoon)
 ns.On("RosterUpdated", refreshSoon)
 ns.On("GuildChanged", refreshSoon)
+ns.On("WishlistChanged", refreshSoon)

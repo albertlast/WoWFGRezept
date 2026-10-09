@@ -12,7 +12,8 @@ records unchanged. Records are ordered by (ver, seq, h):
 Internal record:
   { guid, name, class, level, ver, seq, main?,
     profs = { [skillLineID] = { rank, maxRank, primary?, scannedAt?, unverified?,
-                                recipes = { [recipeID] = outputItemID or 0 } | nil } },
+                                recipes = { [recipeID] = outputItemID or 0 } | nil,
+                                cds = { [recipeID] = readyAt (server time, 0 = ready) } | nil } },
     h,                                     -- content hash
     recvAt?, recvFrom?, goneSince? }       -- local metadata, never sent
 ]]
@@ -28,6 +29,8 @@ Store.GONE_GRACE = 14 * 86400       -- keep records of ex-members this long (hid
 Store.MAX_RECORDS = 2000            -- per guild
 Store.MAX_PROFS = 12
 Store.MAX_RECIPES = 1500            -- per profession
+Store.MAX_COOLDOWNS = 50            -- per profession
+Store.COOLDOWN_TOLERANCE = 120      -- seconds of drift ignored when re-reading a cooldown
 Store.NUM_BUCKETS = 16
 
 -- Professions are shared when the game gives them a crafting window (see
@@ -38,9 +41,15 @@ Store.NO_RECIPE_SKILLLINES = {
 	[393] = true, -- Skinning
 }
 
-local OPTION_DEFAULTS = {
+Store.OPTION_DEFAULTS = {
 	debug = false,
-	tooltip = true,
+	tooltip = true,          -- crafters on craftable items
+	tooltipRecipes = true,   -- known / not known on recipe items
+	chatResponder = true,    -- answer "!craft" in guild chat
+	wishAlerts = true,       -- notice when a wished crafter comes online
+	wishSound = true,
+	minimapButton = true,
+	hideForeignBoP = true,   -- recipe list: hide BoP items only others can craft
 }
 
 -- SavedVariables ---------------------------------------------------------------
@@ -54,7 +63,7 @@ function Store.InitDB(saved)
 	saved.account = saved.account or {}
 	saved.account.chars = saved.account.chars or {}
 	saved.options = saved.options or {}
-	for k, v in pairs(OPTION_DEFAULTS) do
+	for k, v in pairs(Store.OPTION_DEFAULTS) do
 		if saved.options[k] == nil then
 			saved.options[k] = v
 		end
@@ -73,9 +82,12 @@ end
 
 -- Hashing and ordering ---------------------------------------------------------
 
+-- Integers as text. Not "%d": WoW's string.format only accepts 32-bit signed
+-- values there, and hashes go up to 2^32. "%.0f" is exact up to 2^53.
 local function fmt(n)
-	return string.format("%d", n or 0)
+	return string.format("%.0f", n or 0)
 end
+Store.FormatInt = fmt
 
 -- Canonical content string: identical on every client for identical content.
 function Store.Canonical(rec)
@@ -91,6 +103,13 @@ function Store.Canonical(rec)
 			parts[#parts + 1] = "[" .. table.concat(r, ",") .. "]"
 		else
 			parts[#parts + 1] = "-"
+		end
+		if p.cds and next(p.cds) then
+			local c = {}
+			for _, rid in ipairs(Util.SortedKeys(p.cds)) do
+				c[#c + 1] = fmt(rid) .. "@" .. fmt(p.cds[rid])
+			end
+			parts[#parts + 1] = "cd[" .. table.concat(c, ",") .. "]"
 		end
 	end
 	return table.concat(parts, "|")
@@ -220,7 +239,7 @@ function Store.ReconcileProfessions(own, snapshot, allowRemove)
 			mark("major")
 		else
 			if s.rank < p.rank then
-				p.recipes, p.scannedAt, p.unverified = nil, nil, nil
+				p.recipes, p.scannedAt, p.unverified, p.cds = nil, nil, nil, nil
 				mark("major")
 			end
 			if p.rank ~= s.rank or p.maxRank ~= s.maxRank or p.primary ~= (s.primary or nil) then
@@ -265,10 +284,59 @@ function Store.ApplyScan(own, skillLine, recipes, complete, now)
 	return changed
 end
 
+--[[
+Cooldowns of one profession, read from the open window:
+observed[recipeID] = seconds remaining (0 = ready). Entries are kept once a
+recipe is known to have a cooldown, so "ready" can be shown. Re-reading the
+same cooldown a little later gives a slightly different readyAt; drift below
+COOLDOWN_TOLERANCE is not a change. Returns true if the record changed.
+]]
+function Store.ApplyCooldowns(own, skillLine, observed, now)
+	local p = own.profs[skillLine]
+	if not p then return false end
+	local changed = false
+	for rid, remaining in pairs(observed) do
+		local readyAt = remaining > 0 and math.floor(now + remaining) or 0
+		local old = p.cds and p.cds[rid]
+		local differs
+		if old == nil then
+			differs = true
+		elseif readyAt == 0 then
+			differs = old > now
+		else
+			differs = math.abs(readyAt - old) > Store.COOLDOWN_TOLERANCE
+		end
+		if differs then
+			p.cds = p.cds or {}
+			p.cds[rid] = readyAt
+			changed = true
+		end
+	end
+	return changed
+end
+
 -- Recipe changes of primary professions are published quickly ("major"),
 -- secondary ones (Cooking, First Aid, Fishing, ...) are batched ("minor").
 function Store.ChangeKind(prof)
 	return (prof and prof.primary) and "major" or "minor"
+end
+
+-- Removes the recipes of one profession for which shouldRemove(recipeID) is
+-- true. Returns true if anything was removed.
+function Store.RemoveRecipes(own, skillLine, shouldRemove)
+	local p = own.profs[skillLine]
+	if not p or not p.recipes then return false end
+	local removed = false
+	local doomed = {}
+	for rid in pairs(p.recipes) do
+		if shouldRemove(rid) then doomed[#doomed + 1] = rid end
+	end
+	for _, rid in ipairs(doomed) do
+		p.recipes[rid] = nil
+		if p.cds then p.cds[rid] = nil end
+		removed = true
+	end
+	return removed
 end
 
 -- Adds one newly learned recipe. Ignored while the profession is unscanned,
@@ -302,6 +370,11 @@ function Store.MergeIncomingSelf(own, incoming)
 					p.recipes[rid] = item
 					changed = true
 				end
+			end
+			if ip.cds and not p.cds then
+				p.cds = {}
+				for rid, readyAt in pairs(ip.cds) do p.cds[rid] = readyAt end
+				changed = true
 			end
 			if changed then
 				p.unverified = true
@@ -398,7 +471,8 @@ end
 -- Records travel as compact arrays (CBOR handles arrays more reliably than
 -- sparse integer-keyed maps):
 --   { guid, name, class, level, ver, seq, main|"",
---     { {sl, rank, maxRank, scannedAt, unverified(0/1), {rid, item, ...}|false, primary(0/1)}, ... } }
+--     { {sl, rank, maxRank, scannedAt, unverified(0/1), {rid, item, ...}|false, primary(0/1),
+--        {rid, readyAt, ...}}, ... } }
 
 function Store.IsValidGUID(guid)
 	return type(guid) == "string" and #guid <= 40 and guid:match("^Player%-%d+%-%x+$") ~= nil
@@ -416,7 +490,12 @@ function Store.ToWire(rec)
 				flat[#flat + 1] = p.recipes[rid]
 			end
 		end
-		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0 }
+		local cds = {}
+		for _, rid in ipairs(Util.SortedKeys(p.cds or {})) do
+			cds[#cds + 1] = rid
+			cds[#cds + 1] = p.cds[rid]
+		end
+		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds }
 	end
 	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.main or "", profs }
 end
@@ -439,7 +518,7 @@ function Store.FromWire(w)
 	for i = 1, #profs do
 		local p = profs[i]
 		if type(p) ~= "table" then return nil, "prof" end
-		local sl, rank, maxRank, scannedAt, unverified, flat, primary = p[1], p[2], p[3], p[4], p[5], p[6], p[7]
+		local sl, rank, maxRank, scannedAt, unverified, flat, primary, cdFlat = p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8]
 		if not Util.IsInt(sl, 1, 2 ^ 31) or rec.profs[sl] then return nil, "skillLine" end
 		if not Util.IsInt(rank, 0, 10000) or not Util.IsInt(maxRank, 0, 10000) then return nil, "rank" end
 		if not Util.IsInt(scannedAt, 0, 2 ^ 40) or (unverified ~= 0 and unverified ~= 1) or (primary ~= 0 and primary ~= 1) then
@@ -455,7 +534,18 @@ function Store.FromWire(w)
 				recipes[rid] = item
 			end
 		end
+		local cds
+		if cdFlat ~= nil then
+			if type(cdFlat) ~= "table" or #cdFlat % 2 ~= 0 or #cdFlat > 2 * Store.MAX_COOLDOWNS then return nil, "cooldowns" end
+			for j = 1, #cdFlat, 2 do
+				local rid, readyAt = cdFlat[j], cdFlat[j + 1]
+				if not Util.IsInt(rid, 1, 2 ^ 31) or not Util.IsInt(readyAt, 0, 2 ^ 40) then return nil, "cooldown" end
+				cds = cds or {}
+				cds[rid] = readyAt
+			end
+		end
 		rec.profs[sl] = {
+			cds = cds,
 			rank = rank, maxRank = maxRank,
 			scannedAt = scannedAt ~= 0 and scannedAt or nil,
 			unverified = unverified == 1 or nil,

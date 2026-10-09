@@ -23,6 +23,9 @@ Recipe facts (reagents):
   Q  FACT_REQ {l = recipeIDs}           whisper to an online crafter of the recipe
   F  FACT     {f = facts}               whisper answer
 
+Guild chat "!craft" (see Features/ChatResponder.lua):
+  X  ANSWERED {k = question key}        GUILD: "I answer this one", others stay silent
+
 A client starts a sync on login and every 20 minutes with a random partner.
 Every message carries the protocol major version (p) and the guild key (g).
 ]]
@@ -428,6 +431,12 @@ handlers.F = function(msg)
 	end
 	if changed then
 		ns.Emit("FactsChanged")
+	end
+end
+
+handlers.X = function(msg, channel)
+	if channel == "GUILD" and Util.IsInt(msg.k, 0, 2 ^ 32) then
+		ns.Emit("CraftQueryAnswered", msg.k)
 	end
 end
 
