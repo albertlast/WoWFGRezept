@@ -228,6 +228,27 @@ function H.NewWorld(opts)
 	end
 
 	-- A guild chat line, seen by every online client (like CHAT_MSG_GUILD).
+	-- A chat whisper (not an addon message). Recorded in world.whispers and
+	-- delivered as CHAT_MSG_WHISPER if the target is online ("Name" means the
+	-- sender's realm).
+	world.whispers = {}
+	function world:Whisper(fromName, target, text)
+		local realm = fromName:match("%-([^%-]+)$") or "Realm"
+		local full = target:find("-", 1, true) and target or (target .. "-" .. realm)
+		table.insert(self.whispers, { from = fromName, to = full, text = text })
+		local fromGUID
+		for guid, c in pairs(self.chars) do
+			if c.name == fromName then fromGUID = guid end
+		end
+		for guid, client in pairs(self.online) do
+			if self.chars[guid].name == full then
+				self.clock:Add(self.latency, function()
+					client:Fire("CHAT_MSG_WHISPER", text, fromName, "", "", fromName, "", 0, 0, "", 0, 0, fromGUID)
+				end, client.env)
+			end
+		end
+	end
+
 	-- The 12th event value is the sender's GUID. world.chatNameFormats: each
 	-- client sees the sender's name in another form (realm suffix or not).
 	function world:GuildChat(fromName, text)
@@ -302,6 +323,11 @@ function H.NewClient(world, char)
 		table.insert(world.log, char.name .. ": " .. table.concat(parts, " "))
 	end
 	env.GetLocale = function() return "enUS" end
+	-- Chat filters (client.chatFilters[event] = the last one registered).
+	env.ChatFrame_AddMessageEventFilter = function(event, fn)
+		client.chatFilters = client.chatFilters or {}
+		client.chatFilters[event] = fn
+	end
 	-- char.version / char.build: what this client's TOC says.
 	env.C_AddOns = {
 		GetAddOnMetadata = function(_, field)
@@ -401,8 +427,12 @@ function H.NewClient(world, char)
 			return 0
 		end,
 		InChatMessagingLockdown = function() return char.restricted end,
-		SendChatMessage = function(text, chatType)
-			if chatType == "GUILD" then world:GuildChat(char.name, text) end
+		SendChatMessage = function(text, chatType, _, target)
+			if chatType == "GUILD" then
+				world:GuildChat(char.name, text)
+			elseif chatType == "WHISPER" then
+				world:Whisper(char.name, target, text)
+			end
 		end,
 	}
 	env.C_Spell = { GetSpellName = function(id) return "Recipe " .. id end }

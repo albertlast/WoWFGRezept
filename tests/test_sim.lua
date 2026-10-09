@@ -25,6 +25,15 @@ local function assertConverged(world, owner, msg)
 	end
 end
 
+-- !craft answers whispered to `to` ("Name-Realm").
+local function craftAnswers(world, to)
+	local list = {}
+	for _, w in ipairs(world.whispers) do
+		if w.to == to and w.text:find("[Guild Tradebook]", 1, true) then list[#list + 1] = w.text end
+	end
+	return list
+end
+
 local function threeMembers()
 	math.randomseed(42)
 	local world = H.NewWorld()
@@ -692,7 +701,7 @@ test("characters of one account are grouped; an offline crafter is reached via t
 	co.env.GuildTradebookDB.options.chatResponder = false
 	world:GuildChat("Otto-Realm", "!craft Recipe 3914")
 	world:Run(15)
-	local answer = world.chat[#world.chat].text
+	local answer = craftAnswers(world, "Otto-Realm")[1] or "no answer"
 	truthy(answer:find("Crafty (Mainy*)", 1, true), answer)
 	-- The crafter's owner logs off completely: no longer reachable.
 	world:Logout(main.guid)
@@ -895,20 +904,44 @@ test("!craft from a member without the addon: exactly one answer", function()
 	local nora = world:AddChar({ guid = guid(900), name = "Nora" }) -- no addon, never logs in
 	world:GuildChat(nora.name, "!craft Recipe 3005")
 	world:Run(30)
-	local answers = {}
-	for _, line in ipairs(world.chat) do
-		if line.text:find("[Guild Tradebook]", 1, true) then answers[#answers + 1] = line.text end
-	end
+	local answers = craftAnswers(world, nora.name)
 	eq(#answers, 1, "one answer for 30 addon users")
 	truthy(answers[1]:find("Recipe 3005: M3", 1, true), "names the crafter: " .. answers[1])
+	eq(#world.chat, 1, "guild chat only shows the question")
 
 	world:GuildChat(nora.name, "!craft Recipe 3005")
 	world:Run(30)
-	local again = 0
-	for _, line in ipairs(world.chat) do
-		if line.text:find("[Guild Tradebook]", 1, true) then again = again + 1 end
+	eq(#craftAnswers(world, nora.name), 1, "the same question within a minute is not answered twice")
+end)
+
+test("!craft whispered to an addon user: answered right away by whisper", function()
+	local world = bigGuild(5, 27)
+	local nora = world:AddChar({ guid = guid(902), name = "Nora" })
+	world:Run(130) -- the next roster refresh lists her
+	world:ResetCounters()
+	world:Whisper(nora.name, "M1", "!craft Recipe 3005")
+	world:Run(5)
+	local answers = craftAnswers(world, nora.name)
+	eq(#answers, 1)
+	truthy(answers[1]:find("Recipe 3005: M3", 1, true), answers[1])
+	eq(world.byType.X or 0, 0, "nobody else saw it: no answered signal")
+	-- The answerer's own copy ("To Nora: ...") is hidden from its chat.
+	local filtered
+	for _, w in ipairs(world.whispers) do
+		if w.to == nora.name then filtered = w.text end
 	end
-	eq(again, 1, "the same question within a minute is not answered twice")
+	local m1 = world.online[guid(1)]
+	truthy(m1.chatFilters and m1.chatFilters.CHAT_MSG_WHISPER_INFORM, "filter registered")
+	truthy(m1.chatFilters.CHAT_MSG_WHISPER_INFORM(nil, "CHAT_MSG_WHISPER_INFORM", filtered), "own answer hidden")
+	falsy(m1.chatFilters.CHAT_MSG_WHISPER_INFORM(nil, "CHAT_MSG_WHISPER_INFORM", "hi there"), "normal whispers stay")
+
+	-- Someone outside the guild gets no answer.
+	local stranger = world:AddChar({ guid = guid(903), name = "Stranger" })
+	world:RemoveFromGuild(stranger.guid)
+	world:Run(5)
+	world:Whisper(stranger.name, "M1", "!craft Recipe 3005")
+	world:Run(5)
+	eq(#craftAnswers(world, stranger.name), 0, "not told to strangers")
 end)
 
 test("AreOutgoingAddonChatMessagesRestricted is true (Forever beta): sync and !craft still work", function()
@@ -923,11 +956,7 @@ test("AreOutgoingAddonChatMessagesRestricted is true (Forever beta): sync and !c
 	assertConverged(world, a.guid, "addon messages are not chat messages")
 	world:GuildChat("Nora-Realm", "!craft Recipe 3914")
 	world:Run(30)
-	local answers = {}
-	for _, line in ipairs(world.chat) do
-		if line.text:find("[Guild Tradebook]", 1, true) then answers[#answers + 1] = line end
-	end
-	eq(#answers, 1, "exactly one answer")
+	eq(#craftAnswers(world, "Nora-Realm"), 1, "exactly one answer")
 end)
 
 test("!craft: clients see the asker's name in different forms, still exactly one answer", function()
@@ -938,11 +967,7 @@ test("!craft: clients see the asker's name in different forms, still exactly one
 	world:Run(60)
 	world:GuildChat(asker.name, "!craft Recipe 3005")
 	world:Run(30)
-	local answers = 0
-	for _, line in ipairs(world.chat) do
-		if line.text:find("[Guild Tradebook]", 1, true) then answers = answers + 1 end
-	end
-	eq(answers, 1, "the answered signal matches on every client")
+	eq(#craftAnswers(world, asker.name), 1, "the answered signal matches on every client")
 end)
 
 test("partner request: a client that missed the first round answers a later one", function()
@@ -978,4 +1003,5 @@ test("!craft is silent when every client disabled it", function()
 	world:GuildChat("Nora-Realm", "!craft Recipe 1001")
 	world:Run(30)
 	eq(#world.chat, 1, "only the question")
+	eq(#world.whispers, 0, "no answer")
 end)
