@@ -9,7 +9,7 @@ Position: ns.db.minimap (LibDBIcon's own table), shown/hidden: options.minimapBu
 ]]
 local ADDON, ns = ...
 
-local L, Util = ns.L, ns.Util
+local L = ns.L
 local MinimapButton = { glowing = false }
 ns.MinimapButton = MinimapButton
 
@@ -28,7 +28,7 @@ local function onTooltipShow(tooltip)
 		for _, entry in ipairs(ready) do
 			local names = {}
 			for _, c in ipairs(entry.online) do
-				names[#names + 1] = Util.ClassColored(Util.ShortName(c.name), c.class)
+				names[#names + 1] = ns.Widgets.CrafterShort(c, false)
 			end
 			tooltip:AddDoubleLine(entry.name, table.concat(names, ", "), 1, 1, 1, 1, 1, 1)
 		end

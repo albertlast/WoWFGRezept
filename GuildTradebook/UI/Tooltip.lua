@@ -7,7 +7,7 @@ Tooltip lines:
 ]]
 local _, ns = ...
 
-local L, Index, Util = ns.L, ns.Index, ns.Util
+local L, Index, W = ns.L, ns.Index, ns.Widgets
 local Tooltip = {}
 ns.Tooltip = Tooltip
 
@@ -17,14 +17,11 @@ local MAX_NAMES = 4
 
 local MAX_ONLINE_NAMES = 3
 
-local function label(c)
-	return Util.ClassColored(Util.ShortName(c.name), c.class)
-end
-
 --[[
 Text for a list of crafters (Index.Crafters order: you, online, ...).
-  few (<= MAX_NAMES):  "Anna*, Bert"            (* = online)
-  many:                "online: Anna, Bert, Cleo +2"   or   "none online"
+  few (<= MAX_NAMES):  "Anna*, Bert, Bobalt (Bob*)"   (* = online)
+  many:                "online: Anna, Bert, Bobalt (Bob) +2"   or   "none online"
+Crafters whose owner is online on another character count as online.
 The caller puts the total in front for the "many" case. Common items (every
 tailor makes Bolt of Linen Cloth) then stay one short line.
 ]]
@@ -32,20 +29,20 @@ function Tooltip.CrafterText(crafters)
 	if #crafters <= MAX_NAMES then
 		local names = {}
 		for _, c in ipairs(crafters) do
-			names[#names + 1] = label(c) .. (c.online and "|cff20ff20*|r" or "")
+			names[#names + 1] = W.CrafterShort(c, true)
 		end
 		return table.concat(names, ", ")
 	end
 	local online = {}
 	for _, c in ipairs(crafters) do
-		if c.online and not c.isSelf then online[#online + 1] = c end
+		if c.reachable and not c.isSelf then online[#online + 1] = c end
 	end
 	if #online == 0 then
 		return L.TOOLTIP_NONE_ONLINE
 	end
 	local names = {}
 	for i = 1, math.min(#online, MAX_ONLINE_NAMES) do
-		names[i] = label(online[i])
+		names[i] = W.CrafterShort(online[i], false)
 	end
 	local text = L.TOOLTIP_ONLINE:format(table.concat(names, ", "))
 	if #online > MAX_ONLINE_NAMES then

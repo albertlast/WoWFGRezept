@@ -1,6 +1,6 @@
 local _, ns = ...
 
-local L, W, Util = ns.L, ns.Widgets, ns.Util
+local L, W = ns.L, ns.Widgets
 local ui = {}
 
 local function crafterSummary(crafters)
@@ -10,9 +10,7 @@ local function crafterSummary(crafters)
 			names[#names + 1] = L.TOOLTIP_MORE:format(#crafters - 4)
 			break
 		end
-		local name = Util.ClassColored(Util.ShortName(c.name), c.class)
-		if c.online and not c.isSelf then name = name .. "|cff20ff20*|r" end
-		names[#names + 1] = name
+		names[#names + 1] = W.CrafterShort(c, true)
 	end
 	return #names > 0 and table.concat(names, ", ") or ("|cff999999" .. L.WISH_NO_CRAFTER .. "|r")
 end

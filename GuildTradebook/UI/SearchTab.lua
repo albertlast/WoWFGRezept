@@ -311,7 +311,7 @@ local function build(content)
 		row.text:SetPoint("RIGHT", -4, 0)
 		row:SetScript("OnClick", function(self)
 			if not self.data.isSelf then
-				W.SendTell(self.data.name)
+				W.SendTell(Index.ContactName(self.data))
 			end
 		end)
 	end, function(row, data)

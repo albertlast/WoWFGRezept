@@ -147,6 +147,27 @@ function W.SendTell(name)
 	end
 end
 
+local ONLINE_STAR = "|cff20ff20*|r"
+
+local function coloredName(name, class)
+	return ns.Util.ClassColored(ns.Util.ShortName(name), class)
+end
+
+--[[
+Compact crafter name for lists and tooltips (entry from Index.Crafters):
+  "Anna*"          online (star only if `star`; never for you)
+  "Bobalt (Bob*)"  offline, but the same person is online as Bob
+]]
+function W.CrafterShort(c, star)
+	local name = coloredName(c.name, c.class)
+	if c.via then
+		return name .. " (" .. coloredName(c.via.name, c.via.class) .. (star and ONLINE_STAR or "") .. ")"
+	elseif star and c.online and not c.isSelf then
+		return name .. ONLINE_STAR
+	end
+	return name
+end
+
 -- "Anna (online, 3d)" style label for a crafter entry from Index.Crafters.
 function W.CrafterLabel(c)
 	local L = ns.L
@@ -166,6 +187,8 @@ function W.CrafterLabel(c)
 	end
 	if c.online then
 		tags[#tags + 1] = "|cff20ff20" .. L.ONLINE .. "|r"
+	elseif c.via then
+		tags[#tags + 1] = "|cff20ff20" .. L.ONLINE_AS:format(coloredName(c.via.name, c.via.class) .. "|cff20ff20") .. "|r"
 	elseif c.ver > 0 then
 		tags[#tags + 1] = L.CONFIRMED_AGO:format(ns.Util.FormatAge(ns.Now() - c.ver))
 	end

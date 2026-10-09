@@ -64,7 +64,8 @@ function Scanner.GetOwn()
 	if fresh then
 		Scanner.BeginAdoption()
 	end
-	-- Account bookkeeping: lets the UI mark alts and the main link survive.
+	-- Account bookkeeping: the account's characters share one player ID
+	-- (Scanner.UpdatePlayerId) and are marked as alts in the UI.
 	local acc = ns.db.account.chars[guid] or {}
 	acc.guildKey = ns.Roster.guildKey
 	acc.name = own.name
@@ -172,7 +173,43 @@ function Scanner.Reconcile(allowRemove)
 	if kind then
 		Scanner.Commit(own, kind)
 	end
+	Scanner.UpdatePlayerId()
 	remindUnscanned(own, snapshot)
+end
+
+local function newPlayerId()
+	return Store.NewPlayerId(math.random)
+end
+
+--[[
+Gives all of the account's characters in this guild the same player ID (see
+Store.ReconcilePlayerId). extra: the ID of a copy of the logged-in character
+seen in the pool. Alts are not logged in, but their records belong to this
+account, so it may publish them with a new version.
+]]
+function Scanner.UpdatePlayerId(extra)
+	local gd = ns.GetGuildData()
+	local own = Scanner.GetOwn()
+	if not (gd and own) then return end
+	local guids = {}
+	for guid in pairs(ns.db.account.chars) do
+		local rec = gd.chars[guid]
+		if rec and not rec.goneSince then
+			guids[#guids + 1] = guid
+		end
+	end
+	table.sort(guids)
+	local _, stamped = Store.ReconcilePlayerId(gd, guids, extra, newPlayerId)
+	for _, guid in ipairs(stamped) do
+		local rec = gd.chars[guid]
+		if guid == own.guid then
+			Scanner.Commit(own, "major")
+		elseif rec.ver > 0 then
+			Store.Bump(rec, ns.Now())
+			ns.Protocol.QueuePush(guid)
+			ns.Emit("RecordsChanged", guid)
+		end
+	end
 end
 
 -- The profession a recipe belongs to, according to the game (or nil).

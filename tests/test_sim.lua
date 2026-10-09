@@ -469,6 +469,108 @@ test("alts are shared from the account while playing another character", functio
 	truthy(r and r.profs[TAILORING].recipes[3914], "main's recipes came from the alt's client")
 end)
 
+test("characters of one account are grouped; an offline crafter is reached via the online one", function()
+	math.randomseed(11)
+	local world = H.NewWorld()
+	local crafter = world:AddChar({ guid = guid(1), name = "Crafty", account = "acc1", profs = { [TAILORING] = tailoring(100, { [3914] = 2568 }) } })
+	local main = world:AddChar({ guid = guid(2), name = "Mainy", account = "acc1" })
+	local other = world:AddChar({ guid = guid(3), name = "Otto" })
+	local cc = world:Login(crafter.guid)
+	world:Run(60)
+	cc:OpenTradeSkill(TAILORING)
+	world:Run(120)
+	world:Logout(crafter.guid)
+	world:Login(main.guid)
+	world:Run(30)
+	local co = world:Login(other.guid)
+	world:Run(180)
+	local rc, rm = co:Record(crafter.guid), co:Record(main.guid)
+	truthy(rc and rc.player, "crafter has a player ID")
+	eq(rm and rm.player, rc.player)
+	falsy(co:Record(other.guid).player == rc.player, "other players have their own ID")
+	local c = co.ns.Index.Crafters(3914)[1]
+	eq(c.guid, crafter.guid)
+	falsy(c.online)
+	eq(c.via and c.via.guid, main.guid)
+	truthy(c.reachable)
+	eq(co.ns.Index.ContactName(c), "Mainy-Realm")
+	-- The crafter's owner logs off completely: no longer reachable.
+	world:Logout(main.guid)
+	world:Run(150)
+	c = co.ns.Index.Crafters(3914)[1]
+	falsy(c.via)
+	falsy(c.reachable)
+end)
+
+test("the 'main' leaves the guild: the remaining characters stay grouped without it", function()
+	math.randomseed(13)
+	local world = H.NewWorld()
+	local main = world:AddChar({ guid = guid(1), name = "Mainy", level = 60, account = "acc1" })
+	local crafter = world:AddChar({ guid = guid(2), name = "Crafty", level = 40, account = "acc1", profs = { [TAILORING] = tailoring(100, { [3914] = 2568 }) } })
+	local banker = world:AddChar({ guid = guid(3), name = "Banky", level = 10, account = "acc1" })
+	local other = world:AddChar({ guid = guid(4), name = "Otto" })
+	local co = world:Login(other.guid)
+	for _, c in ipairs({ main, banker }) do
+		world:Login(c.guid)
+		world:Run(150)
+		world:Logout(c.guid)
+	end
+	local cc = world:Login(crafter.guid)
+	world:Run(60)
+	cc:OpenTradeSkill(TAILORING)
+	world:Run(150)
+	world:Logout(crafter.guid)
+	world:Run(30)
+	local Index = co.ns.Index
+	eq(#Index.Siblings(crafter.guid), 2)
+	-- Mainy is online but leaves the guild (or is kicked).
+	world:Login(main.guid)
+	world:Run(30)
+	eq(Index.Crafters(3914)[1].via.guid, main.guid)
+	world:RemoveFromGuild(main.guid)
+	world:Run(30)
+	local siblings = Index.Siblings(crafter.guid)
+	eq(#siblings, 1, "only the characters still in the guild")
+	eq(siblings[1], banker.guid)
+	falsy(Index.Crafters(3914)[1].via, "a former member is never the contact")
+	-- The bank alt comes online: it is the contact now.
+	world:Login(banker.guid)
+	world:Run(30)
+	eq(Index.Crafters(3914)[1].via.guid, banker.guid)
+	-- The remaining characters keep their ID; nothing was re-published.
+	eq(co:Record(crafter.guid).player, co:Record(banker.guid).player)
+end)
+
+test("same character on a second PC: both PCs agree on one player ID", function()
+	math.randomseed(12)
+	local world = H.NewWorld()
+	local main = world:AddChar({ guid = guid(1), name = "Mainy", account = "pc1" })
+	local alt = world:AddChar({ guid = guid(2), name = "Alty", account = "pc2" })
+	local other = world:AddChar({ guid = guid(3), name = "Otto" })
+	local co = world:Login(other.guid)
+	world:Login(main.guid)
+	world:Run(150)
+	world:Logout(main.guid)
+	world:Login(alt.guid)
+	world:Run(150)
+	world:Logout(alt.guid)
+	falsy(co:Record(main.guid).player == co:Record(alt.guid).player, "unrelated so far")
+	-- Mainy is played on the second PC once: its pool copy links both IDs.
+	main.account = "pc2"
+	world:Login(main.guid)
+	world:Run(200)
+	world:Logout(main.guid)
+	world:Run(30)
+	eq(co:Record(main.guid).player, co:Record(alt.guid).player)
+	-- Back on the first PC, that PC adopts the shared ID as well.
+	main.account = "pc1"
+	world:Login(main.guid)
+	world:Run(200)
+	eq(co:Record(main.guid).player, co:Record(alt.guid).player)
+	eq(world.online[main.guid].env.GuildTradebookDB.guilds[world.online[main.guid].ns.Roster.guildKey].playerId,
+		co:Record(alt.guid).player)
+end)
+
 test("server profession data hides stale primary professions", function()
 	local world, a, b = threeMembers()
 	world:Login(b.guid)
@@ -557,6 +659,26 @@ test("100 online, fresh install logs in: one elected partner sends the pool once
 	for i = 1, 100 do
 		truthy(cf:Record(guid(i)), "fresh client has member " .. i)
 	end
+end)
+
+test("30 online see a member leave at once: no messages, every copy hidden", function()
+	local world = bigGuild(30, 31)
+	local leaver = guid(7)
+	world:Logout(leaver)
+	world:Run(30)
+	world:ResetCounters()
+	world:RemoveFromGuild(leaver)
+	world:Run(60)
+	eq(world.messages, 0, "a leave is not announced: every client sees the roster itself")
+	for g, client in pairs(world.online) do
+		local r = client:Record(leaver)
+		truthy(r and r.goneSince, client.char.name .. " hides the leaver")
+		falsy(client.ns.Index.Crafters(7001)[1], client.char.name .. " no longer lists the leaver")
+	end
+	-- The next sync round: digests agree (former members are left out), so no
+	-- client sends records about the leaver.
+	world:Run(1300)
+	falsy(world.byType.D or world.byType.W or world.byType.R, "only hello + ack: " .. H.Describe(world.byType))
 end)
 
 test("idle guild: periodic sync stays cheap", function()

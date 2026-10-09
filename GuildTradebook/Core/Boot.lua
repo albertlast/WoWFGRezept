@@ -47,24 +47,6 @@ local function stats()
 		Roster.guildKey, tostring(Roster.ready), chars, hidden, recipes, Util.Count(ns.db.recipeFacts), #ns.Protocol.outbox))
 end
 
-local function setMain(name)
-	local own = ns.Scanner.GetOwn()
-	if not own then return end
-	local mainGUID
-	if name and name ~= "" then
-		mainGUID = Roster.GuidByName(name)
-		if not mainGUID then
-			ns.Print("unknown guild member:", name)
-			return
-		end
-	end
-	if own.main ~= mainGUID then
-		own.main = mainGUID
-		ns.Scanner.Commit(own, "major")
-	end
-	ns.Print("main:", name ~= "" and name or "-")
-end
-
 local function slash(input)
 	local cmd, rest = (input or ""):match("^%s*(%S*)%s*(.-)%s*$")
 	cmd = cmd:lower()
@@ -84,8 +66,6 @@ local function slash(input)
 	elseif cmd == "chatbot" then
 		ns.db.options.chatResponder = not ns.db.options.chatResponder
 		ns.Print("!craft:", tostring(ns.db.options.chatResponder))
-	elseif cmd == "main" then
-		setMain(rest)
 	elseif cmd == "resync" then
 		ns.Protocol.sync = nil
 		ns.Protocol.StartSync()

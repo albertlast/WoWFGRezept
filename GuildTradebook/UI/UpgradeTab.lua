@@ -70,9 +70,7 @@ local function crafterSummary(itemID)
 		for _, c in ipairs(Index.Crafters(rid)) do
 			if not seen[c.guid] then
 				seen[c.guid] = true
-				local name = ns.Util.ClassColored(ns.Util.ShortName(c.name), c.class)
-				if c.online then name = name .. "|cff20ff20*|r" end
-				names[#names + 1] = name
+				names[#names + 1] = W.CrafterShort(c, true)
 			end
 		end
 	end

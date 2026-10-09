@@ -249,12 +249,18 @@ test("tabs, rows and tooltip run against real pool data", function()
 	local Tooltip = cb.ns.Tooltip
 	local function crafters(n, online)
 		local list = {}
-		for i = 1, n do list[i] = { name = "M" .. i .. "-Realm", online = i <= online } end
+		for i = 1, n do list[i] = { name = "M" .. i .. "-Realm", online = i <= online, reachable = i <= online } end
 		return list
 	end
 	eq(Tooltip.CrafterText(crafters(2, 1)), "M1|cff20ff20*|r, M2")
 	eq(Tooltip.CrafterText(crafters(23, 5)), "online: M1, M2, M3 +2")
 	eq(Tooltip.CrafterText(crafters(23, 0)), "none online")
+	-- Offline alt whose owner is online on another character counts as online.
+	local viaAlt = { name = "Alty-Realm", online = false, reachable = true, via = { name = "Mainy-Realm" } }
+	eq(Tooltip.CrafterText({ viaAlt }), "Alty (Mainy|cff20ff20*|r)")
+	local many = crafters(23, 0)
+	many[6] = viaAlt
+	eq(Tooltip.CrafterText(many), "online: Alty (Mainy)")
 
 	-- Minimap button (LibDataBroker + LibDBIcon + LibCustomGlow, like Gargul).
 	local calls = { shown = nil, glowStarted = 0, glowStopped = 0 }

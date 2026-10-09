@@ -35,6 +35,7 @@ L.CHAT_ONLINE_HINT = "(* = online)"
 L.OPTIONAL = "optional"
 L.WHISPER = "Flüstern"
 L.ONLINE = "online"
+L.ONLINE_AS = "online als %s"
 L.YOU = "du"
 L.ALT = "Twink"
 L.UNVERIFIED = "unbestätigt"
@@ -57,7 +58,7 @@ L.PENDING_ITEMS = "Lade %d Gegenstand/Gegenstände..."
 L.BOP_WARNING = "Beim Aufheben gebunden: Der Hersteller kann es dir nicht geben."
 L.NO_FAV_STATS = "Wähle mindestens einen bevorzugten Wert."
 
-L.MEMBERS_HEADER = "%d Mitglieder teilen Rezepte (%d Rezepte)"
+L.MEMBERS_HEADER = "%d Spieler (%d Charaktere) teilen Rezepte (%d Rezepte)"
 
 L.TOOLTIP_CRAFTABLE = "Herstellbar in der Gilde:"
 L.TOOLTIP_KNOWN_BY = "In deiner Gilde bekannt bei %d:"
@@ -69,6 +70,7 @@ L.CLICK_OPEN_RECIPE = "Klick: Gildenrezept öffnen"
 L.BACK = "Zurück"
 L.FILTER_CRAFTER = "Hersteller: %s"
 L.CLICK_WHISPER = "Klick: anflüstern"
+L.CLICK_WHISPER_VIA = "Klick: %s anflüstern (gleicher Spieler, online)"
 L.CLICK_SHOW_RECIPES = "Klick: Rezepte dieses Mitglieds anzeigen"
 L.NO_ADDON_DATA = "keine Addon-Daten"
 L.TOOLTIP_MORE = "(+%d weitere)"
@@ -98,8 +100,6 @@ L.SLASH_HELP = [[/gtb - Fenster öffnen
 /gtb options - Einstellungen öffnen
 /gtb minimap - Minimap-Button ein/aus
 /gtb search <Text> - Rezepte suchen
-/gtb main <Name> - diesen Charakter mit deinem Main verknüpfen
-/gtb main - Main-Verknüpfung entfernen
 /gtb wishlist - Wunschliste öffnen
 /gtb chatbot - Antworten auf "!craft <Gegenstand>" bzw. "!herstellen" im Gildenchat ein/aus
 /gtb resync - vollständige Synchronisierung anfordern

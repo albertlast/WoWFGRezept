@@ -39,6 +39,7 @@ L.CHAT_ONLINE_HINT = "(* = online)"
 L.OPTIONAL = "optional"
 L.WHISPER = "Whisper"
 L.ONLINE = "online"
+L.ONLINE_AS = "online as %s"
 L.YOU = "you"
 L.ALT = "alt"
 L.UNVERIFIED = "unverified"
@@ -61,7 +62,7 @@ L.PENDING_ITEMS = "Loading %d item(s)..."
 L.BOP_WARNING = "Bind on pickup: the crafter cannot trade it to you."
 L.NO_FAV_STATS = "Select at least one favorite stat."
 
-L.MEMBERS_HEADER = "%d members share recipes (%d recipes)"
+L.MEMBERS_HEADER = "%d players (%d characters) share recipes (%d recipes)"
 
 L.TOOLTIP_CRAFTABLE = "Craftable by guild:"
 L.TOOLTIP_KNOWN_BY = "Known in your guild by %d:"
@@ -73,6 +74,7 @@ L.CLICK_OPEN_RECIPE = "Click: open the guild recipe"
 L.BACK = "Back"
 L.FILTER_CRAFTER = "Crafter: %s"
 L.CLICK_WHISPER = "Click: whisper"
+L.CLICK_WHISPER_VIA = "Click: whisper %s (same player, online)"
 L.CLICK_SHOW_RECIPES = "Click: show this member's recipes"
 L.NO_ADDON_DATA = "no addon data"
 L.TOOLTIP_MORE = "(+%d more)"
@@ -102,8 +104,6 @@ L.SLASH_HELP = [[/gtb - open window
 /gtb options - open the settings
 /gtb minimap - show/hide the minimap button
 /gtb search <text> - search recipes
-/gtb main <name> - link this character to your main
-/gtb main - clear main link
 /gtb wishlist - open your wishlist
 /gtb chatbot - toggle answering "!craft <item>" in guild chat
 /gtb resync - ask the guild for a full sync

@@ -47,6 +47,10 @@ local function crafterNames(crafters, max)
 		if c.online then
 			name = name .. "*"
 			anyOnline = true
+		elseif c.via then
+			-- Same person, online on another character: "Bobalt (Bob*)".
+			name = name .. " (" .. Util.ShortName(c.via.name) .. "*)"
+			anyOnline = true
 		end
 		names[#names + 1] = name
 	end

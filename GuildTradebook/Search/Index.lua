@@ -4,13 +4,14 @@ In-memory lookup tables over the visible pool, rebuilt lazily after changes:
   byItem[itemID]     = { recipeID, ... }
   recipeSkill[recipeID] = skillLineID
   primarySkill[skillLineID] = true when some member has it as a primary profession
+  byPlayer[playerID] = { guid, ... }: characters of the same person (sorted)
 Visible = shared record of a current member, minus primary professions the
 server says the member no longer has (stale relayed data).
 ]]
 local _, ns = ...
 
 local Store, Roster, Util = ns.Store, ns.Roster, ns.Util
-local Index = { dirty = true, byRecipe = {}, byItem = {}, recipeSkill = {}, primarySkill = {} }
+local Index = { dirty = true, byRecipe = {}, byItem = {}, recipeSkill = {}, primarySkill = {}, byPlayer = {} }
 ns.Index = Index
 
 ns.On("RecordsChanged", function() Index.dirty = true end)
@@ -26,11 +27,15 @@ function Index.IsProfessionVisible(rec, skillLine)
 end
 
 function Index.Rebuild()
-	local byRecipe, byItem, recipeSkill, primarySkill = {}, {}, {}, {}
+	local byRecipe, byItem, recipeSkill, primarySkill, byPlayer = {}, {}, {}, {}, {}
 	local gd = ns.GetGuildData()
 	if gd then
 		for guid, rec in pairs(gd.chars) do
 			if Store.IsShareable(rec, isMember) then
+				if rec.player then
+					byPlayer[rec.player] = byPlayer[rec.player] or {}
+					table.insert(byPlayer[rec.player], guid)
+				end
 				local listed = {} -- a character appears once per recipe
 				for sl, p in pairs(rec.profs) do
 					if p.primary then
@@ -60,7 +65,11 @@ function Index.Rebuild()
 			end
 		end
 	end
+	for _, list in pairs(byPlayer) do
+		table.sort(list)
+	end
 	Index.byRecipe, Index.byItem, Index.recipeSkill, Index.primarySkill = byRecipe, byItem, recipeSkill, primarySkill
+	Index.byPlayer = byPlayer
 	Index.dirty = false
 end
 
@@ -97,17 +106,51 @@ local function cooldownOf(rec, recipeID)
 	end
 end
 
+-- Other characters of the same person (shared player ID), or an empty list.
+function Index.Siblings(guid)
+	Index.Ensure()
+	local gd = ns.GetGuildData()
+	local rec = gd and gd.chars[guid]
+	local out = {}
+	for _, other in ipairs(rec and rec.player and Index.byPlayer[rec.player] or {}) do
+		if other ~= guid then out[#out + 1] = other end
+	end
+	return out
+end
+
+--[[
+The online character to whisper when `guid` itself is offline: another
+character of the same person, as { guid, name, class }, or nil. Never you:
+your own alts are not "reachable" through you.
+]]
+function Index.Via(guid)
+	local member = Roster.Get(guid)
+	if member and member.online then return nil end
+	local selfGUID = UnitGUID("player")
+	for _, other in ipairs(Index.Siblings(guid)) do
+		local m = Roster.Get(other)
+		if other ~= selfGUID and m and m.online then
+			return { guid = other, name = m.name, class = m.class }
+		end
+	end
+	return nil
+end
+
 local function charInfo(guid, recipeID)
 	local gd = ns.GetGuildData()
 	local rec = gd and gd.chars[guid]
 	local member = Roster.Get(guid)
 	local selfGUID = UnitGUID("player")
 	local acc = ns.db.account.chars[guid]
+	local online = member and member.online or false
+	local via = not online and Index.Via(guid) or nil
 	return {
 		guid = guid,
 		name = (member and member.name) or (rec and rec.name) or "?",
 		class = (member and member.class) or (rec and rec.class),
-		online = member and member.online or false,
+		online = online,
+		via = via,                         -- same person, online on another character
+		reachable = online or via ~= nil,  -- can be asked right now
 		ver = rec and rec.ver or 0,
 		isSelf = guid == selfGUID,
 		isAlt = acc ~= nil and guid ~= selfGUID,
@@ -115,13 +158,19 @@ local function charInfo(guid, recipeID)
 	}
 end
 
+-- Name to whisper for a crafter entry: the crafter, or its online sibling.
+function Index.ContactName(c)
+	return c.via and c.via.name or c.name
+end
+
 -- Display info for one character (name, class, online, ...).
 function Index.CrafterInfo(guid)
 	return charInfo(guid)
 end
 
--- Crafters of a recipe: you first, then online, then (for cooldown recipes)
--- ready ones, then most recently confirmed.
+-- Crafters of a recipe: you first, then online, then reachable through another
+-- online character of the same person, then (for cooldown recipes) ready
+-- ones, then most recently confirmed.
 function Index.Crafters(recipeID)
 	Index.Ensure()
 	local now = ns.Now()
@@ -134,6 +183,7 @@ function Index.Crafters(recipeID)
 	table.sort(out, function(a, b)
 		if a.isSelf ~= b.isSelf then return a.isSelf end
 		if a.online ~= b.online then return a.online end
+		if a.reachable ~= b.reachable then return a.reachable end
 		if a.ready ~= b.ready then return a.ready end
 		if a.ver ~= b.ver then return a.ver > b.ver end
 		return a.name < b.name

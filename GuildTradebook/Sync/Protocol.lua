@@ -38,6 +38,7 @@ local P = {
 	accepted = {},      -- [newcomer] = true: someone already accepted (election)
 	factAsk = {},       -- [recipeID] = true: facts we are about to request
 	factRequested = {}, -- [recipeID] = GetTime() of the last request
+	pushQueue = {},     -- [guid] = true: account alts to broadcast with the next PushOwn
 	outbox = {},
 }
 ns.Protocol = P
@@ -115,9 +116,23 @@ local function sendRecord(guid, channel, target, prio)
 	P.Send({ t = "R", r = Store.ToWire(rec) }, channel, target, prio or "BULK")
 end
 
--- Owner broadcast of its own record.
+-- Owner broadcast of its own record, plus alts of this account that changed
+-- while playing another character (see Scanner.UpdatePlayerId).
 function P.PushOwn()
-	sendRecord(UnitGUID("player"), "GUILD", nil, "NORMAL")
+	local selfGUID = UnitGUID("player")
+	sendRecord(selfGUID, "GUILD", nil, "NORMAL")
+	local queued = P.pushQueue
+	P.pushQueue = {}
+	for _, guid in ipairs(Util.SortedKeys(queued)) do
+		if guid ~= selfGUID then
+			sendRecord(guid, "GUILD", nil, "NORMAL")
+		end
+	end
+end
+
+function P.QueuePush(guid)
+	P.pushQueue[guid] = true
+	ns.ScheduleEarliest("pushOwn", 5, P.PushOwn)
 end
 
 -- Partner selection ------------------------------------------------------------
@@ -291,6 +306,7 @@ function P.OnSelfCopy(rec)
 		ns.Emit("OwnChanged", "major")
 		ns.Emit("RecordsChanged", own.guid)
 	end
+	ns.Scanner.UpdatePlayerId(rec.player)
 end
 
 -- Partner side: answer a HELLO with an ACK and the digests that differ.
@@ -371,6 +387,10 @@ handlers.R = function(msg, channel, sender, gd)
 	elseif status == "accepted" then
 		Store.LearnFactsFromRecord(ns.db, rec, ns.Scanner.BuildKey())
 		ns.Emit("RecordsChanged", rec.guid)
+		if ns.db.account.chars[rec.guid] and rec.player ~= gd.playerId then
+			-- One of our alts, changed on another PC: agree on one player ID.
+			ns.Scanner.UpdatePlayerId()
+		end
 	elseif status == "older" then
 		-- The sender holds a stale copy: correct just the sender.
 		ns.Debounce("fix" .. sender .. rec.guid, 2, function()
@@ -499,7 +519,7 @@ function P.Start()
 	ns.On("RosterUpdated", function() ns.Debounce("prune", 5, P.Prune) end)
 	ns.On("OwnChanged", P.OnOwnChanged)
 	ns.On("GuildChanged", function()
-		P.sync, P.peers, P.accepted = nil, {}, {}
+		P.sync, P.peers, P.accepted, P.pushQueue = nil, {}, {}, {}
 	end)
 
 	C_Timer.NewTicker(15, P.FlushOutbox)

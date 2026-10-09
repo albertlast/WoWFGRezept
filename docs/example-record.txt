@@ -130,7 +130,7 @@ Profession entry: { skillLine, rank, maxRank, scannedAt, unverified(0/1),
   "Anna-Venoxis",  -- name
   "MAGE", 60,  -- class, level
   1780000000, 0,  -- ver (server time), seq
-  "",  -- main (empty = none)
+  "",  -- player ID: 12 hex digits, the same on all characters of this account in the guild ("" = not set yet)
   {  -- professions
     { 129, 300, 300, 1779999970, 0, { 3330,1254, 3353,1262, 3410,1284, 3460,1288, ... 13 pairs }, 0 },  -- First Aid
     { 185, 300, 300, 1779999940, 0, { 2600,2694, 2645,2709, 2648,2734, 2658,2748, ... 75 pairs }, 0 },  -- Cooking

@@ -10,7 +10,7 @@ records unchanged. Records are ordered by (ver, seq, h):
   h   = content hash, total order for the (theoretical) equal ver+seq case
 
 Internal record:
-  { guid, name, class, level, ver, seq, main?,
+  { guid, name, class, level, ver, seq, player?,
     profs = { [skillLineID] = { rank, maxRank, primary?, scannedAt?, unverified?,
                                 recipes = { [recipeID] = outputItemID or 0 } | nil,
                                 cds = { [recipeID] = readyAt (server time, 0 = ready) } | nil } },
@@ -91,7 +91,7 @@ Store.FormatInt = fmt
 
 -- Canonical content string: identical on every client for identical content.
 function Store.Canonical(rec)
-	local parts = { rec.guid, rec.name or "", rec.class or "", fmt(rec.level), fmt(rec.ver), fmt(rec.seq), rec.main or "" }
+	local parts = { rec.guid, rec.name or "", rec.class or "", fmt(rec.level), fmt(rec.ver), fmt(rec.seq), rec.player or "" }
 	for _, sl in ipairs(Util.SortedKeys(rec.profs)) do
 		local p = rec.profs[sl]
 		parts[#parts + 1] = fmt(sl) .. ":" .. fmt(p.rank) .. ":" .. fmt(p.maxRank) .. ":" .. fmt(p.scannedAt) .. ":" .. (p.unverified and "u" or "") .. (p.primary and "p" or "")
@@ -385,6 +385,58 @@ function Store.MergeIncomingSelf(own, incoming)
 	return changed, needBump
 end
 
+-- Player ID --------------------------------------------------------------------
+
+--[[
+All characters of one account in a guild carry the same random player ID, so
+others can tell which characters belong to the same person (e.g. reach an
+offline crafting alt through its online main). Nobody has to set anything up:
+the account-wide SavedVariables know the account's characters.
+
+A second PC (or deleted SavedVariables) starts with its own ID. Whenever a
+record of one of the account's characters shows another ID, the smaller one
+wins, so all copies end up with the same ID.
+]]
+function Store.IsValidPlayerId(id)
+	return type(id) == "string" and #id == 12 and id:match("^%x+$") ~= nil
+end
+
+-- rand(lo, hi) like math.random.
+function Store.NewPlayerId(rand)
+	return ("%04x%04x%04x"):format(rand(0, 65535), rand(0, 65535), rand(0, 65535))
+end
+
+--[[
+guids  = the account's characters with a record in this guild
+extra  = optional ID seen elsewhere (a copy of the logged-in character)
+newId  = function() -> fresh ID, used if nothing is known yet
+Sets gd.playerId and stamps it on the records. Returns the ID and the list of
+records that changed (the caller publishes them with a new version).
+]]
+function Store.ReconcilePlayerId(gd, guids, extra, newId)
+	local best = Store.IsValidPlayerId(gd.playerId) and gd.playerId or nil
+	local function consider(id)
+		if Store.IsValidPlayerId(id) and (not best or id < best) then best = id end
+	end
+	consider(extra)
+	for _, guid in ipairs(guids) do
+		local rec = gd.chars[guid]
+		if rec then consider(rec.player) end
+	end
+	best = best or newId()
+	gd.playerId = best
+	local stamped = {}
+	for _, guid in ipairs(guids) do
+		local rec = gd.chars[guid]
+		if rec and rec.player ~= best then
+			rec.player = best
+			Store.Rehash(rec)
+			stamped[#stamped + 1] = guid
+		end
+	end
+	return best, stamped
+end
+
 -- Membership -------------------------------------------------------------------
 
 -- Hides records of characters that left the guild and deletes them after the
@@ -470,7 +522,7 @@ end
 -- Wire format ------------------------------------------------------------------
 -- Records travel as compact arrays (CBOR handles arrays more reliably than
 -- sparse integer-keyed maps):
---   { guid, name, class, level, ver, seq, main|"",
+--   { guid, name, class, level, ver, seq, player|"",
 --     { {sl, rank, maxRank, scannedAt, unverified(0/1), {rid, item, ...}|false, primary(0/1),
 --        {rid, readyAt, ...}}, ... } }
 
@@ -497,23 +549,23 @@ function Store.ToWire(rec)
 		end
 		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds }
 	end
-	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.main or "", profs }
+	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.player or "", profs }
 end
 
 -- Validates untrusted input. Returns record or nil, reason.
 function Store.FromWire(w)
 	if type(w) ~= "table" then return nil, "not a table" end
-	local guid, name, class, level, ver, seq, main, profs = w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8]
+	local guid, name, class, level, ver, seq, player, profs = w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8]
 	if not Store.IsValidGUID(guid) then return nil, "guid" end
 	if not Util.IsString(name, 64) or not Util.IsString(class, 20) then return nil, "name/class" end
 	if not Util.IsInt(level, 0, 1000) then return nil, "level" end
 	if not Util.IsInt(ver, 0, 2 ^ 40) or not Util.IsInt(seq, 0, 2 ^ 31) then return nil, "version" end
-	if main ~= "" and not Store.IsValidGUID(main) then return nil, "main" end
+	if player ~= "" and not Store.IsValidPlayerId(player) then return nil, "player" end
 	if type(profs) ~= "table" or #profs > Store.MAX_PROFS then return nil, "profs" end
 
 	local rec = {
 		guid = guid, name = name, class = class, level = level, ver = ver, seq = seq,
-		main = main ~= "" and main or nil, profs = {},
+		player = player ~= "" and player or nil, profs = {},
 	}
 	for i = 1, #profs do
 		local p = profs[i]

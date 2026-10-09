@@ -39,6 +39,47 @@ local function professionText(rec)
 	return table.concat(parts, ", ")
 end
 
+-- One group per person (characters with the same player ID). The group's
+-- first row is the character that is online, else the highest level one;
+-- the other characters follow indented, by name.
+local function groupRows(rows)
+	local groups, byKey = {}, {}
+	for _, row in ipairs(rows) do
+		local key = row.player or row.guid
+		local g = byKey[key]
+		if not g then
+			g = { rows = {}, hasData = false }
+			byKey[key] = g
+			groups[#groups + 1] = g
+		end
+		g.rows[#g.rows + 1] = row
+		g.hasData = g.hasData or row.ver > 0
+	end
+	for _, g in ipairs(groups) do
+		table.sort(g.rows, function(a, b)
+			if a.online ~= b.online then return a.online end
+			if a.level ~= b.level then return a.level > b.level end
+			return a.name < b.name
+		end)
+		local first = table.remove(g.rows, 1)
+		table.sort(g.rows, function(a, b) return a.name < b.name end)
+		table.insert(g.rows, 1, first)
+	end
+	table.sort(groups, function(a, b)
+		if a.hasData ~= b.hasData then return a.hasData end
+		return a.rows[1].name < b.rows[1].name
+	end)
+	local out, players = {}, 0
+	for _, g in ipairs(groups) do
+		if g.hasData then players = players + 1 end
+		for i, row in ipairs(g.rows) do
+			row.alt = i > 1
+			out[#out + 1] = row
+		end
+	end
+	return out, players
+end
+
 local function refresh()
 	local gd = ns.GetGuildData()
 	local rows, recipeTotal = {}, 0
@@ -53,9 +94,12 @@ local function refresh()
 			end
 			rows[#rows + 1] = {
 				guid = guid,
+				player = rec.player,
 				name = (member and member.name) or rec.name,
 				class = (member and member.class) or rec.class,
-				online = member and member.online,
+				level = (member and member.level) or rec.level or 0,
+				online = (member and member.online) or false,
+				via = Index.Via(guid),
 				ver = rec.ver,
 				profs = professionText(rec),
 			}
@@ -70,16 +114,15 @@ local function refresh()
 			for sl in pairs(server) do names[#names + 1] = Index.SkillLineName(sl) end
 			table.sort(names)
 			rows[#rows + 1] = {
-				guid = guid, name = member.name, class = member.class, online = member.online, ver = 0,
+				guid = guid, name = member.name, class = member.class, level = member.level or 0,
+				online = member.online or false, ver = 0,
 				profs = "|cff808080" .. table.concat(names, ", ") .. " (" .. L.NO_ADDON_DATA .. ")|r",
 			}
 		end
 	end
-	table.sort(rows, function(a, b)
-		if (a.ver > 0) ~= (b.ver > 0) then return a.ver > 0 end
-		return a.name < b.name
-	end)
-	ui.header:SetText(L.MEMBERS_HEADER:format(shared, recipeTotal))
+	local players
+	rows, players = groupRows(rows)
+	ui.header:SetText(L.MEMBERS_HEADER:format(players, shared, recipeTotal))
 	ui.list:SetData(rows)
 end
 
@@ -96,18 +139,24 @@ local function build(content)
 		frame:SetScript("OnLeave", GameTooltip_Hide)
 	end
 
-	-- Two click areas: the name whispers, the professions open the member's
-	-- recipes in the Recipes tab.
+	-- Two click areas: the name whispers (the character, or the same person's
+	-- online character), the professions open the member's recipes in the
+	-- Recipes tab.
 	ui.list = W.CreateList(content, 20, function(row)
 		row.nameButton = CreateFrame("Button", nil, row)
 		row.nameButton:SetPoint("TOPLEFT")
 		row.nameButton:SetPoint("BOTTOMLEFT")
 		row.nameButton:SetWidth(248)
 		row.nameButton:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-		row.nameButton:SetScript("OnClick", function(self) W.SendTell(self:GetParent().data.name) end)
-		hint(row.nameButton, function() return L.CLICK_WHISPER end)
+		row.nameButton:SetScript("OnClick", function(self)
+			local data = self:GetParent().data
+			W.SendTell(data.via and data.via.name or data.name)
+		end)
+		hint(row.nameButton, function(self)
+			local via = self:GetParent().data.via
+			return via and L.CLICK_WHISPER_VIA:format(Util.ShortName(via.name)) or L.CLICK_WHISPER
+		end)
 		row.name = W.Text(row.nameButton)
-		row.name:SetPoint("LEFT", 4, 0)
 		row.name:SetWidth(150)
 		row.age = W.Text(row.nameButton, "GameFontDisableSmall")
 		row.age:SetPoint("LEFT", row.name, "RIGHT", 4, 0)
@@ -128,6 +177,10 @@ local function build(content)
 		local name = Util.ClassColored(Util.ShortName(data.name), data.class)
 		if data.online then name = name .. " |cff20ff20*|r" end
 		row.name:SetText(name)
+		-- Other characters of the same person sit indented under the first one.
+		row.name:ClearAllPoints()
+		row.name:SetPoint("LEFT", data.alt and 18 or 4, 0)
+		row.name:SetWidth(data.alt and 136 or 150)
 		row.age:SetText(data.ver > 0 and L.CONFIRMED_AGO:format(Util.FormatAge(ns.Now() - data.ver)) or "")
 		row.profs:SetText(data.profs)
 	end)

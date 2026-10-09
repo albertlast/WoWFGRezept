@@ -27,7 +27,6 @@ Each crafter has to open the professions window once and click each profession t
 | `/gtb wishlist` | open your wishlist |
 | `/gtb options` | open the settings (also under Options → AddOns → Guild Tradebook) |
 | `/gtb minimap` | show/hide the minimap button |
-| `/gtb main <name>` | link this character to your main (`/gtb main` clears it) |
 | `/gtb chatbot` | toggle answering `!craft <item>` in guild chat |
 | `/gtb resync` | sync with a guild member now |
 | `/gtb dump <name>` | show what is known about a character |
@@ -43,6 +42,7 @@ Each crafter has to open the professions window once and click each profession t
 - **Reagent check:** the recipe detail shows how many of each reagent you own (bags and bank; the bank counts after you've opened it) against what you need for 1–50 crafts, plus what's missing.
 - **Reagents are clickable:** hover for the item tooltip (price addons included), shift-click to link. A reagent a guild member can craft is marked `»`; clicking it opens that recipe, and **Back** returns.
 - **Cooldowns:** for recipes with a cooldown (transmutes, Mooncloth, …), crafter lists show who is ready now or when they will be. Ready crafters are listed first.
+- **Alts are grouped automatically:** the addon knows which characters you play on your account, so nobody sets a main. If a crafter is offline but the same player is online on another character, lists show "Crafty (online as Mainy)", whispers go to Mainy, the wishlist notice and the minimap glow count them as online, and the Members tab lists each player's characters together.
 - **`!craft <item>` in guild chat:** members without the addon can ask who crafts something (`!herstellen` works too). Exactly one addon user answers: they elect themselves with the same deterministic ranking as the sync partner. Turn it off with `/gtb chatbot`.
 
 ## How the data stays correct
@@ -54,6 +54,7 @@ Each character's data is a **record**: a full snapshot of its professions and re
 - **Lost SavedVariables / new PC:** a brand-new own record is held back for up to 90 s. During that time the owner pulls its old copy from the guild and adopts the recipes for professions it still has, marked *unverified* until the next profession-window scan.
 - **Owner reclaim:** if someone holds a copy of you that claims to be newer (forged, or from another PC), you re-publish with a version above it.
 - **Guild membership:** records of characters not in the roster are hidden, not relayed, and deleted after 14 days. Nothing is pruned until the roster has fully loaded. Characters are keyed by GUID, so renames are handled.
+- **Player ID:** all characters of one account in the guild carry the same random ID (stored in the guild's partition of the SavedVariables, so it never links characters across guilds). A second PC starts with its own ID; as soon as a character is played on both, the smaller ID wins everywhere and the account re-publishes its alts with it.
 - **Server cross-check:** the guild roster data names each member's two primary professions (the rank is always reported as 1, so it is not used). If it positively lists two other professions, a relayed profession is hidden from search; the record itself is left alone.
 
 ## Network traffic

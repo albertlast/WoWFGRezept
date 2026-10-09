@@ -37,7 +37,7 @@ function Wishlist.Entries()
 		local crafters = Index.Crafters(rid)
 		local online = 0
 		for _, c in ipairs(crafters) do
-			if c.online and not c.isSelf then online = online + 1 end
+			if c.reachable and not c.isSelf then online = online + 1 end
 		end
 		out[#out + 1] = {
 			recipeID = rid, name = Index.RecipeName(rid) or ("#" .. rid),
@@ -51,7 +51,8 @@ function Wishlist.Entries()
 	return out
 end
 
--- Wished recipes that a member other than you, online right now, can craft:
+-- Wished recipes that a member other than you can craft and can be asked now
+-- (online, or online on another character of the same person):
 -- { {recipeID, name, online = {crafter, ...}}, ... }. Drives the minimap glow.
 function Wishlist.ReadyNow()
 	local out = {}
@@ -59,7 +60,7 @@ function Wishlist.ReadyNow()
 	for rid in pairs(entries()) do
 		local online = {}
 		for _, c in ipairs(Index.Crafters(rid)) do
-			if c.online and not c.isSelf then online[#online + 1] = c end
+			if c.reachable and not c.isSelf then online[#online + 1] = c end
 		end
 		if #online > 0 then
 			out[#out + 1] = { recipeID = rid, name = Index.RecipeName(rid) or ("#" .. rid), online = online }
@@ -71,7 +72,7 @@ end
 
 --[[
 Pure core: which wished recipes became craftable because members came online.
-  before, now   = { [guid] = true } of online members
+  before, now   = { [guid] = true } of reachable characters
   wished        = { [recipeID] = anything }
   craftersOf(recipeID) -> list of guids
 Returns { [guid] = { recipeID, ... } } for members online now but not before.
@@ -92,15 +93,20 @@ function Wishlist.Matches(before, now, wished, craftersOf)
 	return out
 end
 
-local function onlineMembers()
+-- Characters that can be asked right now: online members and the other
+-- characters of the same person. Never you or your own alts.
+local function reachableChars()
 	local selfGUID = UnitGUID("player")
-	local online = {}
+	local out = {}
 	for guid, m in pairs(Roster.members) do
 		if m.online and guid ~= selfGUID then
-			online[guid] = true
+			out[guid] = true
+			for _, other in ipairs(Index.Siblings(guid)) do
+				if other ~= selfGUID then out[other] = true end
+			end
 		end
 	end
-	return online
+	return out
 end
 
 local function craftersOf(rid)
@@ -113,7 +119,7 @@ function Wishlist.Check()
 		Wishlist.onlineBefore = nil
 		return
 	end
-	local now = onlineMembers()
+	local now = reachableChars()
 	local before = Wishlist.onlineBefore
 	Wishlist.onlineBefore = now
 	local wished = entries()
@@ -144,8 +150,12 @@ function Wishlist.Check()
 			end
 		end
 		if #names > 0 then
-			local member = Roster.Get(guid)
-			local who = member and Util.ClassColored(Util.ShortName(member.name), member.class) or "?"
+			-- "Bobalt (Bob)" when the crafter is reachable through another character.
+			local c = Index.CrafterInfo(guid)
+			local who = Util.ClassColored(Util.ShortName(c.name), c.class)
+			if c.via then
+				who = who .. " (" .. Util.ClassColored(Util.ShortName(c.via.name), c.via.class) .. ")"
+			end
 			ns.Print(L.WISH_ALERT:format(who, table.concat(names, ", ")))
 			if ns.db.options.wishSound and PlaySound and SOUNDKIT and SOUNDKIT.TELL_MESSAGE then
 				PlaySound(SOUNDKIT.TELL_MESSAGE)

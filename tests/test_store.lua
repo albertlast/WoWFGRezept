@@ -191,11 +191,11 @@ test("wire round trip preserves content and hash", function()
 		[171] = { rank = 1, maxRank = 75 },
 		[164] = { rank = 50, maxRank = 75, unverified = true, primary = true, recipes = { [2660] = 2862 } },
 	})
-	r.main = B
+	r.player = "00ab12cd34ef"
 	Store.Rehash(r)
 	local back = assert(Store.FromWire(H.DeepCopy(Store.ToWire(r))))
 	eq(back.h, r.h)
-	eq(back.main, B)
+	eq(back.player, "00ab12cd34ef")
 	eq(back.profs[171].recipes, nil)
 	truthy(back.profs[164].unverified)
 	truthy(back.profs[164].primary)
@@ -258,4 +258,43 @@ test("facts: local beats remote, remote only fills gaps", function()
 	eq(rid, 1)
 	eq(fact.reagents[1][1], 2589)
 	falsy(Store.FactFromWire({ 1, 7, 0, { 2589, 0, 0 } }), "zero quantity rejected")
+end)
+
+test("player ID: malformed IDs are rejected on the wire", function()
+	local w = Store.ToWire(rec(A, 100))
+	w[7] = "not-an-id"
+	falsy(Store.FromWire(w))
+	w[7] = ""
+	truthy(Store.FromWire(w))
+end)
+
+test("player ID: one ID for all of the account's characters, smallest wins", function()
+	local gd = { chars = { [A] = rec(A, 100), [B] = rec(B, 100) } }
+	local fresh = 0
+	local function newId() fresh = fresh + 1 return "bbbbbbbbbbbb" end
+	local id, stamped = Store.ReconcilePlayerId(gd, { A, B }, nil, newId)
+	eq(id, "bbbbbbbbbbbb")
+	eq(fresh, 1)
+	eq(#stamped, 2)
+	eq(gd.chars[B].player, id)
+	eq(gd.chars[A].h, Store.Hash(gd.chars[A]))
+	-- Nothing to do the second time.
+	id, stamped = Store.ReconcilePlayerId(gd, { A, B }, nil, newId)
+	eq(#stamped, 0)
+	eq(fresh, 1)
+	-- A copy from another PC carries a smaller ID: everyone moves to it.
+	id, stamped = Store.ReconcilePlayerId(gd, { A, B }, "aaaaaaaaaaaa", newId)
+	eq(id, "aaaaaaaaaaaa")
+	eq(gd.playerId, "aaaaaaaaaaaa")
+	eq(#stamped, 2)
+	-- A larger one is ignored.
+	id, stamped = Store.ReconcilePlayerId(gd, { A, B }, "cccccccccccc", newId)
+	eq(id, "aaaaaaaaaaaa")
+	eq(#stamped, 0)
+end)
+
+test("player ID: generated IDs are valid", function()
+	local id = Store.NewPlayerId(math.random)
+	truthy(Store.IsValidPlayerId(id), id)
+	truthy(Store.IsValidPlayerId(Store.NewPlayerId(function(_, hi) return hi end)))
 end)
