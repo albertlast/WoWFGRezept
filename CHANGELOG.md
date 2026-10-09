@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 (in development)
+
+- Nothing yet.
+
 ## 0.1.0 (2026-10-09)
 
 First release for the guild.
