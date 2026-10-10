@@ -2,6 +2,8 @@
 Options page under Options -> AddOns -> Guild Tradebook, using the game's
 Settings API. The checkboxes write straight into GuildTradebookDB.options,
 which the rest of the addon reads on every use, so changes apply at once.
+Sub-page "Stat weights": one slider per stat for the Upgrades tab, stored
+per character (GuildTradebookCharDB.statWeights; class and spec differ).
 ]]
 local ADDON, ns = ...
 
@@ -42,8 +44,34 @@ function Settings_.Register()
 			setting:SetValueChangedCallback(function(_, value) onChange(value) end)
 		end
 	end
+	-- Sub-pages exist before the page is registered.
+	Settings_.RegisterWeights(category)
 	Settings.RegisterAddOnCategory(category)
 	Settings_.category = category
+end
+
+local function formatWeight(value)
+	return ("%.1f"):format(value)
+end
+
+function Settings_.RegisterWeights(category)
+	if not (Settings.RegisterVerticalLayoutSubcategory and Settings.CreateSlider and Settings.CreateSliderOptions) then return end
+	local U = ns.Upgrades
+	local sub = Settings.RegisterVerticalLayoutSubcategory(category, L.SETTINGS_WEIGHTS)
+	local weights = U.Weights()
+	for _, key in ipairs(U.STATS) do
+		local setting = Settings.RegisterAddOnSetting(sub, ADDON .. "_weight_" .. key, key, weights,
+			"number", _G[key] or key, U.WEIGHT_DEFAULT)
+		local options = Settings.CreateSliderOptions(U.WEIGHT_MIN, U.WEIGHT_MAX, U.WEIGHT_STEP)
+		if options.SetLabelFormatter and MinimalSliderWithSteppersMixin then
+			options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, formatWeight)
+		end
+		Settings.CreateSlider(sub, setting, options, L.SETTINGS_WEIGHT_DESC)
+		if setting.SetValueChangedCallback then
+			setting:SetValueChangedCallback(function() ns.UI.Refresh() end)
+		end
+	end
+	Settings_.weightsCategory = sub
 end
 
 function Settings_.Open()

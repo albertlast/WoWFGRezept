@@ -117,6 +117,12 @@ local function uiEnv(client)
 			return setting
 		end,
 		CreateCheckbox = function() end,
+		RegisterVerticalLayoutSubcategory = function(parent, name)
+			registered.sub = { name = name, parent = parent }
+			return registered.sub
+		end,
+		CreateSliderOptions = function(min, max, step) return { min = min, max = max, step = step } end,
+		CreateSlider = function(_, setting, options) setting.slider = options end,
 		RegisterAddOnCategory = function(category) registered.category = category end,
 		OpenToCategory = function(id) registered.opened = id end,
 	}
@@ -242,11 +248,23 @@ test("tabs, rows and tooltip run against real pool data", function()
 
 	-- Settings panel: one checkbox per option, bound to the saved options.
 	cb.ns.Settings.Register()
-	eq(#ui.settings, #cb.ns.Settings.CHECKBOXES)
+	local checks, sliders = {}, {}
 	for _, s in ipairs(ui.settings) do
+		table.insert(s.varType == "boolean" and checks or sliders, s)
+	end
+	eq(#checks, #cb.ns.Settings.CHECKBOXES)
+	for _, s in ipairs(checks) do
 		eq(s.tbl, cb.env.GuildTradebookDB.options, "bound to saved options")
-		eq(s.varType, "boolean")
 		truthy(s.name and not s.name:find("^SETTINGS_"), "localized label for " .. s.key)
+	end
+	-- Sub-page with one weight slider per stat, per character, default 1.
+	eq(ui.settings.sub.name, "Stat weights")
+	eq(#sliders, #cb.ns.Upgrades.STATS)
+	for _, s in ipairs(sliders) do
+		eq(s.varType, "number")
+		eq(s.tbl, cb.env.GuildTradebookCharDB.statWeights, "per character")
+		eq(s.tbl[s.key], 1)
+		eq(s.slider.max, 5)
 	end
 	eq(ui.settings.category.name, "Guild Tradebook")
 	cb.ns.Settings.Open()

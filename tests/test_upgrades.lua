@@ -58,11 +58,24 @@ test("type filter excludes other armor types", function()
 	eq(results[1].itemID, 3)
 end)
 
+test("stat weights multiply the favorite stats", function()
+	local stats = { ITEM_MOD_AGILITY_SHORT = 10, ITEM_MOD_STAMINA_SHORT = 4 }
+	local fav = { "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_STAMINA_SHORT" }
+	eq(U.Score(stats, fav), 14, "no weights: every point counts 1")
+	eq(U.Score(stats, fav, { ITEM_MOD_AGILITY_SHORT = 1.5, ITEM_MOD_STAMINA_SHORT = 0.3 }), 16.2)
+	eq(U.Score(stats, fav, { ITEM_MOD_AGILITY_SHORT = 0, ITEM_MOD_STAMINA_SHORT = 1 }), 4, "0 = ignored")
+	eq(U.Score(stats, { "ITEM_MOD_STAMINA_SHORT" }, { ITEM_MOD_AGILITY_SHORT = 5 }), 4, "only favorites count")
+end)
+
 test("level filter and look-ahead", function()
 	local results = U.Find(opts({ itemType = "ARMOR:1", slot = 5, level = 30 }), api())
 	eq(#results, 0, "robe B needs 35")
 	results = U.Find(opts({ itemType = "ARMOR:1", slot = 5, level = 30, levelAhead = 5 }), api())
 	eq(results[1].itemID, 2)
+	eq(results[1].levelsToGo, 5, "wearable in 5 levels")
+	for _, r in ipairs(results) do
+		if r.itemID == 1 then eq(r.levelsToGo, 0, "robe A: wearable now") end
+	end
 end)
 
 test("bind on pickup is hidden unless requested", function()

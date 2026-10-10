@@ -94,7 +94,7 @@ local function refresh()
 		return
 	end
 	local results, pending = U.Find({
-		itemType = s.itemType, slot = s.slot, favStats = fav,
+		itemType = s.itemType, slot = s.slot, favStats = fav, weights = U.Weights(),
 		level = UnitLevel("player"), levelAhead = s.levelAhead,
 		showBoP = s.showBoP, showAll = s.showAll,
 	}, U.GameAPI())
@@ -213,9 +213,13 @@ local function build(content)
 		local wished = rids and rids[1] and ns.Wishlist.Has(rids[1])
 		row.name:SetText(wished and (W.WISH_MARK .. " " .. data.info.link) or data.info.link)
 		local color = data.delta > 0 and "|cff20ff20+" or (data.delta < 0 and "|cffff4040" or "|cffcccccc")
-		local text = color .. data.delta .. "|r"
-		if data.ilvlDelta ~= 0 then
-			text = text .. (" |cff999999(ilvl %+d)|r"):format(data.ilvlDelta)
+		-- Weights give tenths; whole numbers stay without ".0".
+		local number = data.delta == math.floor(data.delta) and ("%d"):format(data.delta) or ("%.1f"):format(data.delta)
+		local text = color .. number .. "|r"
+		-- Item level is left out (it only breaks ties in the order); what
+		-- counts with "levels above me" is how far away the item is.
+		if data.levelsToGo > 0 then
+			text = text .. " |cffff8000" .. (data.levelsToGo == 1 and L.LEVEL_TO_GO or L.LEVELS_TO_GO:format(data.levelsToGo)) .. "|r"
 		end
 		if not data.equippedLink then
 			text = text .. " |cff999999" .. L.EQUIPPED_EMPTY .. "|r"

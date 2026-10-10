@@ -103,24 +103,48 @@ function Upgrades.MatchesType(info, itemType)
 	return info.classID == ITEM_CLASS_ARMOR and info.subclassID == sub
 end
 
-function Upgrades.Score(stats, favStats)
+-- Stat weights (Settings, per character): how much one point of a stat
+-- counts. 1 for every stat unless the player changes it; good numbers
+-- depend on class, spec and level, so the addon does not guess.
+Upgrades.WEIGHT_DEFAULT = 1
+Upgrades.WEIGHT_MIN, Upgrades.WEIGHT_MAX, Upgrades.WEIGHT_STEP = 0, 5, 0.1
+
+-- The character's weights, every stat filled in.
+function Upgrades.Weights()
+	local w = ns.charDB.statWeights
+	if type(w) ~= "table" then
+		w = {}
+		ns.charDB.statWeights = w
+	end
+	for _, key in ipairs(Upgrades.STATS) do
+		local v = w[key]
+		if type(v) ~= "number" or v < Upgrades.WEIGHT_MIN or v > Upgrades.WEIGHT_MAX then
+			w[key] = Upgrades.WEIGHT_DEFAULT
+		end
+	end
+	return w
+end
+
+-- Weighted sum of the favorite stats, to one decimal.
+function Upgrades.Score(stats, favStats, weights)
 	local score = 0
 	if stats then
 		for _, key in ipairs(favStats) do
-			score = score + (stats[key] or 0)
+			score = score + (stats[key] or 0) * ((weights and weights[key]) or 1)
 		end
 	end
-	return score
+	return math.floor(score * 10 + 0.5) / 10
 end
 
 --[[
-opts = { itemType, slot (0 = all), favStats = {keys}, level, levelAhead,
+opts = { itemType, slot (0 = all), favStats = {keys}, weights?, level, levelAhead,
          showBoP, showAll }
 api  = { itemIDs() -> array, info(itemID) -> table | nil (still loading),
          stats(link) -> table, equipped(slot) -> link | nil,
          itemLevel(link) -> number }
 Returns results (sorted best first), pendingCount.
-result = { itemID, info, slot, delta, ilvlDelta, equippedLink, bop }
+result = { itemID, info, slot, delta, ilvlDelta, equippedLink, bop,
+           levelsToGo (0 = wearable now) }
 ]]
 function Upgrades.Find(opts, api)
 	local results, pending = {}, 0
@@ -131,7 +155,7 @@ function Upgrades.Find(opts, api)
 			local link = api.equipped(slot)
 			cached = {
 				link = link,
-				score = link and Upgrades.Score(api.stats(link), opts.favStats) or 0,
+				score = link and Upgrades.Score(api.stats(link), opts.favStats, opts.weights) or 0,
 				ilvl = link and api.itemLevel(link) or 0,
 			}
 			equippedCache[slot] = cached
@@ -161,14 +185,15 @@ function Upgrades.Find(opts, api)
 						target.slot = slot
 					end
 				end
-				local score = Upgrades.Score(api.stats(info.link), opts.favStats)
-				local delta = score - target.score
+				local score = Upgrades.Score(api.stats(info.link), opts.favStats, opts.weights)
+				local delta = math.floor((score - target.score) * 10 + 0.5) / 10
 				local ilvlDelta = (info.itemLevel or 0) - target.ilvl
 				if opts.showAll or delta > 0 or (delta == 0 and score > 0 and ilvlDelta > 0) then
 					results[#results + 1] = {
 						itemID = itemID, info = info, slot = target.slot,
 						delta = delta, ilvlDelta = ilvlDelta,
 						equippedLink = target.link, bop = bop,
+						levelsToGo = math.max(0, (info.minLevel or 0) - opts.level),
 					}
 				end
 			end
