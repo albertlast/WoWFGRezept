@@ -101,16 +101,23 @@ end
 --[[
 Whispers go to "First Last" on your own realm and "First Last-Realm"
 elsewhere, the way Blizzard builds whisper targets
-(ConcatinateServerNameToPlayerName). Forever names have a surname, and it
-is not proven that every name can be whispered: when the server answers "No
-player named ... is currently playing", that member gets messages on the
-GUILD channel instead, addressed to its GUID. The text then starts with
-"@<guid>@", and every other client skips it without decoding.
+(ConcatinateServerNameToPlayerName). When the server answers "No player
+named ... is currently playing", there are two cases:
+  - nothing heard from the member lately: it went offline and the roster is
+    behind. It counts as offline for a while (Roster.Note, private), the
+    whispers are dropped, and a sync with it moves on to the next partner.
+  - a message from it arrived within HEARD_WINDOW, or the same name fails
+    again after the offline time while the roster still shows the member
+    online: its name can not be whispered. It gets messages on the GUILD channel instead,
+    addressed to its GUID: the text starts with "@<guid>@", and every other
+    client skips it without decoding.
 ]]
 P.unreachable = {}   -- ["Name-Realm"] = true: a whisper to this member failed
 P.whispered = {}     -- [whisper target] = { at = GetTime(), name, guid, sent = { {msg, prio}, ... } }
 P.RESEND_WINDOW = 10 -- seconds: whispers this recent are resent when they fail
 P.MAX_RESEND = 50
+P.HEARD_WINDOW = 60  -- seconds: a member heard from this recently is online
+P.failedAt = {}      -- ["Name-Realm"] = GetTime() of the first failure taken as "offline"
 
 function P.CanWhisper(name)
 	return name ~= nil and not P.unreachable[name]
@@ -162,6 +169,10 @@ function P.Send(msg, channel, target, prio, targetGUID)
 	msg.u = UnitGUID("player")
 	msg.av, msg.ab = ns.Versions.Mine()
 	local addressee
+	if channel == "WHISPER" and Roster.KnownOffline(targetGUID or Roster.byName[target]) then
+		ns.Debug("skip", msg.t, "to", tostring(target), "(offline)")
+		return
+	end
 	if channel == "WHISPER" and not P.CanWhisper(target) then
 		addressee = targetGUID or Roster.byName[target]
 		if not addressee then
@@ -217,6 +228,19 @@ function P.OnSystemMessage(_, text)
 	local target, entry = whisperFailedName(text)
 	if not target then return end
 	P.whispered[target] = nil
+	local firstFailure = P.failedAt[entry.name]
+	local failedAgain = firstFailure and GetTime() - firstFailure >= Roster.OFFLINE_MEMORY
+	if entry.guid and not Roster.HeardWithin(entry.guid, P.HEARD_WINDOW) and not failedAgain then
+		P.failedAt[entry.name] = firstFailure or GetTime()
+		ns.Debug("whisper to", target, "failed: offline (the roster is behind)")
+		Roster.Note(entry.guid, false, true)
+		local sync = P.sync
+		if sync and sync.partner == entry.guid and not sync.answered and sync.retry then
+			ns.Cancel("syncTimeout")
+			sync.retry()
+		end
+		return
+	end
 	if P.unreachable[entry.name] then return end
 	P.unreachable[entry.name] = true
 	ns.Debug("whisper to", target, "failed, using the guild channel - resending", #entry.sent)
@@ -259,13 +283,16 @@ end
 
 -- GUIDs of online members believed to run the addon (seen sending messages,
 -- or owners of a shared record), and of the other online members. Never
--- yourself.
-function P.Candidates()
+-- yourself. shared: by the online state every client sees alike (for
+-- elections); else by everything this client knows (Roster "Online state").
+function P.Candidates(shared)
 	local gd = ns.GetGuildData()
 	local selfGUID = UnitGUID("player")
 	local known, unknown = {}, {}
 	for guid, member in pairs(Roster.members) do
-		if member.online and guid ~= selfGUID then
+		local online = member.online
+		if shared then online = member.sharedOnline end
+		if online and guid ~= selfGUID then
 			local rec = gd and gd.chars[guid]
 			if P.peers[guid] or (rec and rec.ver > 0) then
 				known[#known + 1] = guid
@@ -345,6 +372,7 @@ function P.StartSync(explore)
 			end
 		end)
 	end
+	sync.retry = try
 	try()
 end
 
@@ -367,7 +395,7 @@ end
 -- include(guid), optional: only candidates for which it returns true.
 function P.ElectionRank(newcomer, me, include)
 	local list = { me }
-	for _, guid in ipairs((P.Candidates())) do
+	for _, guid in ipairs((P.Candidates(true))) do
 		if guid ~= newcomer and guid ~= me and (not include or include(guid)) then list[#list + 1] = guid end
 	end
 	table.sort(list, function(a, b)
@@ -640,6 +668,7 @@ function P.Handle(msg, channel, sender)
 		return
 	end
 	Roster.LearnName(guid, sender)
+	Roster.Heard(guid)
 	P.peers[guid] = GetTime()
 	ns.Versions.Seen(sender, msg.av, msg.ab)
 	local gd = ns.GetGuildData()
@@ -754,6 +783,11 @@ function P.Prune()
 	if removed > 0 then
 		ns.Debug("pruned", removed, "records of former members")
 	end
+	gd.seenAt = ns.Now()
+	local old = Store.PruneGuilds(ns.db, Roster.guildKey, ns.Now(), ns.db.account.chars)
+	if old > 0 then
+		ns.Debug("pruned", old, "records of guilds you left")
+	end
 	ns.Emit("RecordsChanged")
 end
 
@@ -785,7 +819,14 @@ function P.Start()
 		addFilter("CHAT_MSG_SYSTEM", hideFailedWhisper)
 	end
 	ns.On("RosterReady", P.OnRosterReady)
-	ns.On("RosterUpdated", function() ns.Debounce("prune", 5, P.Prune) end)
+	ns.On("RosterUpdated", function()
+		ns.Debounce("prune", 5, P.Prune)
+		-- A real logout on the roster: the failure was "offline", not the name.
+		for name in pairs(P.failedAt) do
+			local m = Roster.members[Roster.byName[name] or ""]
+			if not m or m.rosterOnline == false then P.failedAt[name] = nil end
+		end
+	end)
 	ns.On("OwnChanged", P.OnOwnChanged)
 	ns.On("GuildChanged", function()
 		P.sync, P.peers, P.accepted, P.pushQueue = nil, {}, {}, {}

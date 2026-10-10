@@ -277,6 +277,7 @@ function H.NewWorld(opts)
 		local client = H.NewClient(self, char)
 		self.online[guid] = client
 		client:Boot()
+		char.wasOnline = true
 		for _, other in pairs(self.online) do
 			if other ~= client then
 				other:Fire("CHAT_MSG_SYSTEM", "|Hplayer:" .. char.name .. "|h[" .. char.name .. "]|h has come online.")
@@ -293,8 +294,11 @@ function H.NewWorld(opts)
 		self.charDBs[guid] = client.env.GuildTradebookCharDB
 		client.env.dead = true
 		self.online[guid] = nil
-		for _, other in pairs(self.online) do
-			other:Fire("CHAT_MSG_SYSTEM", client.char.name .. " has gone offline.")
+		-- quietLogout: no "has gone offline" message reaches the others.
+		if not client.char.quietLogout then
+			for _, other in pairs(self.online) do
+				other:Fire("CHAT_MSG_SYSTEM", client.char.name .. " has gone offline.")
+			end
 		end
 	end
 
@@ -385,7 +389,10 @@ function H.NewClient(world, char)
 		if not c then return nil end
 		-- rosterName: a roster name that differs from the name the server
 		-- puts on the character's messages (robustness against formats).
-		return c.rosterName or c.name, "Member", 1, c.level, c.class, "", "", "", world.online[c.guid] ~= nil, 0, c.class,
+		-- staleRoster: the roster keeps showing the character online after
+		-- a logout (the server's roster is behind).
+		local online = world.online[c.guid] ~= nil or (c.staleRoster and c.wasOnline) or false
+		return c.rosterName or c.name, "Member", 1, c.level, c.class, "", "", "", online, 0, c.class,
 			0, 0, false, false, 0, c.guid
 	end
 	env.GetGuildRosterLastOnline = function() return 0, 0, 1, 0 end

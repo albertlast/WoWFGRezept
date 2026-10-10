@@ -2,7 +2,7 @@ local _, ns = ...
 
 local Util = ns.Util
 local Roster = {
-	members = {},   -- [guid] = { name, online, level, class, index }
+	members = {},   -- [guid] = { name, online, sharedOnline, rosterOnline, level, class, index }
 	byName = {},    -- ["Name-Realm"] = guid
 	realNames = {}, -- [guid] = "Name-Realm" seen on the member's addon messages
 	ready = false,  -- roster fully loaded; membership answers are trustworthy
@@ -12,6 +12,49 @@ local Roster = {
 ns.Roster = Roster
 
 local REFRESH_INTERVAL = 120
+
+--[[
+Online state. The roster's online flags lag behind: a logout shows up only
+with the next refresh (or later), a login too. Newer knowledge wins for a
+while, in two levels:
+  announced[guid]  login/logout system messages - every client sees them
+  evidence[guid]   only this client: a message from the member (online), or a
+                   whisper the server refused with "No player named" (offline)
+Each is { online = bool, at = GetTime() }, valid ONLINE_PROOF seconds when
+online and OFFLINE_MEMORY seconds when offline; a roster change towards the
+other state ends it early (the roster caught up, or the member relogged).
+
+  member.rosterOnline  the roster's flag
+  member.sharedOnline  roster + announcements: the same on every client, so
+                       elections (Protocol.ElectionRank) use it
+  member.online        everything this client knows: sync partners, lists,
+                       wishlist
+]]
+Roster.ONLINE_PROOF = 150
+Roster.OFFLINE_MEMORY = 600
+Roster.announced = {}
+Roster.evidence = {}
+
+local function valid(entry, now)
+	return entry ~= nil and now - entry.at < (entry.online and Roster.ONLINE_PROOF or Roster.OFFLINE_MEMORY)
+end
+
+-- Recomputes sharedOnline and online of one member; true if either changed.
+local function applyOnline(guid, m)
+	local now = GetTime()
+	local a, e = Roster.announced[guid], Roster.evidence[guid]
+	if a and not valid(a, now) then a, Roster.announced[guid] = nil, nil end
+	if e and not valid(e, now) then e, Roster.evidence[guid] = nil, nil end
+	local shared = m.rosterOnline
+	if a then shared = a.online end
+	local latest = a
+	if e and (not latest or e.at >= latest.at) then latest = e end
+	local online = m.rosterOnline
+	if latest then online = latest.online end
+	local changed = m.online ~= online or m.sharedOnline ~= shared
+	m.sharedOnline, m.online = shared, online
+	return changed
+end
 
 function Roster.ComputeGuildKey()
 	if not IsInGuild() then return nil end
@@ -23,6 +66,7 @@ end
 
 function Roster.Reset()
 	Roster.members, Roster.byName, Roster.realNames = {}, {}, {}
+	Roster.announced, Roster.evidence = {}, {}
 	Roster.ready = false
 	Roster.lastCount = 0
 end
@@ -66,6 +110,44 @@ end
 
 function Roster.Get(guid)
 	return Roster.members[guid]
+end
+
+-- New knowledge about a member being online. private: only this client knows
+-- it (see above). Emits RosterUpdated when the member's state changes.
+function Roster.Note(guid, online, private)
+	local m = guid and Roster.members[guid]
+	if not m then return end
+	local entry = { online = online and true or false, at = GetTime() }
+	if private then
+		Roster.evidence[guid] = entry
+	else
+		Roster.announced[guid] = entry
+	end
+	if applyOnline(guid, m) then
+		ns.Emit("RosterUpdated")
+	end
+end
+
+-- A message from the member arrived: online.
+function Roster.Heard(guid)
+	Roster.Note(guid, true, true)
+end
+
+-- True if a message from the member arrived within `seconds` (and nothing
+-- said offline since).
+function Roster.HeardWithin(guid, seconds)
+	local e = Roster.evidence[guid]
+	return e ~= nil and e.online and GetTime() - e.at < seconds
+end
+
+-- True only on fresh news that the member is offline (not just a roster
+-- flag, which can be behind after a login).
+function Roster.KnownOffline(guid)
+	local m = guid and Roster.members[guid]
+	if not m or m.online then return false end
+	local now = GetTime()
+	local a, e = Roster.announced[guid], Roster.evidence[guid]
+	return (valid(a, now) and not a.online) or (valid(e, now) and not e.online) or false
 end
 
 -- Seconds since the member was last online (0 if online), or nil.
@@ -140,7 +222,17 @@ function Roster.Refresh()
 		local name, _, _, level, _, _, _, _, online, _, classFile, _, _, _, _, _, guid = GetGuildRosterInfo(i)
 		if name and guid then
 			name = Util.NormalizeName(name)
-			members[guid] = { name = name, online = online and true or false, level = level, class = classFile, index = i }
+			online = online and true or false
+			local previous = Roster.members[guid]
+			if previous and previous.rosterOnline ~= nil and previous.rosterOnline ~= online then
+				-- The roster itself changed: newer than what we knew before.
+				for _, known in ipairs({ Roster.announced, Roster.evidence }) do
+					if known[guid] and known[guid].online ~= online then known[guid] = nil end
+				end
+			end
+			local m = { name = name, rosterOnline = online, level = level, class = classFile, index = i }
+			applyOnline(guid, m)
+			members[guid] = m
 			byName[name] = guid
 		end
 	end
@@ -194,20 +286,16 @@ end
 --[[
 The server tells about guild members logging in or out in a system message
 right away, while the roster's online flags change only with the next
-refresh (up to REFRESH_INTERVAL later). The flag is set at once; a roster
-refresh is requested to confirm it.
+refresh (up to REFRESH_INTERVAL later, or later still). It is noted for
+every client alike (see "Online state"); a roster refresh is requested.
 ]]
 function Roster.OnSystemMessage(_, text)
 	local name, online = Roster.ParseOnlineMessage(text)
 	if not name then return end
 	local guid = Roster.GuidByName(name)
-	local member = guid and Roster.members[guid]
-	if not member then return end
-	if member.online ~= online then
-		member.online = online
-		ns.Debug(name, online and "came online" or "went offline", "(system message)")
-		ns.Emit("RosterUpdated")
-	end
+	if not guid or not Roster.members[guid] then return end
+	ns.Debug(name, online and "came online" or "went offline", "(system message)")
+	Roster.Note(guid, online, false)
 	ns.ScheduleEarliest("rosterConfirm", 3, requestRoster)
 end
 

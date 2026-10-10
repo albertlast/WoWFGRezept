@@ -7,6 +7,8 @@
 - Minimap button glow works on Forever: it was never shown (the embedded glow library was looked up by the wrong name, and the Forever client lacks a function its animation uses).
 - Wishlist notice and minimap glow react within seconds: guild members logging in or out are taken from the "has come online" / "has gone offline" messages instead of waiting for the next roster refresh (up to two minutes), and the notice also follows synced data (it could lag the glow).
 - Wishlist sound plays on the master channel, also for the summary after login; a sound that does not play is logged.
+- Members who went offline while the guild roster still shows them online: one failed whisper marks them offline for 10 minutes (or until the roster shows a relog), the sync moves on to the next partner at once instead of waiting 10 seconds, and further whispers to them are skipped. A message from a member counts as proof they are online. Elections keep using the online state every client sees alike.
+- Data of guilds none of your characters has been seen in for 60 days is removed (your own characters' records stay).
 - Records carry the owner's client language (not part of the content hash, so 0.1.0 clients stay compatible).
 
 ## 0.1.0 (2026-10-09)

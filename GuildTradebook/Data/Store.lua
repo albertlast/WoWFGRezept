@@ -26,6 +26,7 @@ ns.Store = Store
 Store.SCHEMA = 1
 Store.FUTURE_TOLERANCE = 300        -- seconds a version may be ahead of our clock
 Store.GONE_GRACE = 14 * 86400       -- keep records of ex-members this long (hidden)
+Store.GUILD_RETENTION = 60 * 86400  -- keep data of a guild none of your characters is seen in this long
 Store.MAX_RECORDS = 2000            -- per guild
 Store.MAX_PROFS = 12
 Store.MAX_RECIPES = 1500            -- per profession
@@ -451,6 +452,38 @@ function Store.Prune(gd, isMember, now)
 			if now - rec.goneSince > Store.GONE_GRACE then
 				gd.chars[guid] = nil
 				removed = removed + 1
+			end
+		end
+	end
+	return removed
+end
+
+--[[
+Data of guilds this account is no longer seen in. Every guild entry carries
+seenAt (server time an own character was last in it, set by the caller for
+the current guild). After GUILD_RETENTION the guild's data goes, except the
+records of account characters still in that guild (accountChars[guid].
+guildKey): they are owner data, only the owner can rebuild them. A guild
+left with nothing is removed. Entries without seenAt (older versions) start
+counting now. Returns the number of records removed.
+]]
+function Store.PruneGuilds(db, currentKey, now, accountChars)
+	local removed = 0
+	for key, gd in pairs(db.guilds) do
+		if key ~= currentKey then
+			if not gd.seenAt then
+				gd.seenAt = now
+			elseif now - gd.seenAt > Store.GUILD_RETENTION then
+				for guid in pairs(gd.chars) do
+					local acc = accountChars[guid]
+					if not (acc and acc.guildKey == key) then
+						gd.chars[guid] = nil
+						removed = removed + 1
+					end
+				end
+				if not next(gd.chars) then
+					db.guilds[key] = nil
+				end
 			end
 		end
 	end

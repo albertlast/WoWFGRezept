@@ -185,6 +185,26 @@ test("rejoining clears the hidden flag", function()
 	eq(gd.chars[B].goneSince, nil)
 end)
 
+test("data of guilds you left goes after the retention time, own characters stay", function()
+	local db = { guilds = {
+		["Now-R"] = { chars = { a = {} }, seenAt = 1 },
+		["Old-R"] = { chars = { b = {}, mine = {}, movedAway = {} }, seenAt = 1000 },
+		["Gone-R"] = { chars = { c = {} }, seenAt = 1000 },
+		["Legacy-R"] = { chars = { d = {} } },
+	} }
+	local account = { mine = { guildKey = "Old-R" }, movedAway = { guildKey = "Now-R" } }
+	local t = 1000 + Store.GUILD_RETENTION
+	eq(Store.PruneGuilds(db, "Now-R", t, account), 0, "not yet")
+	eq(db.guilds["Legacy-R"].seenAt, t, "older entries start counting now")
+	eq(Store.PruneGuilds(db, "Now-R", t + 1, account), 3)
+	truthy(db.guilds["Now-R"].chars.a, "the current guild is never touched")
+	truthy(db.guilds["Old-R"].chars.mine, "an own character still in that guild keeps its record")
+	falsy(db.guilds["Old-R"].chars.b)
+	falsy(db.guilds["Old-R"].chars.movedAway, "own character now in another guild: gone here")
+	falsy(db.guilds["Gone-R"], "nothing left: the guild entry goes")
+	truthy(db.guilds["Legacy-R"], "still counting")
+end)
+
 test("wire round trip preserves content and hash", function()
 	local r = rec(A, 12345, 2, {
 		[197] = { rank = 150, maxRank = 225, scannedAt = 999, recipes = { [3914] = 2568, [8776] = 0 } },

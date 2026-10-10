@@ -694,9 +694,13 @@ test("names with a space can not be whispered: sync goes through the guild chann
 	assertConverged(world, b.guid, "names with spaces")
 	truthy(world.addressed > 0, "addressed guild messages were used")
 	truthy(cc:Record(a.guid).profs[TAILORING].recipes[3914])
-	-- Each client tries each name once, then uses the guild channel.
+	-- A first failure counts as "offline" (the roster is often behind); the
+	-- same name failing again while the roster still shows it online is a
+	-- name problem: from then on it goes the guild way.
 	world:Run(3 * 1300)
-	eq(world.repeatedFailures, 0, "a name that failed once is not whispered again")
+	world:ResetCounters()
+	world:Run(3 * 1300)
+	eq(world.repeatedFailures, 0, "a name that failed twice is not whispered again")
 	-- Your own name: first name and surname, as the server shows it.
 	eq(cc:Record(a.guid).name, "Joerg Falk-Realm")
 	eq(cc:Record(b.guid).name, "Mira Stein-Realm")
@@ -745,6 +749,104 @@ test("a whisper fails: the name is marked and the guild channel is used instead"
 	-- Later whispers to Anna go the guild way right away.
 	world:Run(2 * 1300)
 	eq(world.repeatedFailures, 0, "a name that failed once is not whispered again")
+end)
+
+test("offline while the roster still shows online: one failed whisper, the sync moves on, no repeats", function()
+	math.randomseed(25)
+	local world, a, b, c = threeMembers()
+	a.staleRoster, a.quietLogout = true, true
+	world:Login(b.guid)
+	world:Login(c.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(200)
+	world:Logout(a.guid)
+	world:Run(5)
+	local cb = world.online[b.guid]
+	truthy(cb.ns.Roster.members[a.guid].online, "the roster still shows Anna online")
+	world:ResetCounters()
+	cb.ns.log = {}
+	-- Bert syncs a few times; Anna is a known peer, so she gets picked.
+	for i = 1, 6 do
+		cb.ns.Protocol.sync = nil
+		cb.ns.Protocol.StartSync(false)
+		world:Run(5)
+		falsy(cb.ns.Protocol.sync, "sync " .. i .. " answered within 5 s")
+		world:Run(25)
+	end
+	local offline, timeouts = 0, 0
+	for _, line in ipairs(cb.ns.log) do
+		if line:find("failed: offline", 1, true) then offline = offline + 1 end
+		if line:find("no answer from Anna", 1, true) then timeouts = timeouts + 1 end
+	end
+	eq(offline, 1, "one failed whisper to Anna")
+	eq(timeouts, 0, "no sync waited for Anna")
+	eq(world.repeatedFailures, 0, "Anna is not whispered again")
+	local m = cb.ns.Roster.members[a.guid]
+	falsy(m.online, "Anna counts as offline here")
+	truthy(m.sharedOnline, "elections still see the roster every client sees")
+	truthy(m.rosterOnline)
+	eq(#cb.ns.Wishlist.ReadyNow(), 0)
+end)
+
+test("guild cleanup runs in a session: the current guild is stamped, an old one pruned", function()
+	local world = H.NewWorld()
+	local me = world:AddChar({ guid = guid(1), name = "Anna" })
+	local c = world:Login(me.guid)
+	world:Run(30)
+	local db = c.env.GuildTradebookDB
+	local old = { chars = { [guid(77)] = { guid = guid(77) } }, seenAt = c.ns.Now() - c.ns.Store.GUILD_RETENTION - 1 }
+	db.guilds["Old Guild-Realm"] = old
+	local gd = c.ns.GetGuildData()
+	truthy(gd.seenAt, "current guild stamped")
+	c:Fire("GUILD_ROSTER_UPDATE")
+	world:Run(10)
+	falsy(db.guilds["Old Guild-Realm"], "old guild pruned")
+	truthy(db.guilds[c.ns.Roster.guildKey], "current guild kept")
+end)
+
+test("online state: messages prove online, failed whispers offline, both expire; roster changes end them", function()
+	local world = H.NewWorld()
+	local me = world:AddChar({ guid = guid(1), name = "Anna" })
+	local x = world:AddChar({ guid = guid(2), name = "Bert" })
+	local c = world:Login(me.guid)
+	world:Run(30)
+	local R = c.ns.Roster
+	local function state() local m = R.members[x.guid] return m.online, m.sharedOnline end
+	falsy((state()))
+	R.Heard(x.guid)
+	local online, shared = state()
+	truthy(online, "a message proves online")
+	falsy(shared, "only for this client")
+	world:Run(R.ONLINE_PROOF + 1)
+	c:Fire("GUILD_ROSTER_UPDATE")
+	world:Run(2)
+	falsy((state()), "the proof expires")
+
+	world:Login(x.guid)
+	world:Run(2)
+	truthy((state()))
+	R.Note(x.guid, false, true) -- a whisper failed
+	online, shared = state()
+	falsy(online)
+	truthy(shared)
+	truthy(R.KnownOffline(x.guid))
+	c:Fire("GUILD_ROSTER_UPDATE")
+	world:Run(2)
+	falsy((state()), "an unchanged roster does not undo it")
+	world:Run(R.OFFLINE_MEMORY + 1)
+	c:Fire("GUILD_ROSTER_UPDATE")
+	world:Run(2)
+	truthy((state()), "expired")
+
+	R.Note(x.guid, false, true)
+	world:Logout(x.guid)
+	world:Run(2)
+	world:Login(x.guid)
+	world:Run(2)
+	truthy((state()), "a relog on the roster ends it")
+	falsy(R.KnownOffline(x.guid))
 end)
 
 test("characters of one account are grouped; an offline crafter is reached via the online one", function()
