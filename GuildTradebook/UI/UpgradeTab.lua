@@ -161,13 +161,13 @@ local function build(content)
 	bop:SetPoint("TOPLEFT", itemType, "BOTTOMLEFT", -4, -4)
 	local all = W.CreateCheck(content, L.SHOW_ALL, function() return settings().showAll end,
 		update(function(s, v) s.showAll = v end))
-	all:SetPoint("LEFT", bop, "RIGHT", 160, 0)
+	all:SetPoint("LEFT", bop.label, "RIGHT", 12, 0)
 	local ahead = W.CreateDropdown(content, 220, function()
 		local entries = {}
 		for _, n in ipairs({ 0, 2, 5, 10 }) do entries[#entries + 1] = { n, L.LEVEL_AHEAD:format(n) } end
 		return entries
 	end, function() return settings().levelAhead end, update(function(s, v) s.levelAhead = v end))
-	ahead:SetPoint("LEFT", all, "RIGHT", 160, 0)
+	ahead:SetPoint("LEFT", all.label, "RIGHT", 12, 0)
 
 	ui.controls = { itemType, slot, stats, bop, all, ahead }
 

@@ -77,6 +77,9 @@ function W.CreateCheck(parent, label, getValue, setValue)
 	end
 	text:SetText(label)
 	text:SetFontObject("GameFontHighlightSmall")
+	-- Anchor the next control to check.label, not the box: label lengths
+	-- differ by language.
+	check.label = text
 	check:SetScript("OnClick", function(self)
 		setValue(self:GetChecked() and true or false)
 	end)
