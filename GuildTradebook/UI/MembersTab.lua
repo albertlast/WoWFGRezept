@@ -7,7 +7,12 @@ character in ns.charDB.members):
   cooldowns    one collapsible group per cooldown recipe, ready and
                reachable crafters first
 "Only reachable now" hides characters nobody can ask right now (offline,
-and not online on another character), in every view.
+and not online on another character), in every view. The search box
+(not remembered) matches character names and profession names:
+  players      keeps a person when one of their characters matches
+  groups       a matching group label (profession, cooldown recipe) keeps
+               the whole group; otherwise only the matching characters,
+               and the group is shown open
 ]]
 local _, ns = ...
 
@@ -41,6 +46,15 @@ end
 
 local function isMember(guid)
 	return Roster.IsMember(guid)
+end
+
+-- Search text, trimmed and lower case ("" = no search).
+local function needleOf(text)
+	return text and text:lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
+end
+
+local function matches(text, needle)
+	return needle == "" or (text ~= nil and text:lower():find(needle, 1, true) ~= nil)
 end
 
 -- Primary professions first; secondary ones (Cooking, First Aid, ...) dimmed.
@@ -121,17 +135,36 @@ local function groupRows(rows)
 	return out, players
 end
 
--- Players view rows ({kind = "member", ...}), plus the counts for the header.
-local function playerRows(gd, reachableOnly)
-	local rows, recipeTotal = {}, 0
+-- Guild totals for the stats line: people sharing data, their characters,
+-- recipes. The filters do not change them.
+local function stats(gd)
+	local people, players, characters, recipes = {}, 0, 0, 0
+	for guid, rec in pairs(gd.chars) do
+		if Store.IsShareable(rec, isMember) then
+			characters = characters + 1
+			local key = rec.player or guid
+			if not people[key] then
+				people[key] = true
+				players = players + 1
+			end
+			for _, p in pairs(rec.profs) do
+				recipes = recipes + (p.recipes and Util.Count(p.recipes) or 0)
+			end
+		end
+	end
+	return players, characters, recipes
+end
+
+-- Players view rows ({kind = "member", ...}).
+local function playerRows(gd, reachableOnly, needle)
+	local rows = {}
 	local seen = {}
 	for guid, rec in pairs(gd.chars) do
 		if Store.IsShareable(rec, isMember) then
 			seen[guid] = true
 			local member = Roster.Get(guid)
-			for _, p in pairs(rec.profs) do
-				recipeTotal = recipeTotal + (p.recipes and Util.Count(p.recipes) or 0)
-			end
+			local profNames = {}
+			for sl in pairs(rec.profs) do profNames[#profNames + 1] = Index.SkillLineName(sl) end
 			rows[#rows + 1] = {
 				kind = "member",
 				guid = guid,
@@ -146,10 +179,10 @@ local function playerRows(gd, reachableOnly)
 				linked = ns.Link.IsPartner(guid),
 				ver = rec.ver,
 				profs = professionText(rec),
+				searchText = table.concat(profNames, " "),
 			}
 		end
 	end
-	local shared = #rows
 	-- Members the server lists with professions but who share no data.
 	for guid, member in pairs(Roster.members) do
 		local server = Roster.ServerProfessions(guid)
@@ -162,6 +195,7 @@ local function playerRows(gd, reachableOnly)
 				guid = guid, name = member.name, class = member.class, level = member.level or 0,
 				online = member.online or false, ver = 0,
 				profs = "|cff808080" .. table.concat(names, ", ") .. " (" .. L.NO_ADDON_DATA .. ")|r",
+				searchText = table.concat(names, " "),
 			}
 		end
 	end
@@ -172,9 +206,21 @@ local function playerRows(gd, reachableOnly)
 		end
 		rows = kept
 	end
-	local players
-	rows, players = groupRows(rows)
-	return rows, players, shared, recipeTotal
+	if needle ~= "" then
+		-- The whole person stays when one of their characters matches.
+		local hit = {}
+		for _, row in ipairs(rows) do
+			if matches(row.name, needle) or matches(row.searchText, needle) then
+				hit[row.player or row.guid] = true
+			end
+		end
+		local kept = {}
+		for _, row in ipairs(rows) do
+			if hit[row.player or row.guid] then kept[#kept + 1] = row end
+		end
+		rows = kept
+	end
+	return (groupRows(rows))
 end
 
 -- A character inside a profession or cooldown group.
@@ -187,20 +233,32 @@ local function entry(guid, rec)
 	}
 end
 
--- Groups (sorted) and their open entries into one row list.
-local function flatten(groups, open)
+-- Groups (sorted) and their open entries into one row list. Searching: a
+-- group whose label matches stays whole; otherwise only its matching
+-- characters stay, shown open, and a group without any is left out.
+local function flatten(groups, open, needle)
 	local rows = {}
 	for _, g in ipairs(groups) do
-		g.header.open = open[g.header.key] == true
-		rows[#rows + 1] = g.header
-		if g.header.open then
-			for _, e in ipairs(g.entries) do rows[#rows + 1] = e end
+		local entries, forced = g.entries, false
+		if needle ~= "" and not matches(g.header.label, needle) then
+			entries = {}
+			for _, e in ipairs(g.entries) do
+				if matches(e.name, needle) then entries[#entries + 1] = e end
+			end
+			forced = true
+		end
+		if #entries > 0 then
+			g.header.open = forced or open[g.header.key] == true
+			rows[#rows + 1] = g.header
+			if g.header.open then
+				for _, e in ipairs(entries) do rows[#rows + 1] = e end
+			end
 		end
 	end
 	return rows
 end
 
-local function professionRows(gd, reachableOnly, open)
+local function professionRows(gd, reachableOnly, open, needle)
 	local byLine = {}
 	for guid, rec in pairs(gd.chars) do
 		if Store.IsShareable(rec, isMember) then
@@ -243,10 +301,10 @@ local function professionRows(gd, reachableOnly, open)
 		if a.primary ~= b.primary then return a.primary end
 		return a.header.label < b.header.label
 	end)
-	return flatten(groups, open)
+	return flatten(groups, open, needle)
 end
 
-local function cooldownRows(gd, reachableOnly, open)
+local function cooldownRows(gd, reachableOnly, open, needle)
 	local now = ns.Now()
 	local byRecipe = {}
 	for guid, rec in pairs(gd.chars) do
@@ -314,7 +372,7 @@ local function cooldownRows(gd, reachableOnly, open)
 		if a.soonest ~= b.soonest then return a.soonest < b.soonest end
 		return a.header.label < b.header.label
 	end)
-	return flatten(groups, open)
+	return flatten(groups, open, needle)
 end
 
 --[[
@@ -322,30 +380,36 @@ Rows for one view: { kind = "member" | "group" | "entry" | "info", ... }
   group:  key, label, summary, open, dim?
   entry:  guid, name, class, online, via, reachable, isSelf, isAlt, right, extra,
           skillLine (professions) or recipeID (cooldowns)
-Second value: the header text.
+text: optional search (character or profession name).
+Second value: the stats line (guild totals, not filtered).
 ]]
-function MembersView.Rows(view, reachableOnly, open)
+function MembersView.Rows(view, reachableOnly, open, text)
 	local gd = ns.GetGuildData()
 	if not gd then return {}, "" end
-	local players, shared, recipeTotal
+	local needle = needleOf(text)
 	local rows
-	rows, players, shared, recipeTotal = playerRows(gd, reachableOnly)
-	local header = L.MEMBERS_HEADER:format(players, shared, recipeTotal)
 	if view == "professions" then
-		rows = professionRows(gd, reachableOnly, open or {})
+		rows = professionRows(gd, reachableOnly, open or {}, needle)
 	elseif view == "cooldowns" then
-		rows = cooldownRows(gd, reachableOnly, open or {})
-		if #rows == 0 then
+		rows = cooldownRows(gd, reachableOnly, open or {}, needle)
+		if #rows == 0 and needle == "" then
 			rows = { { kind = "info", text = L.COOLDOWNS_EMPTY } }
 		end
+	else
+		rows = playerRows(gd, reachableOnly, needle)
 	end
-	return rows, header
+	if #rows == 0 and needle ~= "" then
+		rows = { { kind = "info", text = L.MEMBERS_NO_MATCH } }
+	end
+	return rows, L.MEMBERS_STATS:format(stats(gd))
 end
+
+local searchText = ""
 
 local function refresh()
 	local s = MembersView.Settings()
-	local rows, header = MembersView.Rows(s.view, s.reachable, s.open)
-	ui.header:SetText(header)
+	local rows, statsText = MembersView.Rows(s.view, s.reachable, s.open, searchText)
+	ui.stats:SetText(statsText)
 	ui.list:SetData(rows)
 end
 
@@ -356,9 +420,21 @@ function MembersView.Toggle(key)
 end
 
 local function build(content)
-	-- Top right: view dropdown, and the reachable filter left of it. The
-	-- header takes what is left and is cut off rather than overlapping
-	-- (German labels are longer).
+	-- Top left the search box; top right the view dropdown, and the
+	-- reachable filter left of it. The stats line takes what is left and is
+	-- cut off rather than overlapping (German labels are longer).
+	local search = CreateFrame("EditBox", nil, content, "SearchBoxTemplate")
+	search:SetSize(180, 20)
+	search:SetPoint("TOPLEFT", 6, -2)
+	search.Instructions:SetText(L.MEMBERS_SEARCH_HINT)
+	-- Every change counts, including the box's clear button (not user input).
+	search:HookScript("OnTextChanged", function(self)
+		if self:GetText() == searchText then return end
+		searchText = self:GetText()
+		ns.Debounce("membersSearch", 0.2, function() refresh() end)
+	end)
+	ui.search = search
+
 	ui.view = W.CreateDropdown(content, 140, function()
 		local entries = {}
 		for _, v in ipairs(MembersView.VIEWS) do entries[#entries + 1] = { v, L[VIEW_LABELS[v]] } end
@@ -375,9 +451,9 @@ local function build(content)
 		end)
 	local labelWidth = tonumber(ui.reachable.label.GetStringWidth and ui.reachable.label:GetStringWidth()) or 120
 	ui.reachable:SetPoint("RIGHT", ui.view, "LEFT", -(labelWidth + 12), 0)
-	ui.header = W.Text(content, "GameFontNormal")
-	ui.header:SetPoint("LEFT", content, "TOPLEFT", 6, -12)
-	ui.header:SetPoint("RIGHT", ui.reachable, "LEFT", -8, 0)
+	ui.stats = W.Text(content, "GameFontDisableSmall")
+	ui.stats:SetPoint("LEFT", search, "RIGHT", 12, 0)
+	ui.stats:SetPoint("RIGHT", ui.reachable, "LEFT", -8, 0)
 
 	-- Right-click menu: account linking (Features/Link.lua). Returns the
 	-- entries for a row: { {label, fn}, ... }.

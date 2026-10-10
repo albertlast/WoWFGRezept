@@ -60,7 +60,10 @@ local function uiEnv(client)
 			rawset(f, "SetText", function(_, t) text = t end)
 			rawset(f, "GetText", function() return text end)
 			rawset(f, "HookScript", function(self, _, fn) rawset(self, "onTextChanged", fn) end)
-			env.searchBox = f
+			-- Recipes tab first, then the Members tab.
+			env.searchBoxes = env.searchBoxes or {}
+			env.searchBoxes[#env.searchBoxes + 1] = f
+			env.searchBox = env.searchBox or f
 		elseif frameType == "CheckButton" then
 			rawset(f, "GetChecked", function() return false end)
 		end
@@ -336,6 +339,28 @@ test("tabs, rows and tooltip run against real pool data", function()
 	eq(hiddenGroup.key, "c:3915")
 	falsy(hiddenGroup.summary:find("next", 1, true), hiddenGroup.summary)
 	truthy(cdRows[#cdRows].right:find("not shared", 1, true), cdRows[#cdRows].right)
+
+	-- Search: names and profession names; stats stay guild totals.
+	local _, statsText = MV.Rows("players", false, {}, "anna")
+	local rows = MV.Rows("players", false, {}, " ANNA ")
+	eq(#rows, 1, "only Anna")
+	eq(rows[1].guid, a.guid)
+	eq(statsText, select(2, MV.Rows("players", false, {})), "stats are not filtered")
+	eq(MV.Rows("players", false, {}, "#197")[1].kind, "member", "profession name matches")
+	eq(MV.Rows("players", false, {}, "nobody here")[1].kind, "info", "no match")
+	-- Groups: a matching label keeps the group as it is (closed); a name
+	-- match shows only that character, opened.
+	eq(kinds(MV.Rows("professions", false, {}, "#197")), "group")
+	rows = MV.Rows("cooldowns", false, {}, "bert")
+	eq(kinds(rows), "group,entry,group,entry", "Bert's cooldowns, opened")
+	eq(rows[2].guid, b.guid)
+	local membersBox = cb.env.searchBoxes[2]
+	membersBox:SetText("bert")
+	membersBox.onTextChanged(membersBox)
+	world:Run(1)
+	membersBox:SetText("")
+	membersBox.onTextChanged(membersBox)
+	world:Run(1)
 
 	-- Every view renders, groups open and closed; the choice is remembered.
 	for _, view in ipairs(MV.VIEWS) do
