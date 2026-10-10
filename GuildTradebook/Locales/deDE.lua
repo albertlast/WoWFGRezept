@@ -139,6 +139,16 @@ L.LINK_STATUS_OFFER = "Verknüpfungsangebot offen: %s"
 L.LINK_NOT_POSSIBLE = "%s kann nicht verknüpft werden (keine Addon-Daten oder schon einer deiner Charaktere)."
 L.LINKED_LICENSE = "Deine andere Lizenz (verknüpft)"
 L.RIGHT_CLICK_OPTIONS = "Rechtsklick: Optionen"
+L.VIEW_PLAYERS = "Spieler"
+L.VIEW_PROFESSIONS = "Berufe"
+L.VIEW_COOLDOWNS = "Abklingzeiten"
+L.MEMBERS_REACHABLE = "Nur jetzt erreichbare"
+L.MEMBERS_PROF_SUMMARY = "%d Mitglieder, höchste Stufe %d"
+L.MEMBERS_RECIPES = "%d Rezepte"
+L.COOLDOWN_NEXT = "nächster: %s in %s"
+L.COOLDOWN_NONE_READY = "keiner bereit"
+L.COOLDOWNS_EMPTY = "Noch keine Abklingzeiten bekannt. Hersteller teilen sie, sobald sie ihr Berufsfenster öffnen."
+L.CLICK_TOGGLE = "Klick: ein- oder ausklappen"
 L.SLASH_HELP = [[/gtb - Fenster öffnen
 /gtb options - Einstellungen öffnen
 /gtb minimap - Minimap-Button ein/aus

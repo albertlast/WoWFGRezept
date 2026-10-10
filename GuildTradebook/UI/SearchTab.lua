@@ -357,12 +357,12 @@ function ns.UI.ShowRecipe(recipeID, fromCurrent, keepHistory)
 	ns.UI.Show("search")
 end
 
--- Shows all recipes of one member (Members tab). Clears the search and the
--- profession filter so the member's whole list is visible.
-function ns.UI.ShowCrafter(guid)
+-- Shows all recipes of one member (Members tab). Clears the search and sets
+-- the profession filter to skillLine (nil: all professions).
+function ns.UI.ShowCrafter(guid, skillLine)
 	state.crafter = guid
 	state.text = ""
-	state.skillLine = 0
+	state.skillLine = skillLine or 0
 	state.selected = nil
 	state.history = {}
 	if ui.search then ui.search:SetText("") end

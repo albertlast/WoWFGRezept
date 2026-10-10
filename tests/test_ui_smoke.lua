@@ -283,6 +283,65 @@ test("tabs, rows and tooltip run against real pool data", function()
 	eq(cb.env.searchBox:GetText(), "")
 	cb.ns.UI.ShowCrafter(b.guid)
 	eq(#ui.lists[1].items, 0, "Bert knows no recipes")
+	-- From the profession view: filtered to that profession.
+	cb.ns.UI.ShowCrafter(a.guid, 197)
+	eq(#ui.lists[1].items, 2, "Anna's tailoring recipes")
+	cb.ns.UI.ShowCrafter(a.guid, 171)
+	eq(#ui.lists[1].items, 0, "no alchemy")
+	cb.ns.UI.ShowCrafter(a.guid)
+
+	-- Members tab views: players, professions, cooldowns.
+	local MV = cb.ns.MembersView
+	local function kinds(rows)
+		local out = {}
+		for _, r in ipairs(rows) do out[#out + 1] = r.kind end
+		return table.concat(out, ",")
+	end
+	local playersRows = MV.Rows("players", false, {})
+	truthy(#playersRows >= 2 and playersRows[1].kind == "member", "players view: " .. kinds(playersRows))
+	local profRows = MV.Rows("professions", false, {})
+	eq(kinds(profRows), "group", "one profession, closed")
+	eq(profRows[1].key, "p:197")
+	eq(profRows[1].summary, "1 members, highest 150")
+	profRows = MV.Rows("professions", false, { ["p:197"] = true })
+	eq(kinds(profRows), "group,entry")
+	eq(profRows[2].guid, a.guid)
+	eq(profRows[2].right, "150/300")
+	eq(profRows[2].skillLine, 197)
+	-- Offline and not online elsewhere: hidden by the filter.
+	local annaMember = cb.ns.Roster.members[a.guid]
+	annaMember.online = false
+	eq(#MV.Rows("professions", true, { ["p:197"] = true }), 0, "only reachable: Anna is offline")
+	annaMember.online = true
+	eq(#MV.Rows("professions", true, { ["p:197"] = true }), 2)
+
+	local cdRows = MV.Rows("cooldowns", false, {})
+	eq(kinds(cdRows), "info", "no cooldowns known yet")
+	local gdB = cb.ns.GetGuildData()
+	local now = cb.ns.Now()
+	gdB.chars[a.guid].profs[197].cds = { [3914] = now - 10 }
+	gdB.chars[b.guid].profs[197] = { rank = 100, maxRank = 150, primary = true, recipes = {}, cds = { [3914] = now + 3600, [3915] = now + 7200 } }
+	cdRows = MV.Rows("cooldowns", false, { ["c:3914"] = true })
+	eq(kinds(cdRows), "group,entry,entry,group")
+	eq(cdRows[1].key, "c:3914", "the cooldown with someone ready comes first")
+	truthy(cdRows[1].summary:find("Anna", 1, true) and cdRows[1].summary:find("next: Bert in 1h", 1, true), cdRows[1].summary)
+	eq(cdRows[2].guid, a.guid, "ready first")
+	eq(cdRows[2].recipeID, 3914)
+	truthy(cdRows[3].isSelf, "you are listed too")
+	truthy(cdRows[4].summary:find("none ready", 1, true), cdRows[4].summary)
+
+	-- Every view renders, groups open and closed; the choice is remembered.
+	for _, view in ipairs(MV.VIEWS) do
+		MV.Settings().view = view
+		MV.Settings().open = { ["p:197"] = true, ["c:3914"] = true }
+		UI.Show("members")
+	end
+	MV.Toggle("c:3914")
+	eq(MV.Settings().open["c:3914"], nil, "toggled closed")
+	eq(cb.env.GuildTradebookCharDB.members.view, "cooldowns", "per character")
+	gdB.chars[a.guid].profs[197].cds = nil
+	gdB.chars[b.guid].profs[197] = nil
+	MV.Settings().view = "players"
 
 	-- Back history: reagent jumps stack up, a jump from another tab starts over.
 	cb.ns.UI.ShowRecipe(3915)

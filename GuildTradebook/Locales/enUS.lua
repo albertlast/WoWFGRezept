@@ -143,6 +143,16 @@ L.LINK_STATUS_OFFER = "Link offer pending: %s"
 L.LINK_NOT_POSSIBLE = "%s can not be linked (no addon data, or already one of yours)."
 L.LINKED_LICENSE = "Your other license (linked)"
 L.RIGHT_CLICK_OPTIONS = "Right-click: options"
+L.VIEW_PLAYERS = "Players"
+L.VIEW_PROFESSIONS = "Professions"
+L.VIEW_COOLDOWNS = "Cooldowns"
+L.MEMBERS_REACHABLE = "Only reachable now"
+L.MEMBERS_PROF_SUMMARY = "%d members, highest %d"
+L.MEMBERS_RECIPES = "%d recipes"
+L.COOLDOWN_NEXT = "next: %s in %s"
+L.COOLDOWN_NONE_READY = "none ready"
+L.COOLDOWNS_EMPTY = "No cooldowns known yet. Crafters share them once they open their profession window."
+L.CLICK_TOGGLE = "Click: show or hide"
 L.SLASH_HELP = [[/gtb - open window
 /gtb options - open the settings
 /gtb minimap - show/hide the minimap button
