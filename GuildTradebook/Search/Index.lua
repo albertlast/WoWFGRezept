@@ -194,6 +194,8 @@ function Index.Crafters(recipeID)
 	for _, guid in ipairs(Index.byRecipe[recipeID] or {}) do
 		local c = charInfo(guid, recipeID)
 		c.ready = c.readyAt == nil or c.readyAt <= now
+		-- The owner does not share the time: listed, never ready.
+		c.cooldownHidden = Store.IsHiddenCooldown(c.readyAt)
 		out[#out + 1] = c
 	end
 	table.sort(out, function(a, b)
@@ -201,6 +203,7 @@ function Index.Crafters(recipeID)
 		if a.online ~= b.online then return a.online end
 		if a.reachable ~= b.reachable then return a.reachable end
 		if a.ready ~= b.ready then return a.ready end
+		if a.cooldownHidden ~= b.cooldownHidden then return not a.cooldownHidden end
 		if a.ver ~= b.ver then return a.ver > b.ver end
 		return a.name < b.name
 	end)

@@ -63,7 +63,8 @@ local function professionText(rec)
 			local now, cds = ns.Now(), {}
 			for _, rid in ipairs(Util.SortedKeys(p.cds)) do
 				local readyAt = p.cds[rid]
-				local state = readyAt <= now and ("|cff20ff20" .. L.CD_READY .. "|r")
+				local state = Store.IsHiddenCooldown(readyAt) and ("|cff808080" .. L.CD_NOT_SHARED .. "|r")
+					or readyAt <= now and ("|cff20ff20" .. L.CD_READY .. "|r")
 					or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
 				cds[#cds + 1] = (Index.RecipeName(rid) or ("#" .. rid)) .. " " .. state
 			end
@@ -255,7 +256,9 @@ local function cooldownRows(gd, reachableOnly, open)
 					local e = entry(guid, rec)
 					if e.reachable or not reachableOnly then
 						e.recipeID, e.readyAt, e.ready = rid, readyAt, readyAt <= now
-						e.right = e.ready and ("|cff20ff20" .. L.CD_READY .. "|r")
+						e.hidden = Store.IsHiddenCooldown(readyAt)
+						e.right = e.hidden and ("|cff808080" .. L.CD_NOT_SHARED .. "|r")
+							or e.ready and ("|cff20ff20" .. L.CD_READY .. "|r")
 							or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
 						byRecipe[rid] = byRecipe[rid] or { entries = {} }
 						table.insert(byRecipe[rid].entries, e)
@@ -279,7 +282,7 @@ local function cooldownRows(gd, reachableOnly, open)
 		for _, e in ipairs(g.entries) do
 			if e.ready then
 				ready[#ready + 1] = e
-			elseif not nextUp then
+			elseif not nextUp and not e.hidden then
 				nextUp = e
 			end
 		end

@@ -462,6 +462,10 @@ function P.OnSelfCopy(rec)
 	-- one still carries the ID from before a link or unlink.
 	local notOlder = Store.CompareVersion(rec, own) >= 0
 	local changed, needBump = Store.MergeIncomingSelf(own, rec)
+	if needBump and not ns.db.options.shareCooldowns then
+		-- Adopted from the pool: the times stay hidden (option).
+		Store.HideCooldowns(own)
+	end
 	if needBump then
 		Store.Bump(own, ns.Now(), rec)
 		ns.Debug("reclaim own record", own.ver, own.seq, changed and "(adopted recipes)" or "")

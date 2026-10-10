@@ -4,7 +4,7 @@ frames, opens every tab, renders list rows and runs the tooltip hook. It does
 not check layout (that needs the game), only that the code paths run.
 ]]
 local H = ...
-local test, eq, truthy = H.test, H.eq, H.truthy
+local test, eq, truthy, falsy = H.test, H.eq, H.truthy, H.falsy
 
 -- Callable, indexable placeholder for any widget API we do not model.
 local mockMeta = {}
@@ -329,6 +329,13 @@ test("tabs, rows and tooltip run against real pool data", function()
 	eq(cdRows[2].recipeID, 3914)
 	truthy(cdRows[3].isSelf, "you are listed too")
 	truthy(cdRows[4].summary:find("none ready", 1, true), cdRows[4].summary)
+	-- A time the owner does not share: "not shared", never ready, never "next".
+	gdB.chars[b.guid].profs[197].cds[3915] = cb.ns.Store.CD_HIDDEN
+	cdRows = MV.Rows("cooldowns", false, { ["c:3915"] = true })
+	local hiddenGroup = cdRows[#cdRows - 1]
+	eq(hiddenGroup.key, "c:3915")
+	falsy(hiddenGroup.summary:find("next", 1, true), hiddenGroup.summary)
+	truthy(cdRows[#cdRows].right:find("not shared", 1, true), cdRows[#cdRows].right)
 
 	-- Every view renders, groups open and closed; the choice is remembered.
 	for _, view in ipairs(MV.VIEWS) do

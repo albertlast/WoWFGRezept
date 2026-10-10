@@ -32,6 +32,10 @@ Store.MAX_PROFS = 12
 Store.MAX_RECIPES = 1500            -- per profession
 Store.MAX_COOLDOWNS = 50            -- per profession
 Store.COOLDOWN_TOLERANCE = 120      -- seconds of drift ignored when re-reading a cooldown
+-- readyAt of a cooldown the owner does not share (option shareCooldowns off):
+-- the crafter is listed, but never as ready. Far in the future, so 0.1.0
+-- clients (which accept up to 2^40) also never show it as ready.
+Store.CD_HIDDEN = 2 ^ 38
 Store.NUM_BUCKETS = 16
 
 -- Professions are shared when the game gives them a crafting window (see
@@ -48,6 +52,7 @@ Store.OPTION_DEFAULTS = {
 	tooltipRecipes = true,   -- known / not known on recipe items
 	tooltipProfessions = true, -- professions of guild members on player tooltips
 	tooltipSecondary = false,  -- ... including Cooking, First Aid, Fishing
+	shareCooldowns = true,     -- own cooldown times are shared (off: Store.CD_HIDDEN)
 	chatResponder = true,    -- answer "!craft" in guild chat
 	wishAlerts = true,       -- notice when a wished crafter comes online
 	wishSound = true,
@@ -301,16 +306,23 @@ recipe is known to have a cooldown, so "ready" can be shown. Re-reading the
 same cooldown a little later gives a slightly different readyAt; drift below
 COOLDOWN_TOLERANCE is not a change. Returns true if the record changed.
 ]]
-function Store.ApplyCooldowns(own, skillLine, observed, now)
+function Store.IsHiddenCooldown(readyAt)
+	return readyAt ~= nil and readyAt >= Store.CD_HIDDEN
+end
+
+-- hidden: the owner does not share the times; every observed cooldown is
+-- stored as CD_HIDDEN.
+function Store.ApplyCooldowns(own, skillLine, observed, now, hidden)
 	local p = own.profs[skillLine]
 	if not p then return false end
 	local changed = false
 	for rid, remaining in pairs(observed) do
 		local readyAt = remaining > 0 and math.floor(now + remaining) or 0
+		if hidden then readyAt = Store.CD_HIDDEN end
 		local old = p.cds and p.cds[rid]
 		local differs
-		if old == nil then
-			differs = true
+		if old == nil or hidden or Store.IsHiddenCooldown(old) then
+			differs = old ~= readyAt
 		elseif readyAt == 0 then
 			differs = old > now
 		else
@@ -320,6 +332,22 @@ function Store.ApplyCooldowns(own, skillLine, observed, now)
 			p.cds = p.cds or {}
 			p.cds[rid] = readyAt
 			changed = true
+		end
+	end
+	return changed
+end
+
+-- Replaces every cooldown time of a record with CD_HIDDEN (the owner stopped
+-- sharing them). Returns true if anything changed; the caller publishes a
+-- new version.
+function Store.HideCooldowns(rec)
+	local changed = false
+	for _, p in pairs(rec.profs) do
+		for rid, readyAt in pairs(p.cds or {}) do
+			if readyAt ~= Store.CD_HIDDEN then
+				p.cds[rid] = Store.CD_HIDDEN
+				changed = true
+			end
 		end
 	end
 	return changed

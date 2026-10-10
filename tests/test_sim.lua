@@ -156,6 +156,57 @@ test("cooldowns reach the guild and show who is ready", function()
 	truthy(cb.ns.Index.Crafters(17187)[1].ready, "ready after the cooldown")
 end)
 
+test("cooldowns not shared (option): the guild sees the crafter, never as ready; real times come back when turned on", function()
+	math.randomseed(26)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", account = "acc1", profs = {
+		[ALCHEMY] = { rank = 300, maxRank = 300, name = "Alchemy", recipes = { [17187] = 12360, [2330] = 118 } },
+	}, cooldowns = { [17187] = 86400 } })
+	local alt = world:AddChar({ guid = guid(3), name = "Alty", account = "acc1", profs = {
+		[ALCHEMY] = { rank = 300, maxRank = 300, name = "Alchemy", recipes = { [17187] = 12360 } },
+	}, cooldowns = { [17187] = 3600 } })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	world:Login(b.guid)
+	local calt = world:Login(alt.guid)
+	world:Run(60)
+	calt:OpenTradeSkill(ALCHEMY)
+	world:Run(150)
+	world:Logout(alt.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(ALCHEMY)
+	world:Run(150)
+	local cb = world.online[b.guid]
+	local Store = cb.ns.Store
+	local shared = cb:Record(a.guid).profs[ALCHEMY].cds[17187]
+	truthy(shared and not Store.IsHiddenCooldown(shared), "shared by default")
+
+	ca.env.GuildTradebookDB.options.shareCooldowns = false
+	ca.ns.Scanner.ApplyCooldownSharing()
+	world:Run(90)
+	truthy(Store.IsHiddenCooldown(cb:Record(a.guid).profs[ALCHEMY].cds[17187]), "the guild's copy: not shared")
+	truthy(Store.IsHiddenCooldown(cb:Record(alt.guid).profs[ALCHEMY].cds[17187]), "for the account's alts too")
+	eq(cb:Record(a.guid).profs[ALCHEMY].cds[2330], nil, "a normal recipe stays without cooldown")
+	-- A day later, when the real cooldown would be over: still never ready.
+	world:Run(86400 + 3600)
+	for _, c in ipairs(cb.ns.Index.Crafters(17187)) do
+		falsy(c.ready, c.name .. " is never shown as ready")
+		truthy(c.cooldownHidden)
+	end
+	truthy(cb.ns.Index.Crafters(2330)[1].ready, "normal recipes are not affected")
+	ca:OpenTradeSkill(ALCHEMY)
+	world:Run(150)
+	truthy(Store.IsHiddenCooldown(cb:Record(a.guid).profs[ALCHEMY].cds[17187]), "a new scan keeps it hidden")
+
+	ca.env.GuildTradebookDB.options.shareCooldowns = true
+	ca.ns.Scanner.ApplyCooldownSharing()
+	ca:OpenTradeSkill(ALCHEMY)
+	world:Run(150)
+	local back = cb:Record(a.guid).profs[ALCHEMY].cds[17187]
+	truthy(back and not Store.IsHiddenCooldown(back), "the real time is back after the next scan")
+	truthy(back <= world.clock.t + 86400 + 300, "a real time, about a day from the scan")
+end)
+
 test("wishlist: notice when a crafter comes online", function()
 	math.randomseed(22)
 	local world, a, b = threeMembers()

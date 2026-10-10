@@ -223,7 +223,9 @@ function W.CrafterLabel(c)
 		tags[#tags + 1] = L.ALT
 	end
 	if c.readyAt then
-		if c.ready then
+		if ns.Store.IsHiddenCooldown(c.readyAt) then
+			tags[#tags + 1] = "|cff808080" .. L.CD_NOT_SHARED .. "|r"
+		elseif c.ready then
 			tags[#tags + 1] = "|cff20ff20" .. L.CD_READY .. "|r"
 		else
 			tags[#tags + 1] = "|cffff8000" .. L.CD_REMAINING:format(ns.Util.FormatAge(c.readyAt - ns.Now())) .. "|r"

@@ -236,6 +236,21 @@ function Scanner.UpdatePlayerId(extra)
 	publishStamped(gd, own, stamped)
 end
 
+-- The option "share my cooldowns" was changed. Off: the account's records
+-- in this guild get CD_HIDDEN instead of the times, published as new
+-- versions. On: the real times come back with the next scan (the
+-- profession window).
+function Scanner.ApplyCooldownSharing()
+	local gd = ns.GetGuildData()
+	local own = Scanner.GetOwn()
+	if not (gd and own) or ns.db.options.shareCooldowns then return end
+	local changed = {}
+	for _, guid in ipairs(accountGuids(gd)) do
+		if Store.HideCooldowns(gd.chars[guid]) then changed[#changed + 1] = guid end
+	end
+	publishStamped(gd, own, changed)
+end
+
 -- Gives the account's characters in this guild a chosen player ID (account
 -- linking, Features/Link.lua): not the smallest one like UpdatePlayerId.
 -- id nil: a fresh one.
@@ -355,7 +370,8 @@ function Scanner.ScanTradeSkill()
 	if Store.RemoveRecipes(own, skillLine, function(rid) return isForeign(own, skillLine, rid) end) then
 		recipesChanged = true
 	end
-	local cooldownsChanged = Store.ApplyCooldowns(own, skillLine, cooldowns, now)
+	-- Not shared (option): the guild sees the cooldown, never as ready.
+	local cooldownsChanged = Store.ApplyCooldowns(own, skillLine, cooldowns, now, not ns.db.options.shareCooldowns)
 	if recipesChanged then
 		Scanner.Commit(own, Store.ChangeKind(prof))
 	elseif cooldownsChanged then
