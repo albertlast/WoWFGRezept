@@ -147,9 +147,17 @@ test("tabs, rows and tooltip run against real pool data", function()
 	local ui = uiEnv(cb)
 	local UI = cb.ns.UI
 
+	-- Recipe rows of the Recipes tab list (without group rows).
+	local function recipeRows()
+		local n = 0
+		for _, item in ipairs(ui.lists[1].items) do
+			if item.kind ~= "group" then n = n + 1 end
+		end
+		return n
+	end
 	UI.Show("search", "recipe")
-	local results = ui.lists[1].items
-	eq(#results, 2, "search found both recipes")
+	eq(recipeRows(), 2, "search found both recipes")
+	eq(ui.lists[1].items[1].kind, "group", "under their profession")
 	-- Reagents known (as after a FACT answer): rows render with tooltips.
 	cb.env.GuildTradebookDB.recipeFacts[3914].reagents = { { 2589, 2, 0 }, { 2320, 1, 1 } }
 	cb.ns.UI.ShowRecipe(3914)
@@ -269,28 +277,58 @@ test("tabs, rows and tooltip run against real pool data", function()
 
 	-- Opening a recipe keeps the search; the clear button resets the filter.
 	UI.Show("search", "recipe 3914")
-	eq(#ui.lists[1].items, 1, "search filters")
+	eq(recipeRows(), 1, "search filters")
 	cb.ns.UI.ShowRecipe(3915, true)
 	eq(cb.env.searchBox:GetText(), "recipe 3914", "jump does not overwrite the search")
 	cb.env.searchBox:SetText("")
 	cb.env.searchBox.onTextChanged(cb.env.searchBox, false) -- clear button: not user input
 	world:Run(1)
-	eq(#ui.lists[1].items, 2, "cleared search shows everything again")
+	eq(recipeRows(), 2, "cleared search shows everything again")
+
+	-- Groups: profession > category > recipes; "Other" for recipes without
+	-- a named category, last; nothing but "Other": recipes follow directly.
+	local RL = cb.ns.RecipeList
+	local all = cb.ns.Index.Search("", 0)
+	local function shape(rows)
+		local out = {}
+		for _, r in ipairs(rows) do out[#out + 1] = r.kind == "group" and (r.label .. "/" .. r.count) or tostring(r.recipeID) end
+		return table.concat(out, ",")
+	end
+	local always = function() return true end
+	eq(shape(RL.Rows(all, true, always)), "#197/2,3914,3915", "no categories yet")
+	local dbB = cb.env.GuildTradebookDB
+	dbB.recipeFacts[3915].cat = 10
+	dbB.recipeFacts[3914].cat = 11
+	eq(shape(RL.Rows(all, true, always)), "#197/2,3914,3915", "categories without names: like none")
+	dbB.categories[10] = { order = 1, names = { deDE = "Umhänge" } }
+	eq(shape(RL.Rows(all, true, always)), "#197/2,Umhänge/1,3915,Other/1,3914", "Other last")
+	dbB.categories[11] = { order = 2, names = { enUS = "Cloaks" } }
+	eq(shape(RL.Rows(all, true, always)), "#197/2,Umhänge/1,3915,Cloaks/1,3914", "by the game's order")
+	eq(shape(RL.Rows(all, false, always)), "Umhänge/1,3915,Cloaks/1,3914", "one profession: categories only")
+	eq(shape(RL.Rows(all, true, function(key) return key == "p:197" end)), "#197/2,Umhänge/1,Cloaks/1", "closed categories")
+	eq(shape(RL.Rows(all, true, function() return false end)), "#197/2", "closed profession")
+	-- A jump to a recipe opens its groups.
+	cb.ns.UI.ShowRecipe(3914)
+	truthy(RL.Open()["c:197:11"] and RL.Open()["p:197"], "groups of the opened recipe")
+	eq(cb.env.GuildTradebookCharDB.recipes.open["c:197:11"], true, "remembered per character")
+	UI.Show("search")
+	dbB.recipeFacts[3915].cat, dbB.recipeFacts[3914].cat = nil, nil
+	dbB.categories[10], dbB.categories[11] = nil, nil
 
 	-- Members tab -> Recipes tab filtered to one member.
 	cb.env.searchBox:SetText("recipe 3914")
 	cb.env.searchBox.onTextChanged(cb.env.searchBox)
 	world:Run(1)
 	cb.ns.UI.ShowCrafter(a.guid)
-	eq(#ui.lists[1].items, 2, "all of Anna's recipes, search cleared")
+	eq(recipeRows(), 2, "all of Anna's recipes, search cleared")
 	eq(cb.env.searchBox:GetText(), "")
 	cb.ns.UI.ShowCrafter(b.guid)
-	eq(#ui.lists[1].items, 0, "Bert knows no recipes")
+	eq(recipeRows(), 0, "Bert knows no recipes")
 	-- From the profession view: filtered to that profession.
 	cb.ns.UI.ShowCrafter(a.guid, 197)
-	eq(#ui.lists[1].items, 2, "Anna's tailoring recipes")
+	eq(recipeRows(), 2, "Anna's tailoring recipes")
 	cb.ns.UI.ShowCrafter(a.guid, 171)
-	eq(#ui.lists[1].items, 0, "no alchemy")
+	eq(recipeRows(), 0, "no alchemy")
 	cb.ns.UI.ShowCrafter(a.guid)
 
 	-- Members tab views: players, professions, cooldowns.

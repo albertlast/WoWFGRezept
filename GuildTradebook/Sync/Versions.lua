@@ -91,6 +91,15 @@ function Versions.Get(name)
 	return name and Versions.byName[name]
 end
 
+-- True if name's last message came from version major.minor or later.
+function Versions.AtLeast(name, major, minor)
+	local entry = Versions.Get(name)
+	local a, b = (entry and entry.version or ""):match("^(%d+)%.(%d+)")
+	a, b = tonumber(a), tonumber(b)
+	if not a then return false end
+	return a > major or (a == major and b >= minor)
+end
+
 -- Someone ran "/gtb versions": answer with a whisper, a little later.
 function Versions.OnRequest(sender)
 	local last = Versions.answered[sender]

@@ -111,6 +111,7 @@ local function refreshSoon()
 end
 ns.On("RecordsChanged", refreshSoon)
 ns.On("FactsChanged", refreshSoon)
+ns.On("CategoriesChanged", refreshSoon)
 ns.On("RosterUpdated", refreshSoon)
 ns.On("GuildChanged", refreshSoon)
 ns.On("WishlistChanged", refreshSoon)

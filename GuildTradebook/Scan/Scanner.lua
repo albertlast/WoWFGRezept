@@ -295,8 +295,46 @@ function Scanner.ResolveFact(recipeID, info)
 		end
 	end
 	local fact = { item = schematic.outputItemID or 0, enchant = enchant, reagents = reagents }
+	local cat = info and info.categoryID
+	if Util.IsInt(cat, 1, 2 ^ 31) then fact.cat = cat end
 	Store.SetFact(ns.db, recipeID, fact, true, Scanner.BuildKey())
 	return fact
+end
+
+-- The game's category info (name in the client's language, parent, order),
+-- or nil. Known only for the profession in the open window.
+local function readCategory(id)
+	local ok, info = pcall(C_TradeSkillUI.GetCategoryInfo, id)
+	if ok and type(info) ~= "table" then
+		-- Older signature: fills a table passed in.
+		local t = {}
+		ok = pcall(C_TradeSkillUI.GetCategoryInfo, id, t)
+		info = t
+	end
+	if not ok or type(info) ~= "table" or type(info.name) ~= "string" or info.name == "" then return nil end
+	return info
+end
+
+-- Stores the categories ids = { [categoryID] = true } and their parents.
+-- Returns true if anything was new.
+function Scanner.ResolveCategories(ids)
+	if not C_TradeSkillUI.GetCategoryInfo then return false end
+	local changed, done = false, {}
+	for id in pairs(ids) do
+		local depth = 0
+		while Util.IsInt(id, 1, 2 ^ 31) and not done[id] and depth < 4 do
+			done[id] = true
+			local info = readCategory(id)
+			if not info then break end
+			local parent = Util.IsInt(info.parentCategoryID, 1, 2 ^ 31) and info.parentCategoryID or nil
+			local order = Util.IsInt(info.uiOrder, -2 ^ 31, 2 ^ 31) and info.uiOrder ~= 0 and info.uiOrder or nil
+			if Store.SetCategory(ns.db, id, { parent = parent, order = order, names = { [GetLocale()] = info.name:sub(1, 80) } }, true) then
+				changed = true
+			end
+			id, depth = parent, depth + 1
+		end
+	end
+	return changed
 end
 
 --[[
@@ -350,7 +388,7 @@ function Scanner.ScanTradeSkill()
 	if not ids or #ids == 0 then return end
 
 	local prof = own.profs[skillLine]
-	local recipes, cooldowns, count = {}, {}, 0
+	local recipes, cooldowns, cats, catIDs, count = {}, {}, {}, {}, 0
 	for _, recipeID in ipairs(ids) do
 		local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
 		if info and info.learned and not info.isDummyRecipe and not info.isGatheringRecipe
@@ -358,10 +396,17 @@ function Scanner.ScanTradeSkill()
 			local fact = Scanner.ResolveFact(recipeID, info)
 			recipes[recipeID] = fact and fact.item or 0
 			cooldowns[recipeID] = Scanner.ReadCooldown(recipeID, prof.cds and prof.cds[recipeID] ~= nil)
+			if fact and fact.cat then
+				cats[recipeID] = fact.cat
+				catIDs[fact.cat] = true
+			end
 			count = count + 1
 		end
 	end
 	if count == 0 then return end
+	if Scanner.ResolveCategories(catIDs) then
+		ns.Emit("CategoriesChanged")
+	end
 
 	ns.Debug("scanned", skillLine, count, "recipes", complete and "complete" or "partial")
 	local now = ns.Now()
@@ -372,10 +417,12 @@ function Scanner.ScanTradeSkill()
 	end
 	-- Not shared (option): the guild sees the cooldown, never as ready.
 	local cooldownsChanged = Store.ApplyCooldowns(own, skillLine, cooldowns, now, not ns.db.options.shareCooldowns)
+	local categoriesChanged = Store.ApplyCategories(own, skillLine, cats, complete)
 	if recipesChanged then
 		Scanner.Commit(own, Store.ChangeKind(prof))
-	elseif cooldownsChanged then
-		-- A started cooldown is not urgent: it rides the 60 s batch.
+	elseif cooldownsChanged or categoriesChanged then
+		-- A started cooldown is not urgent: it rides the 60 s batch, and so
+		-- do categories (first scan after the update that brought them).
 		Scanner.Commit(own, "minor")
 	end
 end
@@ -386,7 +433,12 @@ function Scanner.OnRecipeLearned(_, recipeID)
 	if not own or not skillLine then return end
 	local fact = Scanner.ResolveFact(recipeID, C_TradeSkillUI.GetRecipeInfo(recipeID))
 	if Store.AddLearned(own, skillLine, recipeID, fact and fact.item or 0) then
-		Scanner.Commit(own, Store.ChangeKind(own.profs[skillLine]))
+		local p = own.profs[skillLine]
+		if fact and fact.cat then
+			p.cats = p.cats or {}
+			p.cats[recipeID] = fact.cat
+		end
+		Scanner.Commit(own, Store.ChangeKind(p))
 	end
 end
 

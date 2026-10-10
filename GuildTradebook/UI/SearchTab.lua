@@ -1,14 +1,133 @@
 local _, ns = ...
 
-local L, W, Index, Util = ns.L, ns.Widgets, ns.Index, ns.Util
+local L, W, Index, Util, Categories = ns.L, ns.Widgets, ns.Index, ns.Util, ns.Categories
 -- history: recipes visited by clicking a reagent, for the Back button.
 -- crafter: GUID of a member whose recipes are shown (from the Members tab).
-local state = { text = "", skillLine = 0, selected = nil, crafts = 1, history = {}, crafter = nil }
+-- searchClosed: groups closed by hand during the current search.
+local state = { text = "", skillLine = 0, selected = nil, crafts = 1, history = {}, crafter = nil, searchClosed = {} }
 local MAX_HISTORY = 20
 local MAX_CRAFTS = 50
 local MAX_REAGENT_ROWS = 8
 local REAGENT_ROW_HEIGHT = 14
+local INDENT = 14
+local ICON_OPEN = "Interface\\Buttons\\UI-MinusButton-Up"
+local ICON_CLOSED = "Interface\\Buttons\\UI-PlusButton-Up"
 local ui = {}
+
+--[[
+The recipe list in collapsible groups, like the profession window:
+  all professions   profession > category > recipes
+  one profession    category > recipes
+Recipes without a (named) category go to "Other" at the end; when that is
+the only group of a profession (data from 0.1.0 clients), the recipes
+follow the profession directly. Open groups are remembered per character;
+while searching every group is open (unless closed by hand).
+]]
+local RecipeList = {}
+ns.RecipeList = RecipeList
+local OTHER = 0
+
+function RecipeList.Open()
+	local s = ns.charDB.recipes
+	if type(s) ~= "table" then
+		s = {}
+		ns.charDB.recipes = s
+	end
+	if type(s.open) ~= "table" then s.open = {} end
+	return s.open
+end
+
+local function categoryOf(recipeID)
+	local id = Categories.Of(recipeID)
+	return (id and Categories.Name(id)) and id or OTHER
+end
+
+local function categoryLabel(id)
+	return id ~= OTHER and Categories.Name(id) or L.CATEGORY_OTHER
+end
+
+-- Group keys of a recipe: { profession key, category key }.
+function RecipeList.KeysFor(recipeID, skillLine)
+	return { "p:" .. skillLine, "c:" .. skillLine .. ":" .. categoryOf(recipeID) }
+end
+
+--[[
+Rows: { kind = "group", key, label, count, open, level, profession? } and the
+search results ({recipeID, ...}) with level set.
+isOpen(key) -> bool.
+]]
+function RecipeList.Rows(results, allProfessions, isOpen)
+	local bySkill = {}
+	for _, r in ipairs(results) do
+		local sl = r.skillLine or 0
+		local id = categoryOf(r.recipeID)
+		bySkill[sl] = bySkill[sl] or {}
+		bySkill[sl][id] = bySkill[sl][id] or {}
+		table.insert(bySkill[sl][id], r)
+	end
+	local skills = Util.SortedKeys(bySkill)
+	Index.SortSkillLines(skills, function(sl) return Index.primarySkill[sl] end)
+	local rows = {}
+	local function add(list, level)
+		for _, r in ipairs(list) do
+			r.level = level
+			rows[#rows + 1] = r
+		end
+	end
+	for _, sl in ipairs(skills) do
+		local cats = bySkill[sl]
+		local level, shown = 0, true
+		if allProfessions then
+			local key, count = "p:" .. sl, 0
+			for _, list in pairs(cats) do count = count + #list end
+			shown = isOpen(key)
+			rows[#rows + 1] = { kind = "group", key = key, label = Index.SkillLineName(sl), count = count,
+				open = shown, level = 0, profession = true }
+			level = 1
+		end
+		if shown then
+			local ids = Util.SortedKeys(cats)
+			if #ids == 1 and ids[1] == OTHER then
+				add(cats[OTHER], level)
+			else
+				table.sort(ids, function(a, b)
+					if (a == OTHER) ~= (b == OTHER) then return b == OTHER end
+					local oa, ob = Categories.Order(a), Categories.Order(b)
+					if oa and ob and oa ~= ob then return oa < ob end
+					local na, nb = categoryLabel(a), categoryLabel(b)
+					if na ~= nb then return na < nb end
+					return a < b
+				end)
+				for _, id in ipairs(ids) do
+					local key = "c:" .. sl .. ":" .. id
+					local open = isOpen(key)
+					rows[#rows + 1] = { kind = "group", key = key, label = categoryLabel(id), count = #cats[id],
+						open = open, level = level }
+					if open then add(cats[id], level + 1) end
+				end
+			end
+		end
+	end
+	return rows
+end
+
+local function searching()
+	return state.text:match("%S") ~= nil
+end
+
+local function isOpen(key)
+	if searching() then return not state.searchClosed[key] end
+	return RecipeList.Open()[key] == true
+end
+
+local function toggle(key)
+	if searching() then
+		state.searchClosed[key] = not state.searchClosed[key] or nil
+	else
+		local open = RecipeList.Open()
+		open[key] = not open[key] or nil
+	end
+end
 
 -- Reagents: local client first, then the guild (FACT_REQ). See Protocol.
 local function reagentsFor(recipeID)
@@ -145,7 +264,13 @@ local function refresh(_, arg)
 	end
 	ui.crafterLabel:SetShown(state.crafter ~= nil)
 	ui.crafterClear:SetShown(state.crafter ~= nil)
-	ui.results:SetData(results)
+	ui.results:SetData(RecipeList.Rows(results, state.skillLine == 0, isOpen))
+	for _, r in ipairs(results) do
+		if not Categories.Of(r.recipeID) then
+			Categories.Shown()
+			break
+		end
+	end
 	ui.empty:SetShown(#results == 0)
 	ui.profession:GenerateMenu()
 	refreshDetail()
@@ -160,6 +285,7 @@ local function build(content)
 	search:HookScript("OnTextChanged", function(self)
 		if self:GetText() == state.text then return end
 		state.text = self:GetText()
+		state.searchClosed = {}
 		ns.Debounce("searchInput", 0.2, function() refresh() end)
 	end)
 	ui.search = search
@@ -204,12 +330,26 @@ local function build(content)
 		row.selected:SetAllPoints()
 		row.selected:SetColorTexture(1, 0.82, 0, 0.15)
 		row:SetScript("OnClick", function(self)
+			if self.data.kind == "group" then
+				toggle(self.data.key)
+				refresh()
+				return
+			end
 			state.history = {}
 			selectRecipe(self.data.recipeID)
 			refresh()
 		end)
 	end, function(row, data)
 		row.data = data
+		row.icon:ClearAllPoints()
+		row.icon:SetPoint("LEFT", 2 + (data.level or 0) * INDENT, 0)
+		if data.kind == "group" then
+			row.icon:SetTexture(data.open and ICON_OPEN or ICON_CLOSED)
+			row.text:SetText(data.profession and ("|cffffd100" .. data.label .. "|r") or data.label)
+			row.count:SetText("|cff999999" .. data.count .. "|r")
+			row.selected:Hide()
+			return
+		end
 		local icon = data.itemID > 0 and C_Item.GetItemIconByID(data.itemID) or nil
 		row.icon:SetTexture(icon or 134939)
 		local name = data.name
@@ -352,8 +492,18 @@ function ns.UI.ShowRecipe(recipeID, fromCurrent, keepHistory)
 		state.history = {}
 	end
 	-- The search and profession filter stay as the player left them; the
-	-- detail panel shows the opened recipe even if the list does not.
+	-- detail panel shows the opened recipe even if the list does not. Its
+	-- groups open.
 	selectRecipe(recipeID)
+	Index.Ensure()
+	local skillLine = Index.recipeSkill[recipeID]
+	if skillLine then
+		local open = RecipeList.Open()
+		for _, key in ipairs(RecipeList.KeysFor(recipeID, skillLine)) do
+			open[key] = true
+			state.searchClosed[key] = nil
+		end
+	end
 	ns.UI.Show("search")
 end
 

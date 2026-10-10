@@ -24,6 +24,7 @@ Sync\Codec.lua
 Sync\Protocol.lua
 Sync\Versions.lua
 Search\Index.lua
+Search\Categories.lua
 Search\Upgrades.lua
 Features\Wishlist.lua
 Features\Reagents.lua

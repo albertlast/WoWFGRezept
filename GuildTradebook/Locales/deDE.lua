@@ -8,6 +8,7 @@ L.TAB_MEMBERS = "Mitglieder"
 L.TAB_WISHLIST = "Wunschliste"
 
 L.SEARCH_HINT = "Rezept oder Gegenstand suchen"
+L.CATEGORY_OTHER = "Sonstiges"
 L.ALL_PROFESSIONS = "Alle Berufe"
 L.NO_RESULTS = "Keine Ergebnisse."
 L.NOT_IN_GUILD = "Du bist in keiner Gilde."

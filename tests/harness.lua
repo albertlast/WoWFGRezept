@@ -20,6 +20,7 @@ H.FILES = {
 	"Sync/Protocol.lua",
 	"Sync/Versions.lua",
 	"Search/Index.lua",
+	"Search/Categories.lua",
 	"Search/Upgrades.lua",
 	"Features/Wishlist.lua",
 	"Features/Reagents.lua",
@@ -355,7 +356,7 @@ function H.NewClient(world, char)
 	-- char.version / char.build: what this client's TOC says.
 	env.C_AddOns = {
 		GetAddOnMetadata = function(_, field)
-			if field == "Version" then return char.version or "0.1.0-dev" end
+			if field == "Version" then return char.version or (char.v010 and "0.1.0" or "0.2.0-dev") end
 			if field == "X-Build" then return tostring(char.build or 0) end
 		end,
 	}
@@ -551,7 +552,13 @@ function H.NewClient(world, char)
 			table.sort(ids)
 			return ids
 		end,
-		GetRecipeInfo = function(rid) return { recipeID = rid, learned = true } end,
+		-- char.recipeCats[rid] = categoryID; the game names categories in the
+		-- client's language ("Category 10" / "Kategorie 10").
+		GetRecipeInfo = function(rid) return { recipeID = rid, learned = true, categoryID = (char.recipeCats or {})[rid] } end,
+		GetCategoryInfo = function(id)
+			local de = (char.locale or "enUS"):sub(1, 2) == "de"
+			return { categoryID = id, name = (de and "Kategorie " or "Category ") .. id, parentCategoryID = 0, uiOrder = id }
+		end,
 		-- char.cooldowns[rid] = seconds remaining (0 = ready but has a cooldown)
 		GetRecipeCooldown = function(rid)
 			local cd = (char.cooldowns or {})[rid]
@@ -595,8 +602,12 @@ function H.NewClient(world, char)
 		ns.UI = { Toggle = function() end, Show = function() end }
 		ns.Protocol.transport = function(msg, channel, target, _, addressee)
 			if char.v010 and msg.t == "R" and type(msg.r) == "table" then
-				-- 0.1.0 reads and relays only the first 8 record slots.
+				-- 0.1.0 reads and relays only the first 8 record slots, and the
+				-- first 8 of each profession.
 				msg.r[9], msg.r[10] = nil, nil
+				for _, prof in ipairs(type(msg.r[8]) == "table" and msg.r[8] or {}) do
+					if type(prof) == "table" then prof[9] = nil end
+				end
 			end
 			if char.legacy then
 				-- A build from before the sender GUID and version fields; it

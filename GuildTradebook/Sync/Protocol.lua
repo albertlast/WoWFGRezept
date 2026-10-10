@@ -23,6 +23,12 @@ Recipe facts (reagents):
   Q  FACT_REQ {l = recipeIDs}           whisper to an online crafter of the recipe
   F  FACT     {f = facts}               whisper answer
 
+Recipe categories (see Search/Categories.lua):
+  C  CAT_REQ  {l = categoryIDs,         whisper: names, preferably to a member of our language,
+               r = recipeIDs}           and the category of recipes that came without one
+  E  CAT      {c = categories,          whisper answer: every language the sender knows,
+               r = {recipeID, categoryID, ...}}  and the recipes' categories
+
 Guild chat "!craft" (see Features/ChatResponder.lua):
   X  ANSWERED {k = question key}        GUILD: "I answer this one", others stay silent
 
@@ -52,6 +58,8 @@ P.ELECTION_SLOT = 3      -- seconds between election ranks
 P.ELECTION_RANKS = 4     -- ranks per election round
 P.MAX_LIST = 200
 P.MAX_FACTS = 50
+P.MAX_CATEGORIES = 100
+P.MAX_CATEGORY_RECIPES = 200
 P.MAX_OUTBOX = 100
 
 -- Tests set this to function(msg, channel, target, prio) to bypass AceComm.
@@ -450,6 +458,12 @@ function P.RequestFacts(recipeIDs)
 	end)
 end
 
+-- Category names (ids, at most MAX_CATEGORIES) and the categories of
+-- recipes (rids, at most MAX_CATEGORY_RECIPES), from one member.
+function P.RequestCategories(guid, ids, rids)
+	P.Send({ t = "C", l = ids, r = rids }, "WHISPER", Roster.NameOf(guid), "BULK", guid)
+end
+
 -- Receiving --------------------------------------------------------------------
 
 local handlers = {}
@@ -554,6 +568,7 @@ handlers.R = function(msg, channel, sender, gd)
 	if status == "self" then
 		P.OnSelfCopy(rec)
 	elseif status == "filled" then
+		Store.LearnFactsFromRecord(ns.db, gd.chars[rec.guid], ns.Scanner.BuildKey())
 		ns.Emit("RecordsChanged", rec.guid)
 	elseif status == "accepted" then
 		Store.LearnFactsFromRecord(ns.db, rec, ns.Scanner.BuildKey())
@@ -623,6 +638,60 @@ handlers.F = function(msg)
 	end
 	if changed then
 		ns.Emit("FactsChanged")
+	end
+end
+
+local function optionalList(v, max)
+	return v == nil or (type(v) == "table" and #v <= max)
+end
+
+handlers.C = function(msg, channel, sender)
+	if channel ~= "WHISPER" or not optionalList(msg.l, P.MAX_CATEGORIES)
+		or not optionalList(msg.r, P.MAX_CATEGORY_RECIPES) then return end
+	local names, wanted, pairsOut = {}, {}, {}
+	for _, id in ipairs(msg.l or {}) do
+		if Util.IsInt(id, 1, 2 ^ 31) then wanted[id] = true end
+	end
+	-- Recipes' categories, with their names (saves a second round).
+	for _, rid in ipairs(msg.r or {}) do
+		local fact = Util.IsInt(rid, 1, 2 ^ 31) and ns.db.recipeFacts[rid]
+		if fact and fact.cat then
+			pairsOut[#pairsOut + 1] = rid
+			pairsOut[#pairsOut + 1] = fact.cat
+			wanted[fact.cat] = true
+		end
+	end
+	for _, id in ipairs(Util.SortedKeys(wanted)) do
+		local cat = ns.db.categories[id]
+		if cat and next(cat.names) and #names < P.MAX_CATEGORIES then
+			names[#names + 1] = Store.CategoryToWire(id, cat)
+		end
+	end
+	if #names > 0 or #pairsOut > 0 then
+		P.Send({ t = "E", c = names, r = pairsOut }, "WHISPER", sender, "BULK")
+	end
+end
+
+handlers.E = function(msg, channel)
+	if channel ~= "WHISPER" or not optionalList(msg.c, P.MAX_CATEGORIES)
+		or not optionalList(msg.r, 2 * P.MAX_CATEGORY_RECIPES) then return end
+	local changed = false
+	for _, w in ipairs(msg.c or {}) do
+		local id, cat = Store.CategoryFromWire(w)
+		if id and Store.SetCategory(ns.db, id, cat, false) then
+			changed = true
+		end
+	end
+	local flat = msg.r or {}
+	local build = ns.Scanner.BuildKey()
+	for i = 1, #flat - 1, 2 do
+		local rid, cat = flat[i], flat[i + 1]
+		if Util.IsInt(rid, 1, 2 ^ 31) and Util.IsInt(cat, 1, 2 ^ 31) and Store.SetFact(ns.db, rid, { cat = cat }, false, build) then
+			changed = true
+		end
+	end
+	if changed then
+		ns.Emit("CategoriesChanged")
 	end
 end
 

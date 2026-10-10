@@ -13,7 +13,8 @@ Internal record:
   { guid, name, class, level, ver, seq, player?, loc?, offer?,
     profs = { [skillLineID] = { rank, maxRank, primary?, scannedAt?, unverified?,
                                 recipes = { [recipeID] = outputItemID or 0 } | nil,
-                                cds = { [recipeID] = readyAt (server time, 0 = ready) } | nil } },
+                                cds = { [recipeID] = readyAt (server time, 0 = ready) } | nil,
+                                cats = { [recipeID] = categoryID } | nil } },  -- not hashed
     h,                                     -- content hash
     recvAt?, recvFrom?, goneSince? }       -- local metadata, never sent
 ]]
@@ -68,6 +69,7 @@ function Store.InitDB(saved)
 	end
 	saved.guilds = saved.guilds or {}
 	saved.recipeFacts = saved.recipeFacts or {}
+	saved.categories = saved.categories or {}
 	saved.account = saved.account or {}
 	saved.account.chars = saved.account.chars or {}
 	saved.options = saved.options or {}
@@ -194,6 +196,10 @@ function Store.Accept(gd, rec, ctx, sender)
 			local filled = false
 			if rec.loc and not cur.loc then cur.loc, filled = rec.loc, true end
 			if rec.offer and not cur.offer then cur.offer, filled = rec.offer, true end
+			for sl, p in pairs(rec.profs) do
+				local cp = cur.profs[sl]
+				if cp and p.cats and not cp.cats then cp.cats, filled = p.cats, true end
+			end
 			return filled and "filled" or "same"
 		end
 	elseif Util.Count(gd.chars) >= Store.MAX_RECORDS then
@@ -353,6 +359,29 @@ function Store.HideCooldowns(rec)
 	return changed
 end
 
+-- Recipe categories of one profession, read from the open window:
+-- cats[recipeID] = categoryID. A complete scan replaces them; a partial one
+-- adds. Only recipes of the record are kept. Returns true if anything
+-- changed (the caller publishes: the categories are not hashed, but a new
+-- version carries them to the guild).
+function Store.ApplyCategories(own, skillLine, cats, complete)
+	local p = own.profs[skillLine]
+	if not p or not p.recipes then return false end
+	local new = {}
+	for rid in pairs(p.recipes) do
+		new[rid] = cats[rid] or (not complete and p.cats and p.cats[rid]) or nil
+	end
+	local old, changed = p.cats or {}, false
+	for rid, cat in pairs(new) do
+		if old[rid] ~= cat then changed = true end
+	end
+	for rid in pairs(old) do
+		if new[rid] == nil then changed = true end
+	end
+	p.cats = next(new) and new or nil
+	return changed
+end
+
 -- Recipe changes of primary professions are published quickly ("major"),
 -- secondary ones (Cooking, First Aid, Fishing, ...) are batched ("minor").
 function Store.ChangeKind(prof)
@@ -372,6 +401,7 @@ function Store.RemoveRecipes(own, skillLine, shouldRemove)
 	for _, rid in ipairs(doomed) do
 		p.recipes[rid] = nil
 		if p.cds then p.cds[rid] = nil end
+		if p.cats then p.cats[rid] = nil end
 		removed = true
 	end
 	return removed
@@ -413,6 +443,10 @@ function Store.MergeIncomingSelf(own, incoming)
 				p.cds = {}
 				for rid, readyAt in pairs(ip.cds) do p.cds[rid] = readyAt end
 				changed = true
+			end
+			if ip.cats and not p.cats then
+				p.cats = {}
+				for rid, cat in pairs(ip.cats) do p.cats[rid] = cat end
 			end
 			if changed then
 				p.unverified = true
@@ -612,6 +646,8 @@ end
 -- loc (client locale, e.g. "deDE") came after 0.1.0: it is not part of the
 -- content hash, so 0.1.0 clients (which drop it) compute the same hash and
 -- versions stay comparable. It changes only with a new version anyway.
+-- The same holds for slot 9 of a profession: the recipe categories,
+-- grouped as {categoryID, count, recipeID, ..., categoryID, count, ...}.
 -- Older layout comment:
 --   { guid, name, class, level, ver, seq, player|"",
 --     { {sl, rank, maxRank, scannedAt, unverified(0/1), {rid, item, ...}|false, primary(0/1),
@@ -638,10 +674,43 @@ function Store.ToWire(rec)
 			cds[#cds + 1] = rid
 			cds[#cds + 1] = p.cds[rid]
 		end
-		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds }
+		local byCat = {}
+		for _, rid in ipairs(Util.SortedKeys(p.cats or {})) do
+			local cat = p.cats[rid]
+			if p.recipes and p.recipes[rid] then
+				byCat[cat] = byCat[cat] or {}
+				table.insert(byCat[cat], rid)
+			end
+		end
+		local cats = {}
+		for _, cat in ipairs(Util.SortedKeys(byCat)) do
+			cats[#cats + 1] = cat
+			cats[#cats + 1] = #byCat[cat]
+			for _, rid in ipairs(byCat[cat]) do cats[#cats + 1] = rid end
+		end
+		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds, cats }
 	end
 	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.player or "", profs, rec.loc or "",
 		rec.offer or "" }
+end
+
+-- Recipe categories of one profession (slot 9). They are an extra: a
+-- malformed list is dropped, not the record. Only recipes of the profession
+-- count.
+local function categoriesFromWire(flat, recipes)
+	if type(flat) ~= "table" or not recipes or #flat > 3 * Store.MAX_RECIPES then return nil end
+	local cats, i = {}, 1
+	while i <= #flat do
+		local cat, n = flat[i], flat[i + 1]
+		if not Util.IsInt(cat, 1, 2 ^ 31) or not Util.IsInt(n, 1, Store.MAX_RECIPES) or i + 1 + n > #flat then return nil end
+		for j = i + 2, i + 1 + n do
+			local rid = flat[j]
+			if not Util.IsInt(rid, 1, 2 ^ 31) then return nil end
+			if recipes[rid] then cats[rid] = cat end
+		end
+		i = i + 2 + n
+	end
+	return next(cats) and cats or nil
 end
 
 -- Validates untrusted input. Returns record or nil, reason.
@@ -667,7 +736,7 @@ function Store.FromWire(w)
 	for i = 1, #profs do
 		local p = profs[i]
 		if type(p) ~= "table" then return nil, "prof" end
-		local sl, rank, maxRank, scannedAt, unverified, flat, primary, cdFlat = p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8]
+		local sl, rank, maxRank, scannedAt, unverified, flat, primary, cdFlat, catFlat = p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]
 		if not Util.IsInt(sl, 1, 2 ^ 31) or rec.profs[sl] then return nil, "skillLine" end
 		if not Util.IsInt(rank, 0, 10000) or not Util.IsInt(maxRank, 0, 10000) then return nil, "rank" end
 		if not Util.IsInt(scannedAt, 0, 2 ^ 40) or (unverified ~= 0 and unverified ~= 1) or (primary ~= 0 and primary ~= 1) then
@@ -695,6 +764,7 @@ function Store.FromWire(w)
 		end
 		rec.profs[sl] = {
 			cds = cds,
+			cats = categoriesFromWire(catFlat, recipes),
 			rank = rank, maxRank = maxRank,
 			scannedAt = scannedAt ~= 0 and scannedAt or nil,
 			unverified = unverified == 1 or nil,
@@ -708,7 +778,8 @@ end
 
 -- Recipe facts -----------------------------------------------------------------
 -- recipeFacts[recipeID] = { item = outputItemID (0 = none), enchant = bool,
---                           reagents = { {itemID, qty, optional(0/1)}, ... } | nil, build }
+--                           reagents = { {itemID, qty, optional(0/1)}, ... } | nil, build,
+--                           cat = categoryID | nil }
 -- Facts are static game data, not ownership data, so any source may fill them.
 -- A local API result overrides remote values.
 
@@ -729,6 +800,10 @@ function Store.SetFact(db, recipeID, fact, isLocal, build)
 	if fact.enchant ~= nil and (isLocal or cur.enchant == nil) then
 		cur.enchant = fact.enchant
 	end
+	if fact.cat ~= nil and (isLocal or cur.cat == nil) then
+		changed = changed or cur.cat ~= fact.cat
+		cur.cat = fact.cat
+	end
 	if fact.reagents and (isLocal or not cur.reagents) then
 		cur.reagents = fact.reagents
 		changed = true
@@ -739,8 +814,10 @@ function Store.SetFact(db, recipeID, fact, isLocal, build)
 	return changed
 end
 
--- Copies outputItemIDs carried by a record into the fact cache.
+-- Copies outputItemIDs and categories carried by a record into the fact
+-- cache. Returns true if a category was new.
 function Store.LearnFactsFromRecord(db, rec, build)
+	local newCategory = false
 	for _, p in pairs(rec.profs) do
 		if p.recipes then
 			for rid, item in pairs(p.recipes) do
@@ -750,7 +827,88 @@ function Store.LearnFactsFromRecord(db, rec, build)
 				end
 			end
 		end
+		for rid, cat in pairs(p.cats or {}) do
+			local cur = db.recipeFacts[rid]
+			if not cur or cur.cat == nil then
+				Store.SetFact(db, rid, { cat = cat }, false, build)
+				newCategory = true
+			end
+		end
 	end
+	return newCategory
+end
+
+-- Recipe categories ------------------------------------------------------------
+-- categories[categoryID] = { parent = categoryID | nil, order = n | nil,
+--                            names = { [locale] = name } }
+-- Static game data like the facts, shared separately from the records: a
+-- client reads only its own language from the game (and only for its own
+-- professions), the other languages come from guild members (CAT_REQ).
+-- A local game result overrides; from others, the first name per language
+-- counts.
+
+Store.MAX_CATEGORY_LOCALES = 12
+
+function Store.IsValidLocale(loc)
+	return type(loc) == "string" and loc:match("^%a%a%a%a$") ~= nil
+end
+
+function Store.SetCategory(db, id, info, isLocal)
+	local cur = db.categories[id]
+	if not cur then
+		cur = { names = {} }
+		db.categories[id] = cur
+	end
+	local changed = false
+	if info.parent ~= nil and (isLocal or cur.parent == nil) and cur.parent ~= info.parent then
+		cur.parent, changed = info.parent, true
+	end
+	if info.order ~= nil and (isLocal or cur.order == nil) and cur.order ~= info.order then
+		cur.order, changed = info.order, true
+	end
+	for loc, name in pairs(info.names or {}) do
+		if (isLocal or cur.names[loc] == nil) and cur.names[loc] ~= name
+			and (cur.names[loc] ~= nil or Util.Count(cur.names) < Store.MAX_CATEGORY_LOCALES) then
+			cur.names[loc], changed = name, true
+		end
+	end
+	return changed
+end
+
+-- Display name: own language, else English, else German, else any known one.
+function Store.CategoryName(db, id, locale)
+	local cat = db.categories[id]
+	if not cat then return nil end
+	local names = cat.names
+	if names[locale] then return names[locale] end
+	if names.enUS then return names.enUS end
+	if names.deDE then return names.deDE end
+	local locs = Util.SortedKeys(names)
+	return locs[1] and names[locs[1]] or nil
+end
+
+-- Wire format: { id, parent|0, order|0, {locale, name, ...} }
+function Store.CategoryToWire(id, cat)
+	local names = {}
+	for _, loc in ipairs(Util.SortedKeys(cat.names)) do
+		names[#names + 1] = loc
+		names[#names + 1] = cat.names[loc]
+	end
+	return { id, cat.parent or 0, cat.order or 0, names }
+end
+
+function Store.CategoryFromWire(w)
+	if type(w) ~= "table" then return nil end
+	local id, parent, order, flat = w[1], w[2], w[3], w[4]
+	if not Util.IsInt(id, 1, 2 ^ 31) or not Util.IsInt(parent, 0, 2 ^ 31) or not Util.IsInt(order, -2 ^ 31, 2 ^ 31) then return nil end
+	if type(flat) ~= "table" or #flat % 2 ~= 0 or #flat > 2 * Store.MAX_CATEGORY_LOCALES then return nil end
+	local names = {}
+	for i = 1, #flat, 2 do
+		local loc, name = flat[i], flat[i + 1]
+		if not Store.IsValidLocale(loc) or not Util.IsString(name, 80) or name == "" then return nil end
+		names[loc] = name
+	end
+	return id, { parent = parent ~= 0 and parent or nil, order = order ~= 0 and order or nil, names = names }
 end
 
 -- Wire format of facts: { rid, item, enchant(0/1), {itemID, qty, optional, ...} }

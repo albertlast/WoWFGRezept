@@ -11,6 +11,7 @@ L.TAB_MEMBERS = "Members"
 L.TAB_WISHLIST = "Wishlist"
 
 L.SEARCH_HINT = "Search recipe or item"
+L.CATEGORY_OTHER = "Other"
 L.ALL_PROFESSIONS = "All professions"
 L.NO_RESULTS = "No results."
 L.NOT_IN_GUILD = "You are not in a guild."
