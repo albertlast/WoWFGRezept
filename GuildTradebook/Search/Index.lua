@@ -141,7 +141,8 @@ local function charInfo(guid, recipeID)
 	local rec = gd and gd.chars[guid]
 	local member = Roster.Get(guid)
 	local selfGUID = UnitGUID("player")
-	local acc = ns.db.account.chars[guid]
+	-- Own characters: this account's, and the linked other license's.
+	local acc = ns.db.account.chars[guid] or (ns.Link and ns.Link.IsPartner(guid)) or nil
 	local online = member and member.online or false
 	local via = not online and Index.Via(guid) or nil
 	return {

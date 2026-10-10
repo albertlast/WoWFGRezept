@@ -101,7 +101,8 @@ local function refresh()
 				online = (member and member.online) or false,
 				via = Index.Via(guid),
 				isSelf = guid == UnitGUID("player"),
-				isAlt = guid ~= UnitGUID("player") and ns.db.account.chars[guid] ~= nil,
+				isAlt = guid ~= UnitGUID("player") and (ns.db.account.chars[guid] ~= nil or ns.Link.IsPartner(guid)),
+				linked = ns.Link.IsPartner(guid),
 				ver = rec.ver,
 				profs = professionText(rec),
 			}
@@ -132,15 +133,51 @@ local function build(content)
 	ui.header = W.Text(content, "GameFontNormal")
 	ui.header:SetPoint("TOPLEFT", 6, -2)
 
+	-- Right-click menu: account linking (Features/Link.lua). Returns the
+	-- entries for a row: { {label, fn}, ... }.
+	local function menuItems(data)
+		local items = {}
+		if ns.Link.TargetOf(data.guid) then
+			if ns.Link.OfferPendingFor(data.guid) then
+				items[#items + 1] = { L.LINK_MENU_CANCEL, ns.Link.CancelOffer }
+			else
+				items[#items + 1] = { L.LINK_MENU_OFFER, function() ns.Link.ConfirmOffer(data.guid) end }
+			end
+		end
+		if (data.isSelf or data.isAlt) and ns.Link.IsLinked() then
+			items[#items + 1] = { L.LINK_MENU_UNLINK, ns.Link.ConfirmUnlink }
+		end
+		return items
+	end
+	ui.menuItems = menuItems
+
+	local function openMenu(owner, data)
+		local items = menuItems(data)
+		if #items == 0 or not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+		MenuUtil.CreateContextMenu(owner, function(_, root)
+			root:CreateTitle(Util.ShortName(data.name))
+			for _, item in ipairs(items) do
+				root:CreateButton(item[1], item[2])
+			end
+		end)
+	end
+
 	-- Click hint, plus the member's addon version when known.
 	local function hint(frame, text)
 		frame:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetText(text(self), 1, 1, 1)
 			local row = self.data and self or self:GetParent()
-			local version = ns.Versions.Describe(ns.Versions.Get(row.data and row.data.name))
+			local data = row.data
+			if data and data.linked then
+				GameTooltip:AddLine(L.LINKED_LICENSE, 0.4, 0.8, 1)
+			end
+			local version = ns.Versions.Describe(ns.Versions.Get(data and data.name))
 			if version then
 				GameTooltip:AddLine(L.VERSION_TOOLTIP:format(version), 0.6, 0.6, 0.6)
+			end
+			if data and #menuItems(data) > 0 then
+				GameTooltip:AddLine(L.RIGHT_CLICK_OPTIONS, 0.6, 0.6, 0.6)
 			end
 			GameTooltip:Show()
 		end)
@@ -156,7 +193,12 @@ local function build(content)
 		row.nameButton:SetPoint("BOTTOMLEFT")
 		row.nameButton:SetWidth(248)
 		row.nameButton:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-		row.nameButton:SetScript("OnClick", function(self)
+		row.nameButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		row.nameButton:SetScript("OnClick", function(self, button)
+			if button == "RightButton" then
+				openMenu(self, self:GetParent().data)
+				return
+			end
 			local target = Index.ContactFor(self:GetParent().data)
 			if target then
 				W.SendTell(target)
@@ -176,7 +218,11 @@ local function build(content)
 		row.profs = W.Text(row)
 		row.profs:SetPoint("LEFT", row.nameButton, "RIGHT", 4, 0)
 		row.profs:SetPoint("RIGHT", -4, 0)
-		row:SetScript("OnClick", function(self)
+		row:SetScript("OnClick", function(self, button)
+			if button == "RightButton" then
+				openMenu(self, self.data)
+				return
+			end
 			if self.data.ver > 0 then
 				ns.UI.ShowCrafter(self.data.guid)
 			end
@@ -188,6 +234,7 @@ local function build(content)
 		row.data = data
 		local name = Util.ClassColored(Util.ShortName(data.name), data.class)
 		if data.online then name = name .. " |cff20ff20*|r" end
+		if data.linked then name = name .. " |cff66ccff~|r" end
 		row.name:SetText(name)
 		-- Other characters of the same person sit indented under the first one.
 		row.name:ClearAllPoints()

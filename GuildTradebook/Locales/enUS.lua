@@ -119,6 +119,26 @@ L.VERSION_NEWER = "%s uses a newer Guild Tradebook (%s). Please update."
 L.VERSION_INCOMPATIBLE = "%s uses an outdated Guild Tradebook: you can not exchange data until they update."
 L.VERSION_UPDATE_NEEDED = "%s uses a newer, incompatible Guild Tradebook: please update to exchange data."
 L.VERSION_TOOLTIP = "Addon version: %s"
+L.LINK_MENU_OFFER = "Link with my account..."
+L.LINK_MENU_CANCEL = "Withdraw link offer"
+L.LINK_MENU_UNLINK = "Unlink other license..."
+L.LINK_CONFIRM_OFFER = "Is %s one of your characters on another license?\n\nYour characters on both licenses will show as one player in the guild. Log in on that license afterwards and confirm there."
+L.LINK_REQUEST = "%s (another license) wants to show the characters of both licenses as one player in the guild.\n\nOnly accept if both licenses are yours."
+L.LINK_ACCEPT = "Link"
+L.LINK_DECLINE = "Decline"
+L.LINK_CONFIRM_UNLINK = "Unlink your other license? The guild will see two players again."
+L.LINK_OFFERED = "Link offer for %s sent. Log in on that license and confirm there."
+L.LINK_CANCELED = "Link offer withdrawn."
+L.LINK_DONE = "Linked: your characters on both licenses now show as one player (%s)."
+L.LINK_DECLINED = "Link with %s declined. You will not be asked again for that player."
+L.LINK_UNLINKED = "Unlinked: the guild sees your licenses as two players again."
+L.LINK_ENDED = "%s: that license is no longer linked with yours."
+L.LINK_STATUS_NONE = "No license linked. Right-click a character of your other license in the Members tab to link."
+L.LINK_STATUS_LINKED = "Linked with: %s"
+L.LINK_STATUS_OFFER = "Link offer pending: %s"
+L.LINK_NOT_POSSIBLE = "%s can not be linked (no addon data, or already one of yours)."
+L.LINKED_LICENSE = "Your other license (linked)"
+L.RIGHT_CLICK_OPTIONS = "Right-click: options"
 L.SLASH_HELP = [[/gtb - open window
 /gtb options - open the settings
 /gtb minimap - show/hide the minimap button
@@ -126,6 +146,8 @@ L.SLASH_HELP = [[/gtb - open window
 /gtb wishlist - open your wishlist
 /gtb chatbot - toggle answering "!craft <item>" in guild chat
 /gtb versions - show which addon version guild members use
+/gtb link [name] - show or offer a link with your other license
+/gtb unlink - unlink your other license
 /gtb resync - ask the guild for a full sync
 /gtb tooltip - toggle tooltip lines
 /gtb debug - toggle debug output

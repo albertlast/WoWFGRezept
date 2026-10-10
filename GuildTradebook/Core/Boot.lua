@@ -68,6 +68,14 @@ local function slash(input)
 	elseif cmd == "chatbot" then
 		ns.db.options.chatResponder = not ns.db.options.chatResponder
 		ns.Print("!craft:", tostring(ns.db.options.chatResponder))
+	elseif cmd == "link" then
+		ns.Link.Command(rest)
+	elseif cmd == "unlink" then
+		if ns.Link.IsLinked() then
+			ns.Link.ConfirmUnlink()
+		else
+			ns.Print(L.LINK_STATUS_NONE)
+		end
 	elseif cmd == "versions" or cmd == "version" or cmd == "ver" then
 		ns.Versions.Request()
 	elseif cmd == "diag" then
@@ -118,6 +126,7 @@ ns.RegisterEvent("PLAYER_LOGIN", function()
 	ns.Protocol.Start()
 	ns.Wishlist.Start()
 	ns.ChatResponder.Start()
+	ns.Link.Start()
 	ns.Tooltip.Start()
 	ns.Settings.Register()
 	ns.MinimapButton.Start()

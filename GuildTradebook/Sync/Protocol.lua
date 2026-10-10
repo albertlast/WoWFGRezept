@@ -274,6 +274,12 @@ function P.PushOwn()
 	end
 end
 
+-- The own record to one member by whisper (a pending link offer, see
+-- Features/Link.lua).
+function P.SendOwnTo(name)
+	sendRecord(UnitGUID("player"), "WHISPER", name, "NORMAL")
+end
+
 function P.QueuePush(guid)
 	P.pushQueue[guid] = true
 	ns.ScheduleEarliest("pushOwn", 5, P.PushOwn)
@@ -452,6 +458,9 @@ local handlers = {}
 function P.OnSelfCopy(rec)
 	local own = ns.Scanner.GetOwn()
 	if not own then return end
+	-- Only a copy at least as new as ours may suggest a player ID: an older
+	-- one still carries the ID from before a link or unlink.
+	local notOlder = Store.CompareVersion(rec, own) >= 0
 	local changed, needBump = Store.MergeIncomingSelf(own, rec)
 	if needBump then
 		Store.Bump(own, ns.Now(), rec)
@@ -462,7 +471,7 @@ function P.OnSelfCopy(rec)
 		ns.Emit("OwnChanged", "major")
 		ns.Emit("RecordsChanged", own.guid)
 	end
-	ns.Scanner.UpdatePlayerId(rec.player)
+	ns.Scanner.UpdatePlayerId(notOlder and rec.player or nil)
 end
 
 -- Partner side: answer a HELLO with an ACK and the digests that differ.
@@ -540,6 +549,8 @@ handlers.R = function(msg, channel, sender, gd)
 	ns.Debug("REC", rec.name, rec.ver, rec.seq, status, "from", sender, channel)
 	if status == "self" then
 		P.OnSelfCopy(rec)
+	elseif status == "filled" then
+		ns.Emit("RecordsChanged", rec.guid)
 	elseif status == "accepted" then
 		Store.LearnFactsFromRecord(ns.db, rec, ns.Scanner.BuildKey())
 		ns.Emit("RecordsChanged", rec.guid)

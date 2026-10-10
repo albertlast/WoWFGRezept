@@ -24,6 +24,7 @@ H.FILES = {
 	"Features/Wishlist.lua",
 	"Features/Reagents.lua",
 	"Features/ChatResponder.lua",
+	"Features/Link.lua",
 	"Core/Boot.lua",
 }
 
@@ -153,6 +154,14 @@ function H.NewWorld(opts)
 		self.chars[c.guid] = c
 		table.insert(self.order, c.guid)
 		return c
+	end
+
+	function world:AddToGuild(guid)
+		self.chars[guid].inGuild = true
+		table.insert(self.order, guid)
+		for _, client in pairs(self.online) do
+			client:Fire("GUILD_ROSTER_UPDATE")
+		end
 	end
 
 	function world:RemoveFromGuild(guid)
@@ -473,6 +482,25 @@ function H.NewClient(world, char)
 		RequestLoadItemDataByID = function() end,
 	}
 	client.sounds = {}
+	-- Popups: shown ones are recorded; tests answer them via client:Answer.
+	client.popups = {}
+	env.StaticPopupDialogs = {}
+	env.StaticPopup_Show = function(which, text1, text2, data)
+		table.insert(client.popups, { which = which, text1 = text1, data = data })
+	end
+	env.YES, env.NO = "Yes", "No"
+	function client:Answer(which, accept)
+		for i, popup in ipairs(self.popups) do
+			if popup.which == which then
+				table.remove(self.popups, i)
+				local dialog = self.env.StaticPopupDialogs[which]
+				local fn = accept and dialog.OnAccept or dialog.OnCancel
+				if fn then fn(nil, popup.data) end
+				return true
+			end
+		end
+		return false
+	end
 	env.PlaySound = function(id, channel)
 		table.insert(client.sounds, { id = id, channel = channel })
 		return true, 1
@@ -566,6 +594,10 @@ function H.NewClient(world, char)
 		ns.MinimapButton = { Start = function() end, SetShown = function() end }
 		ns.UI = { Toggle = function() end, Show = function() end }
 		ns.Protocol.transport = function(msg, channel, target, _, addressee)
+			if char.v010 and msg.t == "R" and type(msg.r) == "table" then
+				-- 0.1.0 reads and relays only the first 8 record slots.
+				msg.r[9], msg.r[10] = nil, nil
+			end
 			if char.legacy then
 				-- A build from before the sender GUID and version fields; it
 				-- knows nothing about version requests either.

@@ -115,6 +115,26 @@ L.VERSION_NEWER = "%s nutzt ein neueres Guild Tradebook (%s). Bitte aktualisiere
 L.VERSION_INCOMPATIBLE = "%s nutzt ein veraltetes Guild Tradebook: kein Datenaustausch, bis es aktualisiert ist."
 L.VERSION_UPDATE_NEEDED = "%s nutzt ein neueres, inkompatibles Guild Tradebook: bitte aktualisieren, um Daten auszutauschen."
 L.VERSION_TOOLTIP = "Addon-Version: %s"
+L.LINK_MENU_OFFER = "Mit meinem Account verknüpfen..."
+L.LINK_MENU_CANCEL = "Verknüpfungsangebot zurückziehen"
+L.LINK_MENU_UNLINK = "Andere Lizenz trennen..."
+L.LINK_CONFIRM_OFFER = "Ist %s einer deiner Charaktere auf einer anderen Lizenz?\n\nDeine Charaktere beider Lizenzen erscheinen dann in der Gilde als ein Spieler. Logge dich danach auf dieser Lizenz ein und bestätige dort."
+L.LINK_REQUEST = "%s (andere Lizenz) möchte die Charaktere beider Lizenzen in der Gilde als einen Spieler zeigen.\n\nNur annehmen, wenn beide Lizenzen dir gehören."
+L.LINK_ACCEPT = "Verknüpfen"
+L.LINK_DECLINE = "Ablehnen"
+L.LINK_CONFIRM_UNLINK = "Andere Lizenz trennen? Die Gilde sieht dann wieder zwei Spieler."
+L.LINK_OFFERED = "Verknüpfungsangebot für %s gesendet. Logge dich auf dieser Lizenz ein und bestätige dort."
+L.LINK_CANCELED = "Verknüpfungsangebot zurückgezogen."
+L.LINK_DONE = "Verknüpft: Deine Charaktere beider Lizenzen erscheinen jetzt als ein Spieler (%s)."
+L.LINK_DECLINED = "Verknüpfung mit %s abgelehnt. Für diesen Spieler wirst du nicht erneut gefragt."
+L.LINK_UNLINKED = "Getrennt: Die Gilde sieht deine Lizenzen wieder als zwei Spieler."
+L.LINK_ENDED = "%s: Diese Lizenz ist nicht mehr mit deiner verknüpft."
+L.LINK_STATUS_NONE = "Keine Lizenz verknüpft. Rechtsklick auf einen Charakter deiner anderen Lizenz im Reiter Mitglieder, um zu verknüpfen."
+L.LINK_STATUS_LINKED = "Verknüpft mit: %s"
+L.LINK_STATUS_OFFER = "Verknüpfungsangebot offen: %s"
+L.LINK_NOT_POSSIBLE = "%s kann nicht verknüpft werden (keine Addon-Daten oder schon einer deiner Charaktere)."
+L.LINKED_LICENSE = "Deine andere Lizenz (verknüpft)"
+L.RIGHT_CLICK_OPTIONS = "Rechtsklick: Optionen"
 L.SLASH_HELP = [[/gtb - Fenster öffnen
 /gtb options - Einstellungen öffnen
 /gtb minimap - Minimap-Button ein/aus
@@ -122,6 +142,8 @@ L.SLASH_HELP = [[/gtb - Fenster öffnen
 /gtb wishlist - Wunschliste öffnen
 /gtb chatbot - Antworten auf "!craft <Gegenstand>" bzw. "!herstellen" im Gildenchat ein/aus
 /gtb versions - zeigt, welche Addon-Version die Gildenmitglieder nutzen
+/gtb link [Name] - zeigt oder bietet eine Verknüpfung mit deiner anderen Lizenz an
+/gtb unlink - trennt deine andere Lizenz
 /gtb resync - vollständige Synchronisierung anfordern
 /gtb tooltip - Tooltip-Zeilen ein/aus
 /gtb debug - Debug-Ausgabe ein/aus

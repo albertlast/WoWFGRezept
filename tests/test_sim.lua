@@ -849,6 +849,215 @@ test("online state: messages prove online, failed whispers offline, both expire;
 	falsy(R.KnownOffline(x.guid))
 end)
 
+-- Account linking (Features/Link.lua) ------------------------------------------
+
+local function logHas(client, text)
+	for _, line in ipairs(client.ns.log) do
+		if line:find(text, 1, true) then return true end
+	end
+	return false
+end
+
+-- License 1: Crafty (crafter) and Alty; license 2: Mainy; Otto watches; Olli
+-- runs 0.1.0 (relays only 8 record slots).
+local function linkWorld(seed, withOld)
+	math.randomseed(seed)
+	local world = H.NewWorld()
+	local crafty = world:AddChar({ guid = guid(1), name = "Crafty", account = "lic1", profs = { [TAILORING] = tailoring(100, { [3914] = 2568 }) } })
+	local alty = world:AddChar({ guid = guid(2), name = "Alty", account = "lic1" })
+	local mainy = world:AddChar({ guid = guid(3), name = "Mainy", account = "lic2" })
+	local otto = world:AddChar({ guid = guid(4), name = "Otto" })
+	local olli = world:AddChar({ guid = guid(5), name = "Olli", v010 = true })
+	world:Login(otto.guid)
+	if withOld then world:Login(olli.guid) end
+	local cc = world:Login(crafty.guid)
+	world:Run(60)
+	cc:OpenTradeSkill(TAILORING)
+	world:Run(60)
+	world:Logout(crafty.guid)
+	world:Login(alty.guid)
+	world:Run(120)
+	world:Logout(alty.guid)
+	world:Login(mainy.guid)
+	world:Run(200)
+	return world, crafty, alty, mainy, otto, olli
+end
+
+test("link: offer on one license, accept later on the other; the guild sees one player; unlink splits again", function()
+	local world, crafty, alty, mainy, otto, olli = linkWorld(51)
+	local co = world.online[otto.guid]
+	falsy(co:Record(mainy.guid).player == co:Record(crafty.guid).player, "two players before")
+	world:Logout(mainy.guid)
+	world:Run(30)
+
+	-- License 1 offers, then goes offline: the offer waits in its record.
+	local cc = world:Login(crafty.guid)
+	world:Run(60)
+	cc.ns.Link.Offer(mainy.guid)
+	truthy(logHas(cc, "Link offer for Mainy sent"))
+	world:Run(30)
+	world:Logout(crafty.guid)
+	world:Run(30)
+
+	-- License 2 logs in later: it is asked once.
+	local cm = world:Login(mainy.guid)
+	world:Run(120)
+	eq(#cm.popups, 1, "asked")
+	eq(cm.popups[1].which, "GUILDTRADEBOOK_LINK_REQUEST")
+	eq(cm.popups[1].text1, "Crafty")
+	truthy(cm:Answer("GUILDTRADEBOOK_LINK_REQUEST", true))
+	world:Run(60)
+	truthy(logHas(cm, "Linked:"))
+	truthy(cm.ns.Link.IsPartner(crafty.guid) and cm.ns.Link.IsPartner(alty.guid), "both characters of license 1")
+
+	-- Everyone groups them.
+	eq(co:Record(mainy.guid).player, co:Record(crafty.guid).player, "one player")
+	local crafter = co.ns.Index.Crafters(3914)[1]
+	eq(crafter.via and crafter.via.guid, mainy.guid, "Crafty is reached via Mainy")
+	-- On license 2, Crafty is an own character now: never whispered.
+	local own = cm.ns.Index.Crafters(3914)[1]
+	falsy(cm.ns.Index.ContactFor(own))
+	eq(#cm.ns.Wishlist.ReadyNow(), 0)
+
+	-- License 1 comes back: confirmed, the offer is gone.
+	cc = world:Login(crafty.guid)
+	world:Run(120)
+	truthy(logHas(cc, "Linked:"))
+	falsy(cc.ns.GetGuildData().link.offerTo)
+	falsy(co:Record(crafty.guid).offer, "the offer left the record")
+	truthy(cc.ns.Link.IsPartner(mainy.guid))
+
+	-- Many sync rounds later, the link holds (stale copies do not undo it).
+	world:Run(3 * 1300)
+	eq(co:Record(mainy.guid).player, co:Record(crafty.guid).player, "still linked")
+	eq(cc.ns.GetGuildData().playerId, cm.ns.GetGuildData().playerId)
+	-- An older copy of an own record with a smaller ID must not undo it.
+	local linkedId = cm.ns.GetGuildData().playerId
+	local stale = H.DeepCopy(cm.ns.Scanner.GetOwn())
+	stale.ver, stale.player = stale.ver - 100, "000000000000"
+	cm.ns.Store.Rehash(stale)
+	cm.ns.Protocol.OnSelfCopy(stale)
+	eq(cm.ns.GetGuildData().playerId, linkedId, "a stale copy does not undo the link")
+
+	-- License 2 unlinks alone; license 1 is told.
+	cm.ns.Link.Unlink()
+	world:Run(60)
+	falsy(co:Record(mainy.guid).player == co:Record(crafty.guid).player, "two players again")
+	truthy(logHas(cc, "no longer linked"))
+	falsy(cc.ns.Link.IsLinked())
+	eq(co:Record(alty.guid).player, co:Record(crafty.guid).player, "license 1 stays one player")
+	world:Run(3 * 1300)
+	falsy(co:Record(mainy.guid).player == co:Record(crafty.guid).player, "stays unlinked")
+end)
+
+test("link with only a 0.1.0 client relaying: the offer arrives once both licenses are online; 0.1.0 groups them", function()
+	local world, crafty, _, mainy, otto, olli = linkWorld(54, true)
+	world:Logout(otto.guid)
+	world:Logout(mainy.guid)
+	world:Run(30)
+	local cc = world:Login(crafty.guid)
+	world:Run(60)
+	cc.ns.Link.Offer(mainy.guid)
+	world:Run(30)
+	world:Logout(crafty.guid)
+	world:Run(30)
+	local cm = world:Login(mainy.guid)
+	world:Run(200)
+	eq(#cm.popups, 0, "Olli relayed the record without the offer")
+	cc = world:Login(crafty.guid)
+	world:Run(30)
+	eq(#cm.popups, 1, "asked as soon as both are online")
+	truthy(cm:Answer("GUILDTRADEBOOK_LINK_REQUEST", true))
+	world:Run(60)
+	local co = world.online[olli.guid]
+	eq(co:Record(mainy.guid).player, co:Record(crafty.guid).player, "the 0.1.0 client groups them by player ID")
+	truthy(logHas(cc, "Linked:"))
+end)
+
+test("link: a linked character leaves the guild and comes back", function()
+	local world, crafty, alty, mainy, otto = linkWorld(55)
+	local cc = world:Login(crafty.guid)
+	world:Run(60)
+	cc.ns.Link.Offer(mainy.guid)
+	world:Run(60)
+	local cm = world.online[mainy.guid]
+	truthy(cm:Answer("GUILDTRADEBOOK_LINK_REQUEST", true))
+	world:Run(60)
+	local co = world.online[otto.guid]
+	world:Logout(crafty.guid)
+	world:Run(150)
+	eq(co.ns.Index.Crafters(3914)[1].via and co.ns.Index.Crafters(3914)[1].via.guid, mainy.guid, "reached via Mainy")
+
+	-- Mainy (license 2) leaves: the guild no longer reaches Crafty through it.
+	world:Logout(mainy.guid)
+	world:RemoveFromGuild(mainy.guid)
+	cc = world:Login(crafty.guid)
+	world:Run(150)
+	world:Logout(crafty.guid)
+	world:Run(150)
+	local crafter = co.ns.Index.Crafters(3914)[1]
+	falsy(crafter.via, "nobody to reach Crafty through")
+	falsy(crafter.reachable)
+	for _, guid in ipairs(co.ns.Index.Siblings(crafty.guid)) do
+		falsy(guid == mainy.guid, "Mainy is no longer grouped")
+	end
+	eq(co.ns.Index.Siblings(crafty.guid)[1], alty.guid, "license 1 is still one player")
+	local alive = world:Login(alty.guid)
+	world:Run(60)
+	truthy(alive.ns.Link.IsPartner(mainy.guid), "license 1 keeps the link while Mainy is away")
+
+	-- Mainy comes back: grouped again everywhere, still ours on license 1.
+	world:Logout(alty.guid)
+	world:AddToGuild(mainy.guid)
+	cm = world:Login(mainy.guid)
+	world:Run(200)
+	eq(#cm.popups, 0, "no new question")
+	world:Logout(mainy.guid)
+	world:Run(150)
+	eq(co:Record(mainy.guid).player, co:Record(crafty.guid).player)
+	truthy(co.ns.Index.Siblings(crafty.guid)[1] == mainy.guid or co.ns.Index.Siblings(crafty.guid)[2] == mainy.guid, "grouped again")
+	cc = world:Login(crafty.guid)
+	world:Run(60)
+	truthy(cc.ns.Link.IsPartner(mainy.guid))
+	falsy(cc.ns.Index.ContactFor(cc.ns.Index.CrafterInfo(mainy.guid)), "never whispered: one of yours")
+end)
+
+test("link: a declined offer is not asked again; nothing changes", function()
+	local world, crafty, _, mainy, otto = linkWorld(52)
+	local cc = world.online[crafty.guid] or world:Login(crafty.guid)
+	world:Run(60)
+	cc.ns.Link.Offer(mainy.guid)
+	world:Run(60)
+	local cm = world.online[mainy.guid]
+	eq(#cm.popups, 1)
+	truthy(cm:Answer("GUILDTRADEBOOK_LINK_REQUEST", false))
+	world:Logout(mainy.guid)
+	world:Run(30)
+	cm = world:Login(mainy.guid)
+	world:Run(300)
+	eq(#cm.popups, 0, "not asked again after a relog")
+	local co = world.online[otto.guid]
+	falsy(co:Record(mainy.guid).player == co:Record(crafty.guid).player)
+	-- The offerer withdraws: the record no longer carries it.
+	cc.ns.Link.CancelOffer()
+	world:Run(30)
+	falsy(co:Record(crafty.guid).offer)
+end)
+
+test("link: offers are only shown for characters of other players with addon data", function()
+	local world, crafty, alty, mainy, otto = linkWorld(53)
+	local cm = world.online[mainy.guid]
+	local L = cm.ns.Link
+	truthy(L.TargetOf(crafty.guid), "another player's character")
+	falsy(L.TargetOf(mainy.guid), "not yourself")
+	local stranger = world:AddChar({ guid = guid(6), name = "Nodata" })
+	world:Login(stranger.guid)
+	world:Run(5)
+	falsy(L.TargetOf(stranger.guid), "no shared record yet")
+	local items = cm.ns.Link.TargetOf(alty.guid)
+	eq(items, L.TargetOf(crafty.guid), "both characters of license 1 lead to the same player")
+end)
+
 test("characters of one account are grouped; an offline crafter is reached via the online one", function()
 	math.randomseed(11)
 	local world = H.NewWorld()

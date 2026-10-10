@@ -10,7 +10,7 @@ records unchanged. Records are ordered by (ver, seq, h):
   h   = content hash, total order for the (theoretical) equal ver+seq case
 
 Internal record:
-  { guid, name, class, level, ver, seq, player?, loc?,
+  { guid, name, class, level, ver, seq, player?, loc?, offer?,
     profs = { [skillLineID] = { rank, maxRank, primary?, scannedAt?, unverified?,
                                 recipes = { [recipeID] = outputItemID or 0 } | nil,
                                 cds = { [recipeID] = readyAt (server time, 0 = ready) } | nil } },
@@ -181,7 +181,14 @@ function Store.Accept(gd, rec, ctx, sender)
 	if cur then
 		local c = Store.CompareVersion(rec, cur)
 		if c < 0 then return "older" end
-		if c == 0 then return "same" end
+		if c == 0 then
+			-- Same version: unhashed slots a 0.1.0 relay dropped from our copy
+			-- may come back with this one.
+			local filled = false
+			if rec.loc and not cur.loc then cur.loc, filled = rec.loc, true end
+			if rec.offer and not cur.offer then cur.offer, filled = rec.offer, true end
+			return filled and "filled" or "same"
+		end
 	elseif Util.Count(gd.chars) >= Store.MAX_RECORDS then
 		return "full"
 	end
@@ -438,6 +445,22 @@ function Store.ReconcilePlayerId(gd, guids, extra, newId)
 	return best, stamped
 end
 
+-- Sets a chosen ID (account linking, see Features/Link.lua) instead of the
+-- smallest one. Returns the records that changed, like ReconcilePlayerId.
+function Store.SetPlayerId(gd, guids, id)
+	gd.playerId = id
+	local stamped = {}
+	for _, guid in ipairs(guids) do
+		local rec = gd.chars[guid]
+		if rec and rec.player ~= id then
+			rec.player = id
+			Store.Rehash(rec)
+			stamped[#stamped + 1] = guid
+		end
+	end
+	return stamped
+end
+
 -- Membership -------------------------------------------------------------------
 
 -- Hides records of characters that left the guild and deletes them after the
@@ -587,24 +610,29 @@ function Store.ToWire(rec)
 		end
 		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds }
 	end
-	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.player or "", profs, rec.loc or "" }
+	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.player or "", profs, rec.loc or "",
+		rec.offer or "" }
 end
 
 -- Validates untrusted input. Returns record or nil, reason.
 function Store.FromWire(w)
 	if type(w) ~= "table" then return nil, "not a table" end
-	local guid, name, class, level, ver, seq, player, profs, loc = w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9]
+	-- Slots 9 (client locale) and 10 (link offer, see Features/Link.lua) are
+	-- not hashed: 0.1.0 clients read 8 slots and relay only those.
+	local guid, name, class, level, ver, seq, player, profs, loc, offer = w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10]
 	if not Store.IsValidGUID(guid) then return nil, "guid" end
 	if not Util.IsString(name, 64) or not Util.IsString(class, 20) then return nil, "name/class" end
 	if not Util.IsInt(level, 0, 1000) then return nil, "level" end
 	if not Util.IsInt(ver, 0, 2 ^ 40) or not Util.IsInt(seq, 0, 2 ^ 31) then return nil, "version" end
 	if player ~= "" and not Store.IsValidPlayerId(player) then return nil, "player" end
 	if loc ~= nil and loc ~= "" and not (type(loc) == "string" and loc:match("^%a%a%a%a$")) then return nil, "loc" end
+	if offer ~= nil and offer ~= "" and not Store.IsValidPlayerId(offer) then return nil, "offer" end
 	if type(profs) ~= "table" or #profs > Store.MAX_PROFS then return nil, "profs" end
 
 	local rec = {
 		guid = guid, name = name, class = class, level = level, ver = ver, seq = seq,
-		player = player ~= "" and player or nil, loc = (loc ~= nil and loc ~= "") and loc or nil, profs = {},
+		player = player ~= "" and player or nil, loc = (loc ~= nil and loc ~= "") and loc or nil,
+		offer = (offer ~= nil and offer ~= "") and offer or nil, profs = {},
 	}
 	for i = 1, #profs do
 		local p = profs[i]

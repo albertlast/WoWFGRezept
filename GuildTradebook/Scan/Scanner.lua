@@ -143,6 +143,13 @@ local function updateIdentity(own)
 		own.loc = loc
 		kind = kind or "minor"
 	end
+	-- A pending link offer travels in the own record (Features/Link.lua).
+	local gd = ns.GetGuildData()
+	local offer = gd and gd.link and gd.link.offerTo or nil
+	if own.offer ~= offer then
+		own.offer = offer
+		kind = "major"
+	end
 	return kind
 end
 
@@ -188,16 +195,8 @@ local function newPlayerId()
 	return Store.NewPlayerId(math.random)
 end
 
---[[
-Gives all of the account's characters in this guild the same player ID (see
-Store.ReconcilePlayerId). extra: the ID of a copy of the logged-in character
-seen in the pool. Alts are not logged in, but their records belong to this
-account, so it may publish them with a new version.
-]]
-function Scanner.UpdatePlayerId(extra)
-	local gd = ns.GetGuildData()
-	local own = Scanner.GetOwn()
-	if not (gd and own) then return end
+-- The account's characters with a record in this guild, sorted.
+local function accountGuids(gd)
 	local guids = {}
 	for guid in pairs(ns.db.account.chars) do
 		local rec = gd.chars[guid]
@@ -206,7 +205,11 @@ function Scanner.UpdatePlayerId(extra)
 		end
 	end
 	table.sort(guids)
-	local _, stamped = Store.ReconcilePlayerId(gd, guids, extra, newPlayerId)
+	return guids
+end
+
+-- New versions of the records whose player ID changed, published.
+local function publishStamped(gd, own, stamped)
 	for _, guid in ipairs(stamped) do
 		local rec = gd.chars[guid]
 		if guid == own.guid then
@@ -217,6 +220,30 @@ function Scanner.UpdatePlayerId(extra)
 			ns.Emit("RecordsChanged", guid)
 		end
 	end
+end
+
+--[[
+Gives all of the account's characters in this guild the same player ID (see
+Store.ReconcilePlayerId). extra: the ID of a copy of the logged-in character
+seen in the pool. Alts are not logged in, but their records belong to this
+account, so it may publish them with a new version.
+]]
+function Scanner.UpdatePlayerId(extra)
+	local gd = ns.GetGuildData()
+	local own = Scanner.GetOwn()
+	if not (gd and own) then return end
+	local _, stamped = Store.ReconcilePlayerId(gd, accountGuids(gd), extra, newPlayerId)
+	publishStamped(gd, own, stamped)
+end
+
+-- Gives the account's characters in this guild a chosen player ID (account
+-- linking, Features/Link.lua): not the smallest one like UpdatePlayerId.
+-- id nil: a fresh one.
+function Scanner.SetPlayerId(id)
+	local gd = ns.GetGuildData()
+	local own = Scanner.GetOwn()
+	if not (gd and own) then return end
+	publishStamped(gd, own, Store.SetPlayerId(gd, accountGuids(gd), id or newPlayerId()))
 end
 
 -- The profession a recipe belongs to, according to the game (or nil).

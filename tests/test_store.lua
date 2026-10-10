@@ -205,6 +205,35 @@ test("data of guilds you left goes after the retention time, own characters stay
 	truthy(db.guilds["Legacy-R"], "still counting")
 end)
 
+test("record link offer: travels in slot 10, not hashed, validated", function()
+	local r = rec(A, 1000, 0)
+	r.offer = "00ab12cd34ef"
+	local back = assert(Store.FromWire(H.DeepCopy(Store.ToWire(r))))
+	eq(back.offer, "00ab12cd34ef")
+	eq(Store.Hash(back), Store.Hash(r))
+	r.offer = nil
+	eq(Store.Hash(back), Store.Hash(r), "not part of the hash")
+	local w = Store.ToWire(back)
+	w[10] = "bad"
+	falsy(Store.FromWire(w))
+	w[10] = nil
+	eq(assert(Store.FromWire(w)).offer, nil, "0.1.0 relays drop it")
+end)
+
+test("same version from a 0.1.0 relay first: the unhashed slots come back with a later copy", function()
+	local gd = { chars = {} }
+	local ctx = { now = 2000, selfGUID = B, isMember = function() return true end }
+	local full = rec(A, 1000, 0)
+	full.offer, full.loc = "00ab12cd34ef", "deDE"
+	local stripped = assert(Store.FromWire((function() local w = Store.ToWire(full) w[9], w[10] = nil, nil return w end)()))
+	eq(Store.Accept(gd, stripped, ctx, "Olli"), "accepted")
+	falsy(gd.chars[A].offer)
+	eq(Store.Accept(gd, assert(Store.FromWire(Store.ToWire(full))), ctx, "Otto"), "filled")
+	eq(gd.chars[A].offer, "00ab12cd34ef")
+	eq(gd.chars[A].loc, "deDE")
+	eq(Store.Accept(gd, assert(Store.FromWire(Store.ToWire(full))), ctx, "Otto"), "same")
+end)
+
 test("wire round trip preserves content and hash", function()
 	local r = rec(A, 12345, 2, {
 		[197] = { rank = 150, maxRank = 225, scannedAt = 999, recipes = { [3914] = 2568, [8776] = 0 } },

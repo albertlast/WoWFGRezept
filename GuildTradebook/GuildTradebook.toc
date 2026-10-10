@@ -28,6 +28,7 @@ Search\Upgrades.lua
 Features\Wishlist.lua
 Features\Reagents.lua
 Features\ChatResponder.lua
+Features\Link.lua
 
 UI\Widgets.lua
 UI\Main.lua
