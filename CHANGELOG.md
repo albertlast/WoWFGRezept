@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 (in development)
+
+- Less traffic in big, busy guilds (measured with a new load simulation): rank-ups are batched longer the more members broadcast (the guild sends about 40 per minute however many craft); a fresh install takes half the records from a second partner at the same time and never requests a record twice; records sent in a sync go up to 16 per message, sorted by profession, so they compress far better.
+- Rogue Poisons are no longer shared: they are a class skill the game lists among the professions, only rogues use poisons and every rogue makes their own. A rogue's record drops them at the next profession check; records from older versions that still carry them are not shown (search, tooltips, Members tab, export).
+- Fix: the server check of primary professions could hide a profession the owner marks as not primary (it hit Poisons). Only professions marked primary are compared with the server now.
+- `/gtb export [name]`: the guild data as JSON (copy window, and `GuildTradebookExport` in the SavedVariables; `tools/read_export.py` reads it from the file), e.g. for a Discord bot. `/gtb export zip` shows it compressed (`GTB1:` + Base64 of Deflate, about 4× smaller).
+
 ## 0.2.0 (2026-10-10)
 
 - Stat weights for the Upgrades tab (settings sub-page, per character, default 1 for every stat): the gain is the weighted sum of the favorite stats.

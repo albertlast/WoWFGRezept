@@ -4,13 +4,25 @@ talks to ONE partner, never to everyone.
 
 Owner updates (broadcast, GUILD):
   R  REC      {r = wire record}         owner changed its record (or reclaim)
+  Profession or recipe changes go out after 5 s. Rank-ups are batched, and
+  the batch interval grows with the guild (P.MinorDelay): the whole guild
+  sends about GUILD_RECORD_BUDGET of them per minute, however many craft.
 
 Pairwise anti-entropy (WHISPER between two clients):
-  H  HELLO    {b = 16 bucket hashes}    "here is my state" -> partner
+  H  HELLO    {b = 16 bucket hashes,    "here is my state" -> partner
+               o = buckets?}            o: only these buckets (second partner, below)
   K  ACK      {n = buckets that differ} partner is alive (sent even if in sync)
   D  DIGEST   {b, e = entries}          entries of one differing bucket
   W  WANT     {l = guids}               "send me these"
   R  REC      {r = wire record}         records the other side lacks / has older
+  B  BATCH    {l = wire records}        several records in one message, to members
+                                        that read batches (bt in their messages):
+                                        sorted by profession, so Deflate finds the
+                                        recipe lists they share
+  Requested records are remembered (P.wanted): while the partner that was
+  asked keeps delivering, nobody else is asked for them. Many records
+  missing (fresh install): the buckets are split, half from this partner,
+  half from a second one at the same time (HELLO with o).
 
 Partner election (only when no partner is known, e.g. fresh install):
   P  PARTNER? {}                        GUILD broadcast by the newcomer
@@ -34,8 +46,9 @@ Guild chat "!craft" (see Features/ChatResponder.lua):
 
 A client starts a sync on login and every 20 minutes with a random partner.
 Every message carries the protocol major version (p), the guild key (g), the
-sender's GUID (u) and addon version and build (av, ab; see Versions). Other
-fields belong to the message type, so these names must not be reused.
+sender's GUID (u), addon version and build (av, ab; see Versions) and
+bt = 1 (reads BATCH; 0.1.0 and 0.2.0 do not send it). Other fields belong to
+the message type, so these names must not be reused.
 ]]
 local _, ns = ...
 
@@ -47,6 +60,12 @@ local P = {
 	factAsk = {},       -- [recipeID] = true: facts we are about to request
 	factRequested = {}, -- [recipeID] = GetTime() of the last request
 	pushQueue = {},     -- [guid] = true: account alts to broadcast with the next PushOwn
+	guildSenders = {},  -- [guid] = GetTime() of their last record broadcast (P.MinorDelay)
+	batchPeers = {},    -- [guid] = true: their messages say they read BATCH
+	wanted = {},        -- [guid] = { ver, seq, h, from, at }: requested, not received yet
+	deliveredAt = {},   -- [guid] = GetTime(): last record received from this member by whisper
+	outRecords = {},    -- [target name] = { guid = .., set = {[guid] = true} }: records about to go out
+	split = nil,        -- { partner, at, deferred = {[guid] = digest entry} } (fresh install)
 	outbox = {},
 }
 ns.Protocol = P
@@ -61,6 +80,17 @@ P.MAX_FACTS = 50
 P.MAX_CATEGORIES = 100
 P.MAX_CATEGORY_RECIPES = 200
 P.MAX_OUTBOX = 100
+P.MAJOR_DELAY = 5            -- seconds: profession or recipe changes
+P.MINOR_DELAY = 60           -- seconds: rank-ups, in a small guild
+P.MINOR_DELAY_MAX = 900      -- seconds: rank-ups, however busy the guild is
+P.GUILD_RECORD_BUDGET = 40   -- rank-up broadcasts per minute for the whole guild
+P.SENDER_WINDOW = 900        -- seconds: who broadcast in this window counts as active
+P.BATCH_RECORDS = 16         -- records per BATCH (Deflate looks back 32 KB)
+P.BATCH_GATHER = 1           -- seconds: records for one member are collected this long
+P.WANT_PATIENCE = 60         -- seconds: a request stays with a partner that delivered this recently
+P.SPLIT_MIN = 4              -- missing records in one bucket that start a split
+P.SPLIT_WAIT = 30            -- seconds: deferred buckets then go to the first partner after all
+P.SPLIT_WINDOW = 120         -- seconds: one split at a time
 
 -- Tests set this to function(msg, channel, target, prio) to bypass AceComm.
 P.transport = nil
@@ -176,6 +206,7 @@ function P.Send(msg, channel, target, prio, targetGUID)
 	msg.g = Roster.guildKey
 	msg.u = UnitGUID("player")
 	msg.av, msg.ab = ns.Versions.Mine()
+	msg.bt = 1
 	local addressee
 	if channel == "WHISPER" and Roster.KnownOffline(targetGUID or Roster.byName[target]) then
 		ns.Debug("skip", msg.t, "to", tostring(target), "(offline)")
@@ -268,6 +299,56 @@ local function sendRecord(guid, channel, target, prio)
 	P.Send({ t = "R", r = Store.ToWire(rec) }, channel, target, prio or "BULK")
 end
 
+-- Primary professions of a record as a sort key: records of the same
+-- professions next to each other in a BATCH share their recipe lists.
+local function professionKey(rec)
+	local primary = {}
+	for sl, p in pairs(rec.profs) do
+		if p.primary then primary[#primary + 1] = sl end
+	end
+	table.sort(primary)
+	return table.concat(primary, ",")
+end
+
+local function flushRecords(target)
+	local out = P.outRecords[target]
+	P.outRecords[target] = nil
+	local gd = ns.GetGuildData()
+	if not (out and gd) then return end
+	local recs = {}
+	for guid in pairs(out.set) do
+		local rec = gd.chars[guid]
+		if rec and Store.IsShareable(rec, isMember) then recs[#recs + 1] = rec end
+	end
+	table.sort(recs, function(a, b)
+		local ka, kb = professionKey(a), professionKey(b)
+		if ka ~= kb then return ka < kb end
+		return a.guid < b.guid
+	end)
+	for i = 1, #recs, P.BATCH_RECORDS do
+		local list = {}
+		for j = i, math.min(i + P.BATCH_RECORDS - 1, #recs) do list[#list + 1] = Store.ToWire(recs[j]) end
+		P.Send({ t = "B", l = list }, "WHISPER", target, "BULK", out.guid)
+	end
+end
+
+-- Records to one member by whisper: one per message, or several per BATCH
+-- if the member reads batches (collected for BATCH_GATHER seconds, so the
+-- answers to a whole digest exchange go out together).
+local function sendRecords(guids, target, targetGUID)
+	if not (targetGUID and P.batchPeers[targetGUID]) then
+		for _, guid in ipairs(guids) do sendRecord(guid, "WHISPER", target) end
+		return
+	end
+	local out = P.outRecords[target]
+	if not out then
+		out = { guid = targetGUID, set = {} }
+		P.outRecords[target] = out
+	end
+	for _, guid in ipairs(guids) do out.set[guid] = true end
+	ns.Debounce("records" .. target, P.BATCH_GATHER, function() flushRecords(target) end)
+end
+
 -- Owner broadcast of its own record, plus alts of this account that changed
 -- while playing another character (see Scanner.UpdatePlayerId).
 function P.PushOwn()
@@ -349,10 +430,36 @@ local function pickPartner(tried, explore)
 	return pool[math.random(#pool)]
 end
 
-function P.SendHello(partnerName, partnerGUID)
+-- only: optional list of buckets the partner should compare (the others
+-- come from someone else).
+function P.SendHello(partnerName, partnerGUID, only)
 	local gd = ns.GetGuildData()
 	if not gd then return end
-	P.Send({ t = "H", b = Store.BucketHashes(gd, isMember) }, "WHISPER", partnerName, "NORMAL", partnerGUID)
+	P.Send({ t = "H", b = Store.BucketHashes(gd, isMember), o = only }, "WHISPER", partnerName, "NORMAL", partnerGUID)
+end
+
+-- Second partner for a split: a known addon user other than `exclude`, for
+-- the buckets in `only`. Never an election: without a second partner the
+-- first one sends everything (P.SPLIT_WAIT). Returns true if one was asked.
+function P.StartHelperSync(exclude, only)
+	if P.sync then return false end
+	local pool = {}
+	for _, guid in ipairs((P.Candidates())) do
+		if guid ~= exclude then pool[#pool + 1] = guid end
+	end
+	local helper = pool[1] and pool[math.random(#pool)]
+	local name = helper and Roster.NameOf(helper)
+	if not name then return false end
+	local sync = { tried = { [helper] = true }, attempts = 1, partner = helper, partnerName = name, answered = false }
+	P.sync = sync
+	ns.Debug("second partner", name)
+	-- The login follow-up sync is not needed any more.
+	ns.Cancel("startup2")
+	P.SendHello(name, helper, only)
+	ns.Debounce("syncTimeout", P.PARTNER_TIMEOUT, function()
+		if P.sync == sync and not sync.answered then P.sync = nil end
+	end)
+	return true
 end
 
 -- Starts one pairwise sync. Falls back to a partner election broadcast.
@@ -495,10 +602,17 @@ end
 -- Partner side: answer a HELLO with an ACK and the digests that differ.
 handlers.H = function(msg, channel, sender, gd)
 	if channel ~= "WHISPER" or type(msg.b) ~= "table" or #msg.b ~= Store.NUM_BUCKETS then return end
+	local only
+	if type(msg.o) == "table" and #msg.o <= Store.NUM_BUCKETS then
+		only = {}
+		for _, b in ipairs(msg.o) do
+			if Util.IsInt(b, 1, Store.NUM_BUCKETS) then only[b] = true end
+		end
+	end
 	local mine = Store.BucketHashes(gd, isMember)
 	local differing = {}
 	for b = 1, Store.NUM_BUCKETS do
-		if msg.b[b] ~= mine[b] then differing[#differing + 1] = b end
+		if msg.b[b] ~= mine[b] and (not only or only[b]) then differing[#differing + 1] = b end
 	end
 	P.Send({ t = "K", n = #differing }, "WHISPER", sender, "NORMAL")
 	for _, b in ipairs(differing) do
@@ -516,6 +630,73 @@ handlers.K = function(msg)
 	end
 end
 
+-- True while a request for this version (or a newer one) is underway: it
+-- is young, or the member asked is still delivering.
+local function wantPending(guid, rv, now)
+	local w = P.wanted[guid]
+	if not w or Store.CompareVersion(rv, w) > 0 then return false end
+	if now - w.at < P.WANT_PATIENCE then return true end
+	local last = P.deliveredAt[w.from]
+	return last ~= nil and now - last < P.WANT_PATIENCE and not Roster.KnownOffline(w.from)
+end
+
+local function requestRecords(list, sender, senderGUID, now)
+	for _, entry in ipairs(list) do
+		local rv = entry[2]
+		P.wanted[entry[1]] = { ver = rv.ver, seq = rv.seq, h = rv.h, from = senderGUID, at = now }
+	end
+	for i = 1, #list, P.MAX_LIST do
+		local chunk = {}
+		for j = i, math.min(i + P.MAX_LIST - 1, #list) do chunk[#chunk + 1] = list[j][1] end
+		P.Send({ t = "W", l = chunk }, "WHISPER", sender, "BULK", senderGUID)
+	end
+end
+
+local function evenBuckets()
+	local list = {}
+	for b = 2, Store.NUM_BUCKETS, 2 do list[#list + 1] = b end
+	return list
+end
+
+-- Asks a second partner for the deferred buckets of the split, `delay`
+-- seconds from now. A fresh install may not know anyone else yet: then it
+-- tries again as records arrive (their owners are known addon users).
+function P.TryHelper(delay)
+	local split = P.split
+	if not split or split.helper then return end
+	ns.Debounce("helperSync", delay, function()
+		if P.split == split and not split.helper and next(split.deferred) then
+			split.helper = P.StartHelperSync(split.partner, evenBuckets())
+		end
+	end)
+end
+
+-- Many records missing from this partner: from now on its even buckets wait
+-- for a second partner; whatever no one else delivers goes to this one
+-- after SPLIT_WAIT.
+local function startSplit(partnerGUID, partnerName, now)
+	local split = { partner = partnerGUID, at = now, deferred = {} }
+	P.split = split
+	P.TryHelper(1)
+	ns.Debounce("splitFallback", P.SPLIT_WAIT, function()
+		if P.split ~= split then return end
+		P.split = nil
+		local gd, t, rest = ns.GetGuildData(), GetTime(), {}
+		for _, guid in ipairs(Util.SortedKeys(split.deferred)) do
+			local rv = split.deferred[guid]
+			local cur = gd and gd.chars[guid]
+			if (not cur or Store.CompareVersion(rv, cur) > 0) and not wantPending(guid, rv, t) then
+				rest[#rest + 1] = { guid, rv }
+			end
+		end
+		if #rest > 0 then
+			ns.Debug("split: first partner sends the rest", #rest)
+			requestRecords(rest, partnerName, partnerGUID, t)
+		end
+	end)
+	return split
+end
+
 -- Compare a partner's bucket: ask for what is newer there, send what is newer here.
 handlers.D = function(msg, channel, sender, gd)
 	if channel ~= "WHISPER" then return end
@@ -524,45 +705,71 @@ handlers.D = function(msg, channel, sender, gd)
 	local remote = Store.ParseDigest(msg.e)
 	if not remote then return end
 
+	local now = GetTime()
 	local want = {}
-	for guid, rv in pairs(remote) do
+	for _, guid in ipairs(Util.SortedKeys(remote)) do
+		local rv = remote[guid]
 		if Store.BucketOf(guid) == bucket and isMember(guid) ~= false then
 			local cur = gd.chars[guid]
-			if not cur or Store.CompareVersion(rv, cur) > 0 then
-				want[#want + 1] = guid
+			if (not cur or Store.CompareVersion(rv, cur) > 0) and not wantPending(guid, rv, now) then
+				want[#want + 1] = { guid, rv }
 			end
 		end
 	end
+	-- Split: one at a time; the second partner's digests are not split again.
+	local split = P.split
+	if split and now - split.at > P.SPLIT_WINDOW then
+		P.split, split = nil, nil
+	end
+	if not split and #want >= P.SPLIT_MIN then
+		split = startSplit(msg.u, sender, now)
+	end
+	if split and split.partner == msg.u and bucket % 2 == 0 then
+		for _, entry in ipairs(want) do split.deferred[entry[1]] = entry[2] end
+		want = {}
+	end
+
+	local newer = {}
 	for guid, rec in pairs(gd.chars) do
 		if Store.BucketOf(guid) == bucket and Store.IsShareable(rec, isMember) then
 			local rv = remote[guid]
 			if not rv or Store.CompareVersion(rec, rv) > 0 then
-				sendRecord(guid, "WHISPER", sender)
+				newer[#newer + 1] = guid
 			end
 		end
 	end
-	for i = 1, #want, P.MAX_LIST do
-		local chunk = {}
-		for j = i, math.min(i + P.MAX_LIST - 1, #want) do chunk[#chunk + 1] = want[j] end
-		P.Send({ t = "W", l = chunk }, "WHISPER", sender, "BULK")
-	end
+	table.sort(newer)
+	sendRecords(newer, sender, msg.u)
+	requestRecords(want, sender, msg.u, now)
 end
 
 handlers.W = function(msg, channel, sender, gd)
 	if channel ~= "WHISPER" or type(msg.l) ~= "table" or #msg.l > P.MAX_LIST then return end
+	local list = {}
 	for _, guid in ipairs(msg.l) do
-		if Store.IsValidGUID(guid) and gd.chars[guid] then
-			sendRecord(guid, "WHISPER", sender)
-		end
+		if Store.IsValidGUID(guid) and gd.chars[guid] then list[#list + 1] = guid end
 	end
+	sendRecords(list, sender, msg.u)
 end
 
-handlers.R = function(msg, channel, sender, gd)
-	local rec, err = Store.FromWire(msg.r)
+-- One incoming record (REC or part of a BATCH).
+local function receiveRecord(wire, channel, sender, gd, senderGUID)
+	local rec, err = Store.FromWire(wire)
 	if not rec then
 		ns.Debug("rejected record from", sender, err)
 		return
 	end
+	local now = GetTime()
+	if channel == "GUILD" then
+		P.guildSenders[senderGUID] = now
+	else
+		P.deliveredAt[senderGUID] = now
+	end
+	local w = P.wanted[rec.guid]
+	if w and Store.CompareVersion(rec, w) >= 0 then
+		P.wanted[rec.guid] = nil
+	end
+	if P.split and not P.split.helper and channel == "WHISPER" then P.TryHelper(1) end
 	local status = Store.Accept(gd, rec, P.Ctx(), sender)
 	ns.Debug("REC", rec.name, rec.ver, rec.seq, status, "from", sender, channel)
 	if status == "self" then
@@ -580,8 +787,19 @@ handlers.R = function(msg, channel, sender, gd)
 	elseif status == "older" then
 		-- The sender holds a stale copy: correct just the sender.
 		ns.Debounce("fix" .. sender .. rec.guid, 2, function()
-			sendRecord(rec.guid, "WHISPER", sender)
+			sendRecords({ rec.guid }, sender, senderGUID)
 		end)
+	end
+end
+
+handlers.R = function(msg, channel, sender, gd)
+	receiveRecord(msg.r, channel, sender, gd, msg.u)
+end
+
+handlers.B = function(msg, channel, sender, gd)
+	if channel ~= "WHISPER" or type(msg.l) ~= "table" or #msg.l > P.BATCH_RECORDS then return end
+	for _, wire in ipairs(msg.l) do
+		receiveRecord(wire, channel, sender, gd, msg.u)
 	end
 end
 
@@ -754,6 +972,7 @@ function P.Handle(msg, channel, sender)
 	Roster.LearnName(guid, sender)
 	Roster.Heard(guid)
 	P.peers[guid] = GetTime()
+	if msg.bt == 1 then P.batchPeers[guid] = true end
 	ns.Versions.Seen(sender, msg.av, msg.ab)
 	local gd = ns.GetGuildData()
 	local handler = handlers[msg.t]
@@ -884,9 +1103,34 @@ function P.OnRosterReady()
 	ns.Debounce("startup2", ns.RandomDelay(60, 90), function() P.StartSync(false) end)
 end
 
+-- Members (with us) who broadcast a record recently. Every client hears
+-- the same broadcasts, so all of them come to about the same number.
+function P.ActiveSenders(now)
+	local n = 1
+	for guid, at in pairs(P.guildSenders) do
+		if now - at <= P.SENDER_WINDOW then
+			n = n + 1
+		else
+			P.guildSenders[guid] = nil
+		end
+	end
+	return n
+end
+
+-- Batch interval for rank-ups: each active sender sends at most once per
+-- interval, so the guild stays near GUILD_RECORD_BUDGET per minute. Up to
+-- 40 active senders that is the old 60 s. +-20% spread, so that clients do
+-- not all send at the same moment.
+function P.MinorDelay()
+	local n = P.ActiveSenders(GetTime())
+	local delay = math.max(P.MINOR_DELAY, math.min(P.MINOR_DELAY_MAX, n * 60 / P.GUILD_RECORD_BUDGET))
+	return delay * (0.8 + 0.4 * math.random())
+end
+
 function P.OnOwnChanged(kind)
-	-- Profession or recipe changes go out quickly, rank-ups are batched.
-	local delay = kind == "major" and 5 or 60
+	-- Profession or recipe changes go out quickly, rank-ups are batched. A
+	-- pending batch is never postponed; a major change pulls it forward.
+	local delay = kind == "major" and P.MAJOR_DELAY or P.MinorDelay()
 	ns.ScheduleEarliest("pushOwn", delay, P.PushOwn)
 end
 

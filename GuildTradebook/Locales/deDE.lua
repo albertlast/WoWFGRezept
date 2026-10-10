@@ -108,6 +108,12 @@ L.SETTINGS_WISH_SOUND_DESC = "Spielt beim Wunschlisten-Hinweis einen Ton ab."
 L.SETTINGS_DEBUG = "Debug-Ausgabe"
 L.SETTINGS_DEBUG_DESC = "Schreibt Synchronisationsnachrichten in den Chat (zum Testen)."
 L.SETTINGS_WEIGHTS = "Werte-Gewichtung"
+L.EXPORT_TITLE = "Export (JSON)"
+L.EXPORT_ZIP_FAILED = "Export: Komprimieren fehlgeschlagen, zeige normales JSON."
+L.EXPORT_TOO_BIG_ZIP = "Zu groß für das Kopierfenster: /gtb export zip versuchen, oder /reload und GuildTradebookExport aus den SavedVariables lesen (tools/read_export.py)."
+L.EXPORT_NO_MATCH = "Export: kein Charakter passt zu \"%s\" (das Wort nach /gtb export filtert nach Namen); der vorige Export bleibt."
+L.EXPORT_DONE = "Export: %d Charaktere mit Daten, %d ohne, %d Rezepte (%d KB). Nach /reload oder Ausloggen auch als GuildTradebookExport in den SavedVariables."
+L.EXPORT_TOO_BIG = "Zu groß für das Kopierfenster: /reload, dann GuildTradebookExport aus WTF/Account/<Account>/SavedVariables/GuildTradebook.lua lesen (tools/read_export.py)."
 L.SETTINGS_WEIGHT_DESC = "Wie viel ein Punkt dieses Werts im Reiter Verbesserungen zählt (nur für die dort als bevorzugt gewählten Werte). 1 = wie die anderen, 2 = doppelt, 0 = ignoriert. Pro Charakter gespeichert."
 L.SETTINGS_MINIMAP = "Minimap-Button anzeigen"
 L.SETTINGS_MINIMAP_DESC = "Der Button leuchtet, solange ein Gildenmitglied online ist, das etwas von deiner Wunschliste herstellen kann."
@@ -174,4 +180,6 @@ L.SLASH_HELP = [[/gtb - Fenster öffnen
 /gtb diag - prüft, ob Addon-Nachrichten die Gilde erreichen
 /gtb diag <Name> - testet Addon-Flüstern an ein Mitglied (beide Namensformen)
 /gtb dump <Name> - zeigt, was über einen Charakter bekannt ist
+/gtb export [Name] - Gildendaten als JSON (Kopierfenster und GuildTradebookExport in den SavedVariables nach /reload)
+/gtb export zip [Name] - dasselbe, komprimiert fürs Kopierfenster (GTB1:...)
 /gtb stats - Statistik des Rezept-Pools]]

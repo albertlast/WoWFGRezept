@@ -112,6 +112,12 @@ L.SETTINGS_WISH_SOUND_DESC = "Plays a sound with the wishlist notice."
 L.SETTINGS_DEBUG = "Debug output"
 L.SETTINGS_DEBUG_DESC = "Prints sync messages to chat (for testing)."
 L.SETTINGS_WEIGHTS = "Stat weights"
+L.EXPORT_TITLE = "Export (JSON)"
+L.EXPORT_ZIP_FAILED = "Export: compressing failed, showing plain JSON."
+L.EXPORT_TOO_BIG_ZIP = "Too large for the copy window: try /gtb export zip, or /reload and read GuildTradebookExport from the SavedVariables (tools/read_export.py)."
+L.EXPORT_NO_MATCH = "Export: no character matches \"%s\" (the word after /gtb export is a name filter); the previous export is kept."
+L.EXPORT_DONE = "Export: %d characters with data, %d without, %d recipes (%d KB). Also saved as GuildTradebookExport in the SavedVariables after /reload or logout."
+L.EXPORT_TOO_BIG = "Too large for the copy window: /reload, then read GuildTradebookExport from WTF/Account/<account>/SavedVariables/GuildTradebook.lua (tools/read_export.py)."
 L.SETTINGS_WEIGHT_DESC = "How much one point of this stat counts in the Upgrades tab (only for the stats chosen there as favorites). 1 = like the others, 2 = twice as much, 0 = ignored. Saved per character."
 L.SETTINGS_MINIMAP = "Show minimap button"
 L.SETTINGS_MINIMAP_DESC = "The button glows while a guild member who can craft something on your wishlist is online."
@@ -178,4 +184,6 @@ L.SLASH_HELP = [[/gtb - open window
 /gtb diag - test whether addon messages reach the guild
 /gtb diag <name> - test addon whispers to a member (both name forms)
 /gtb dump <name> - print what is known about a character
+/gtb export [name] - guild data as JSON (copy window, and GuildTradebookExport in the SavedVariables after /reload)
+/gtb export zip [name] - the same, compressed for the copy window (GTB1:...)
 /gtb stats - print pool statistics]]

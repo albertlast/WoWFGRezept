@@ -41,7 +41,7 @@ function Scanner.Snapshot()
 		local index = indices[i]
 		if index then
 			local name, _, rank, maxRank, _, spellOffset, skillLine = GetProfessionInfo(index)
-			if skillLine and skillLine > 0 then
+			if skillLine and skillLine > 0 and not Store.IsClassSkill(skillLine) then
 				local craftable = hasCraftingUI(spellOffset)
 				if craftable == nil then
 					craftable = not Store.NO_RECIPE_SKILLLINES[skillLine]

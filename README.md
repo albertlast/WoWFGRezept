@@ -33,6 +33,7 @@ Each crafter has to open the professions window once and click each profession t
 | `/gtb resync` | sync with a guild member now |
 | `/gtb diag [name]` | test whether addon messages reach the guild (the server echoes them back to you); with a name, test addon whispers to that member in both name forms |
 | `/gtb dump <name>` | show what is known about a character |
+| `/gtb export [zip] [name]` | the guild data as JSON (for Discord bots, spreadsheets, debugging); see [Export](#export) |
 | `/gtb log` | open the log (debug lines and addon messages, with times) as copyable text |
 | `/gtb stats`, `/gtb debug` | diagnostics |
 
@@ -50,6 +51,15 @@ Each crafter has to open the professions window once and click each profession t
 - **Two licenses, one player:** characters on a second WoW license (another account) can be linked. In the Members tab, right-click one of your characters on the other license → "Link with my account…"; then log in on that license and confirm the question. Both licenses then share one player ID, so the whole guild (0.1.0 clients included) groups all characters as one player. Either license can unlink alone (right-click your own characters → "Unlink other license…"), and the guild sees two players again. The offer waits in your record until the other license logs in; if only 0.1.0 clients relay it in the meantime, it arrives once both licenses are online at the same time. The guild is not told in chat; it simply sees one player. A linked character that leaves the guild drops out of the group like any former member; if it comes back, the link still holds. Links are per guild: in a new guild, link again.
 - **`!craft <item>`:** members without the addon can ask who crafts something (`!herstellen` works too), in guild chat or by whispering an addon user. The answer comes as a whisper, so guild chat only shows the question. For a guild chat question exactly one addon user answers: they elect themselves with the same deterministic ranking as the sync partner. Names are searched in each client's language, so clients that find something answer first; "nobody" comes only after all of them had their turn, and names the language that was searched. Linked items (`!craft [Brown Linen Vest]`) are looked up by item ID, so they work in every language; a client of the asker's language (it calls the item by the linked name) answers first. The answering player does not see their own answer whisper (it is in `/gtb log`). Turn it off with `/gtb chatbot`.
 
+## Export
+
+`/gtb export` writes everything your client knows about the guild as JSON: members with professions, ranks, recipe IDs and cooldowns, members without the addon, and one table with each recipe's name, crafted item and category (names in your client's language). `/gtb export <name>` limits it to matching characters; if none matches, the previous export is kept.
+
+- The JSON opens in the copy window (Ctrl+A, Ctrl+C) unless it is larger than 200 KB.
+- `/gtb export zip [name]` shows it compressed instead: `GTB1:` followed by Base64 of the Deflate-compressed JSON, about 4× smaller (a guild with 70 members: 50 KB → 12.5 KB). The game writes raw Deflate (no zlib header), so in Python: `json.loads(zlib.decompress(base64.b64decode(text[5:]), -15))`; `tools/read_export.py` accepts a text file with it, or `-` for stdin.
+- It is also kept as `GuildTradebookExport` in the SavedVariables. The game writes the file on `/reload` or logout: `WTF/Account/<ACCOUNT>/SavedVariables/GuildTradebook.lua`. `python tools/read_export.py <that file> [out.json]` takes the JSON out of it (the SavedVariables always keep the plain JSON).
+- The format is described at the top of `GuildTradebook/Features/Export.lua` (`format` = 1). Only what your client has synced is in it; exporting sends nothing.
+
 ## How the data stays correct
 
 Each character's data is a **record**: a full snapshot of its professions and recipes. Only the character itself (or its account, for alts) ever writes it; everyone else forwards it unchanged.
@@ -66,9 +76,10 @@ Each character's data is a **record**: a full snapshot of its professions and re
 
 Built for about 100 members online at once:
 
-- An owner's change is broadcast once to the guild: recipe changes in the two primary professions within 5 s; secondary professions (Cooking, First Aid, …) and rank-ups are batched into one message per 60 s.
+- An owner's change is broadcast once to the guild: recipe changes in the two primary professions within 5 s. Secondary professions (Cooking, First Aid, …) and rank-ups are batched: one message per 60 s in a small guild, longer in a busy one. The interval grows with the number of members broadcasting (up to 15 min), so the whole guild sends about 40 of these per minute however many level their professions at the same time.
 - When you log in, you sync with **one** partner by whisper. You compare 16 bucket hashes and then exchange only the records that differ. If you are already up to date, that costs two small messages. A second check with another partner follows about a minute later.
-- A fresh install with no known partner broadcasts one request. Peers elect a single responder by a deterministic ranking.
+- A fresh install with no known partner broadcasts one request. Peers elect a single responder by a deterministic ranking. With many records missing, half of the buckets come from that partner and the other half from a second one at the same time; records already requested are not requested again while their partner is still sending.
+- Records sent in answer to a sync go out up to 16 per message, sorted by profession: Deflate then compresses the recipe lists they share (members of one profession know mostly the same recipes).
 - Every 20 minutes each client re-syncs with one random partner.
 - Reagents are not part of the records. They are fetched on demand from an online crafter of that recipe and cached.
 - Recipe categories: the crafter's record says which category each recipe is in (an extra not counted in the hash, so 0.1.0 clients stay compatible; they drop it when relaying). Category names are game data, not part of the records: the game names a category only in the client's language and only for your own professions, so a missing name is asked once by whisper, from an online crafter of your language who has that category, or (while no name is known at all) from any crafter who has it. Names are kept account-wide. Only while the Recipes tab shows recipes without a category (copies relayed by 0.1.0) is a member running a newer version asked for them.
@@ -82,6 +93,12 @@ lua tests/run.lua
 ```
 
 This runs unit tests for the merge rules, upgrade finder tests, a UI smoke test, and a multi-client network simulation. The simulation covers split brain, partitions, lost SavedVariables, forged copies, members leaving, alts, and 100-member traffic. Any Lua 5.1–5.4 works; the addon code itself stays Lua 5.1 compatible.
+
+```
+lua tests/load.lua [addon users ...] [--minutes N] [--crafters 0.5] [--off A,B,D]
+```
+
+A load simulation of a busy launch phase (not part of the test run; 200 users take a few minutes). It plays logins, profession scans, a crafting window (skill-ups and newly learned recipes, while members without the addon ask `!craft`) and a fresh install with the real addon code, and measures guild-wide messages, the volume each client receives, answers per `!craft` question and their delay, and how long a fresh install takes. Messages queue per sender at 800 bytes/s like ChatThrottleLib (ALERT, NORMAL and BULK share the bandwidth, in 255-byte pieces) and are sized by their real encoding (CBOR, Deflate, Base64): the tests use a copy of LibDeflate (zlib license, `tests/vendor/`, not part of the addon). `--off` turns fixes off for comparison: A (rank-up interval), B (no double requests, split), D (batches).
 
 ### Sharing a build
 
@@ -105,5 +122,4 @@ The following were built from the `forever` API source but are not yet confirmed
 - `C_TradeSkillUI.GetAllRecipeIDs` exists; otherwise scans fall back to the filtered list and count as partial.
 - `GetRecipeSchematic(id).outputItemID` and reagents for recipes the player does not know (only used as a fallback).
 - `C_Club` member `profession1ID`/`profession2ID` are skill line IDs.
-- `GetRecipeInfo(id).categoryID` and `GetCategoryInfo(categoryID)` (name, `parentCategoryID`, `uiOrder`) while the profession window is open.
 - Real addon-message throughput. A fresh install pulls the whole pool from one partner, which can take a few minutes on a large guild.

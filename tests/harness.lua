@@ -26,6 +26,7 @@ H.FILES = {
 	"Features/Reagents.lua",
 	"Features/ChatResponder.lua",
 	"Features/Link.lua",
+	"Features/Export.lua",
 	"Core/Boot.lua",
 }
 
@@ -71,33 +72,63 @@ end
 
 -- Virtual clock and timers -----------------------------------------------------
 
+-- Timers fire in order of (due, id): earliest first, then in creation
+-- order. A binary heap keeps that fast with thousands of pending timers
+-- (load simulation).
+local function earlier(a, b)
+	return a.due < b.due or (a.due == b.due and a.id < b.id)
+end
+
 function H.NewClock(start)
 	local clock = { t = start or 1000000, timers = {}, nextId = 0 }
+
+	local function push(heap, timer)
+		heap[#heap + 1] = timer
+		local i = #heap
+		while i > 1 do
+			local parent = math.floor(i / 2)
+			if not earlier(heap[i], heap[parent]) then break end
+			heap[i], heap[parent] = heap[parent], heap[i]
+			i = parent
+		end
+	end
+
+	local function pop(heap)
+		local top, last = heap[1], table.remove(heap)
+		if #heap > 0 then
+			heap[1] = last
+			local i, n = 1, #heap
+			while true do
+				local l, r, smallest = 2 * i, 2 * i + 1, i
+				if l <= n and earlier(heap[l], heap[smallest]) then smallest = l end
+				if r <= n and earlier(heap[r], heap[smallest]) then smallest = r end
+				if smallest == i then break end
+				heap[i], heap[smallest] = heap[smallest], heap[i]
+				i = smallest
+			end
+		end
+		return top
+	end
 
 	function clock:Add(delay, fn, owner, interval)
 		self.nextId = self.nextId + 1
 		local timer = { due = self.t + delay, fn = fn, owner = owner, interval = interval, id = self.nextId }
 		function timer:Cancel() self.cancelled = true end
-		table.insert(self.timers, timer)
+		push(self.timers, timer)
 		return timer
 	end
 
 	function clock:Advance(seconds)
 		local stop = self.t + seconds
 		while true do
-			local best, bestIndex
-			for i, timer in ipairs(self.timers) do
-				if not best or timer.due < best.due or (timer.due == best.due and timer.id < best.id) then
-					best, bestIndex = timer, i
-				end
-			end
+			local best = self.timers[1]
 			if not best or best.due > stop then break end
-			table.remove(self.timers, bestIndex)
+			pop(self.timers)
 			self.t = math.max(self.t, best.due)
 			if not best.cancelled and not (best.owner and best.owner.dead) then
 				if best.interval then
 					best.due = self.t + best.interval
-					table.insert(self.timers, best)
+					push(self.timers, best)
 				end
 				best.fn()
 			end
@@ -106,6 +137,109 @@ function H.NewClock(start)
 	end
 
 	return clock
+end
+
+-- Estimated wire size of a message ---------------------------------------------
+-- CBOR size of the table (as C_EncodingUtil.SerializeCBOR writes it), plus
+-- AceComm/ChatThrottleLib overhead (40 bytes per 255-byte chunk). Deflate
+-- then Base64 roughly cancel out for records (measured on real records:
+-- 524 bytes CBOR -> 520 bytes on the wire), so the CBOR size stands for the
+-- payload.
+local function cborHead(n)
+	if n < 24 then return 1 elseif n < 256 then return 2 elseif n < 65536 then return 3
+	elseif n < 2 ^ 32 then return 5 end
+	return 9
+end
+
+local function cborSize(v)
+	local kind = type(v)
+	if kind == "number" then
+		if v ~= math.floor(v) then return 9 end
+		return cborHead(math.abs(v))
+	elseif kind == "string" then
+		return cborHead(#v) + #v
+	elseif kind == "table" then
+		local n, size = #v, 0
+		local count = 0
+		for _ in pairs(v) do count = count + 1 end
+		if count == n then
+			for i = 1, n do size = size + cborSize(v[i]) end
+			return cborHead(n) + size
+		end
+		for k, x in pairs(v) do size = size + cborSize(k) + cborSize(x) end
+		return cborHead(count) + size
+	end
+	return 1
+end
+
+-- Real encoding for the load simulation (H.realSizes = true): CBOR as the
+-- game writes it, raw Deflate (LibDeflate, test-only copy in tests/vendor),
+-- Base64. Slower, but it sees what Deflate makes of repeated content.
+local function cborHeader(major, n)
+	local m = major * 32
+	if n < 24 then return string.char(m + n) end
+	if n < 256 then return string.char(m + 24, n) end
+	if n < 65536 then return string.char(m + 25, math.floor(n / 256), n % 256) end
+	if n < 2 ^ 32 then
+		return string.char(m + 26, math.floor(n / 16777216) % 256, math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256)
+	end
+	local hi, lo = math.floor(n / 2 ^ 32), n % 2 ^ 32
+	return string.char(m + 27, math.floor(hi / 16777216) % 256, math.floor(hi / 65536) % 256, math.floor(hi / 256) % 256, hi % 256,
+		math.floor(lo / 16777216) % 256, math.floor(lo / 65536) % 256, math.floor(lo / 256) % 256, lo % 256)
+end
+
+local function cborEncode(v, out)
+	local kind = type(v)
+	if kind == "number" then
+		if v ~= math.floor(v) then
+			out[#out + 1] = string.char(0xfb) .. string.rep("\0", 8)
+		elseif v >= 0 then
+			out[#out + 1] = cborHeader(0, v)
+		else
+			out[#out + 1] = cborHeader(1, -1 - v)
+		end
+	elseif kind == "string" then
+		out[#out + 1] = cborHeader(3, #v) .. v
+	elseif kind == "boolean" then
+		out[#out + 1] = string.char(v and 0xf5 or 0xf4)
+	elseif kind == "table" then
+		local n, count = #v, 0
+		for _ in pairs(v) do count = count + 1 end
+		if count == n then
+			out[#out + 1] = cborHeader(4, n)
+			for i = 1, n do cborEncode(v[i], out) end
+		else
+			out[#out + 1] = cborHeader(5, count)
+			local keys = {}
+			for k in pairs(v) do keys[#keys + 1] = k end
+			table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+			for _, k in ipairs(keys) do
+				cborEncode(k, out)
+				cborEncode(v[k], out)
+			end
+		end
+	else
+		out[#out + 1] = string.char(0xf6)
+	end
+end
+
+function H.CBOR(v)
+	local out = {}
+	cborEncode(v, out)
+	return table.concat(out)
+end
+
+local deflate
+function H.WireSize(msg)
+	local payload
+	if H.realSizes then
+		deflate = deflate or dofile(ROOT .. "/tests/vendor/LibDeflate/LibDeflate.lua")
+		local packed = deflate:CompressDeflate(H.CBOR(msg), { level = 9 })
+		payload = math.ceil(#packed / 3) * 4
+	else
+		payload = cborSize(msg)
+	end
+	return payload + 40 * math.ceil(payload / 255)
 end
 
 -- World ------------------------------------------------------------------------
@@ -138,6 +272,13 @@ function H.NewWorld(opts)
 		-- client asks for it (GuildRoster); logins and logouts are announced
 		-- right away by a system message.
 		slowRoster = opts.slowRoster,
+		-- bandwidth (bytes/s, e.g. 800 like ChatThrottleLib): each sender's
+		-- messages go through a ChatThrottleLib-like queue (world:Enqueue)
+		-- by their wire size (H.WireSize). Off by default: delivery after
+		-- latency.
+		bandwidth = opts.bandwidth,
+		burst = opts.burst or 4000,
+		bytes = 0, bytesByType = {}, recvBytes = {}, senders = {}, maxQueueDelay = 0, queueDelayByPrio = {},
 		guildName = opts.guildName or "Testguild",
 		serverProfs = {},  -- [guid] = {id1, id2} as the club API reports
 		log = {},
@@ -192,10 +333,102 @@ function H.NewWorld(opts)
 	-- addressee: a GUILD message for one GUID (Protocol's whisper fallback);
 	-- everyone receives it, only the addressee reads it.
 	world.addressed = 0
-	function world:Deliver(from, msg, channel, target, addressee)
+	--[[
+	Send queue per sender, like ChatThrottleLib: bandwidth refills at
+	`bandwidth` bytes/s up to `burst`; a message goes out at once while the
+	queues are empty and the bandwidth suffices. Otherwise it waits in the
+	queue of its priority (ALERT, NORMAL, BULK). The bandwidth is shared
+	equally among the priorities that have something queued, so a small
+	ALERT is not stuck behind a large BULK transfer. Messages travel in
+	pieces of at most 255 bytes (AceComm), 40 bytes overhead each; a message
+	is delivered when its last piece is out.
+	]]
+	local PRIOS = { "ALERT", "NORMAL", "BULK" }
+	local PIECE = 255
+
+	function world:Enqueue(from, wire, prio, onSent)
+		local s = self.senders[from.guid]
+		local now = self.clock.t
+		if not s then
+			s = { avail = self.burst, last = now, queues = { ALERT = {}, NORMAL = {}, BULK = {} }, share = {} }
+			self.senders[from.guid] = s
+		end
+		s.avail = math.min(self.burst, s.avail + (now - s.last) * self.bandwidth)
+		s.last = now
+		local idle = #s.queues.ALERT + #s.queues.NORMAL + #s.queues.BULK == 0
+		if idle and s.avail >= wire then
+			s.avail = s.avail - wire
+			onSent(0, prio)
+			return
+		end
+		local q = s.queues[prio] or s.queues.NORMAL
+		local pieces = math.ceil(math.max(1, wire) / (PIECE + 40))
+		local size = wire / pieces
+		for p = 1, pieces do
+			q[#q + 1] = { size = size, last = p == pieces, onSent = onSent, at = now, prio = prio }
+		end
+		if not s.pumping then
+			s.pumping = true
+			self.clock:Add(0.1, function() self:Pump(from, s) end)
+		end
+	end
+
+	function world:Pump(from, s)
+		local now = self.clock.t
+		local gained = (now - s.last) * self.bandwidth
+		s.last = now
+		local active = {}
+		for _, prio in ipairs(PRIOS) do
+			if #s.queues[prio] > 0 then active[#active + 1] = prio end
+		end
+		if #active == 0 then
+			s.pumping = false
+			return
+		end
+		-- Equal shares of the new bandwidth (and of the burst left over).
+		local pool = gained + s.avail
+		s.avail = 0
+		for _, prio in ipairs(active) do
+			s.share[prio] = math.min(self.burst, (s.share[prio] or 0) + pool / #active)
+		end
+		for _, prio in ipairs(active) do
+			local q = s.queues[prio]
+			while q[1] and s.share[prio] >= q[1].size do
+				local piece = table.remove(q, 1)
+				s.share[prio] = s.share[prio] - piece.size
+				if piece.last then piece.onSent(now - piece.at, prio) end
+			end
+			if #q == 0 then
+				-- An empty priority hands its rest back.
+				s.avail = math.min(self.burst, s.avail + s.share[prio])
+				s.share[prio] = 0
+			end
+		end
+		self.clock:Add(0.1, function() self:Pump(from, s) end)
+	end
+
+	function world:Deliver(from, msg, channel, target, addressee, prio)
 		self.messages = self.messages + 1
 		self.byType[msg.t] = (self.byType[msg.t] or 0) + 1
 		self.sentBy[from.char.name] = (self.sentBy[from.char.name] or 0) + 1
+		local wire = H.WireSize(msg)
+		self.bytes = self.bytes + wire
+		-- Records sent, one per REC and each one inside a BATCH.
+		self.records = (self.records or 0) + (msg.t == "R" and 1 or msg.t == "B" and #msg.l or 0)
+		self.bytesByType[msg.t] = (self.bytesByType[msg.t] or 0) + wire
+		if self.bandwidth then
+			self:Enqueue(from, wire, prio or "NORMAL", function(waited, p)
+				if waited > self.maxQueueDelay then self.maxQueueDelay = waited end
+				local byPrio = self.queueDelayByPrio
+				if waited > (byPrio[p] or 0) then byPrio[p] = waited end
+				if not from.env.dead then self:Fanout(from, msg, channel, target, addressee, wire) end
+			end)
+			return
+		end
+		self:Fanout(from, msg, channel, target, addressee, wire)
+	end
+
+	function world:Fanout(from, msg, channel, target, addressee, wire)
 		if channel == "WHISPER" then
 			local found = false
 			local full = target:find("-", 1, true) and target or (target .. "-" .. from.char.realm)
@@ -232,8 +465,12 @@ function H.NewWorld(opts)
 			if addressee then
 				ok = ok and guid == addressee
 			end
+			-- 0.1.0 knows neither BATCH nor the bucket list in HELLO.
+			if ok and c.v010 and msg.t == "B" then ok = false end
 			if ok then
 				local copy = H.DeepCopy(msg)
+				if c.v010 then copy.o = nil end
+				self.recvBytes[guid] = (self.recvBytes[guid] or 0) + wire
 				self.clock:Add(self.latency, function()
 					client.ns.Protocol.Handle(copy, addressee and "WHISPER" or channel, from.char.name)
 				end, client.env)
@@ -249,7 +486,7 @@ function H.NewWorld(opts)
 	function world:Whisper(fromName, target, text)
 		local realm = fromName:match("%-([^%-]+)$") or "Realm"
 		local full = target:find("-", 1, true) and target or (target .. "-" .. realm)
-		table.insert(self.whispers, { from = fromName, to = full, text = text })
+		table.insert(self.whispers, { from = fromName, to = full, text = text, at = self.clock.t })
 		local fromGUID
 		for guid, c in pairs(self.chars) do
 			if c.name == fromName then fromGUID = guid end
@@ -315,6 +552,9 @@ function H.NewWorld(opts)
 	function world:ResetCounters()
 		self.messages, self.byType, self.sentBy, self.badWhispers = 0, {}, {}, 0
 		self.repeatedFailures = 0
+		self.bytes, self.bytesByType, self.recvBytes, self.maxQueueDelay = 0, {}, {}, 0
+		self.queueDelayByPrio = {}
+		self.records = 0
 	end
 
 	function world:Run(seconds)
@@ -600,7 +840,17 @@ function H.NewClient(world, char)
 		ns.Settings = { Register = function() end, Open = function() end }
 		ns.MinimapButton = { Start = function() end, SetShown = function() end }
 		ns.UI = { Toggle = function() end, Show = function() end }
-		ns.Protocol.transport = function(msg, channel, target, _, addressee)
+		local transport
+		transport = function(msg, channel, target, prio, addressee)
+			if char.v010 and msg.t == "B" then
+				-- 0.1.0 sends no batches: one REC per record.
+				for _, wire in ipairs(msg.l) do
+					local single = H.DeepCopy(msg)
+					single.t, single.l, single.r = "R", nil, wire
+					transport(single, channel, target, prio, addressee)
+				end
+				return
+			end
 			if char.v010 and msg.t == "R" and type(msg.r) == "table" then
 				-- 0.1.0 reads and relays only the first 8 record slots, and the
 				-- first 8 of each profession.
@@ -609,14 +859,16 @@ function H.NewClient(world, char)
 					if type(prof) == "table" then prof[9] = nil end
 				end
 			end
+			if char.v010 then msg.bt = nil end
 			if char.legacy then
 				-- A build from before the sender GUID and version fields; it
 				-- knows nothing about version requests either.
 				if msg.t == "V" or msg.t == "N" then return end
 				msg.u, msg.av, msg.ab = nil, nil, nil
 			end
-			world:Deliver(client, msg, channel, target, addressee)
+			world:Deliver(client, msg, channel, target, addressee, prio)
 		end
+		ns.Protocol.transport = transport
 		self:Fire("ADDON_LOADED", "GuildTradebook")
 		self:Fire("PLAYER_LOGIN")
 	end

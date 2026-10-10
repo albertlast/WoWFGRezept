@@ -193,10 +193,18 @@ end
 
 -- True only when the server positively says the member has two other primary
 -- professions. Missing or partial server data means "unknown" (false here).
+-- The server lists only the two primary professions. So a profession the
+-- owner's record marks as not primary (Cooking, Fishing, but also class
+-- skills with a crafting window like the rogue's Poisons) is never
+-- contradicted; the fixed list covers records without that flag.
 function Roster.IsProfessionContradicted(guid, skillLine)
 	if Roster.SECONDARY_SKILLLINES[skillLine] then return false end
 	local known = Roster.serverProfs[guid]
-	return known ~= nil and known.complete and not known.profs[skillLine]
+	if not (known and known.complete) or known.profs[skillLine] then return false end
+	local gd = ns.GetGuildData and ns.GetGuildData()
+	local rec = gd and gd.chars[guid]
+	local p = rec and rec.profs[skillLine]
+	return not (p and not p.primary)
 end
 
 -- { [skillLine] = true } of primary professions the server lists, or nil.

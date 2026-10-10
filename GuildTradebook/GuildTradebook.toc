@@ -3,9 +3,9 @@
 ## Notes: Shares known recipes automatically inside your guild and finds craftable gear upgrades.
 ## Notes-deDE: Teilt bekannte Rezepte automatisch in der Gilde und findet herstellbare Ausrüstungsverbesserungen.
 ## Author: albertlast
-## Version: 0.2.0
+## Version: 0.3.0-dev
 ## X-Build: 0
-## SavedVariables: GuildTradebookDB
+## SavedVariables: GuildTradebookDB, GuildTradebookExport
 ## SavedVariablesPerCharacter: GuildTradebookCharDB
 ## IconTexture: Interface\Icons\INV_Scroll_03
 ## AddonCompartmentFunc: GuildTradebook_OnAddonCompartmentClick
@@ -30,6 +30,7 @@ Features\Wishlist.lua
 Features\Reagents.lua
 Features\ChatResponder.lua
 Features\Link.lua
+Features\Export.lua
 
 UI\Widgets.lua
 UI\Main.lua

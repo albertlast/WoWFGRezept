@@ -137,7 +137,7 @@ the member no longer has are left out (stale relayed data).
 ]]
 function Tooltip.ProfessionLines(rec, contradicted)
 	local primary, secondary = {}, {}
-	local skillLines = ns.Util.SortedKeys(rec.profs)
+	local skillLines = ns.Store.ProfessionSkillLines(rec)
 	Index.SortSkillLines(skillLines, function(sl) return rec.profs[sl].primary end)
 	for _, sl in ipairs(skillLines) do
 		local p = rec.profs[sl]

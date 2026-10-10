@@ -47,6 +47,27 @@ Store.NO_RECIPE_SKILLLINES = {
 	[393] = true, -- Skinning
 }
 
+-- Class skills with a crafting window, which the game lists among the
+-- professions: not shared, and not shown when a record from an older
+-- version still carries them. Poisons serve only rogues, and every rogue
+-- makes their own.
+Store.CLASS_SKILLLINES = {
+	[40] = true, -- Poisons (rogue)
+}
+
+function Store.IsClassSkill(skillLine)
+	return Store.CLASS_SKILLLINES[skillLine] == true
+end
+
+-- Skill lines of a record that count as professions, sorted.
+function Store.ProfessionSkillLines(rec)
+	local list = {}
+	for _, sl in ipairs(Util.SortedKeys(rec.profs)) do
+		if not Store.IsClassSkill(sl) then list[#list + 1] = sl end
+	end
+	return list
+end
+
 Store.OPTION_DEFAULTS = {
 	debug = false,
 	tooltip = true,          -- crafters on craftable items

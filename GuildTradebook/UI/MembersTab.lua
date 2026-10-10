@@ -60,7 +60,7 @@ end
 -- Primary professions first; secondary ones (Cooking, First Aid, ...) dimmed.
 local function professionText(rec)
 	local parts = {}
-	local skillLines = Util.SortedKeys(rec.profs)
+	local skillLines = Store.ProfessionSkillLines(rec)
 	Index.SortSkillLines(skillLines, function(sl) return rec.profs[sl].primary end)
 	for _, sl in ipairs(skillLines) do
 		local p = rec.profs[sl]
@@ -147,8 +147,10 @@ local function stats(gd)
 				people[key] = true
 				players = players + 1
 			end
-			for _, p in pairs(rec.profs) do
-				recipes = recipes + (p.recipes and Util.Count(p.recipes) or 0)
+			for sl, p in pairs(rec.profs) do
+				if not Store.IsClassSkill(sl) then
+					recipes = recipes + (p.recipes and Util.Count(p.recipes) or 0)
+				end
 			end
 		end
 	end
@@ -164,7 +166,7 @@ local function playerRows(gd, reachableOnly, needle)
 			seen[guid] = true
 			local member = Roster.Get(guid)
 			local profNames = {}
-			for sl in pairs(rec.profs) do profNames[#profNames + 1] = Index.SkillLineName(sl) end
+			for _, sl in ipairs(Store.ProfessionSkillLines(rec)) do profNames[#profNames + 1] = Index.SkillLineName(sl) end
 			rows[#rows + 1] = {
 				kind = "member",
 				guid = guid,
@@ -263,7 +265,7 @@ local function professionRows(gd, reachableOnly, open, needle)
 	for guid, rec in pairs(gd.chars) do
 		if Store.IsShareable(rec, isMember) then
 			for sl, p in pairs(rec.profs) do
-				if not Roster.IsProfessionContradicted(guid, sl) then
+				if Index.IsProfessionVisible(rec, sl) then
 					local e = entry(guid, rec)
 					if e.reachable or not reachableOnly then
 						e.skillLine, e.rank = sl, p.rank
@@ -309,8 +311,8 @@ local function cooldownRows(gd, reachableOnly, open, needle)
 	local byRecipe = {}
 	for guid, rec in pairs(gd.chars) do
 		if Store.IsShareable(rec, isMember) then
-			for _, p in pairs(rec.profs) do
-				for rid, readyAt in pairs(p.cds or {}) do
+			for sl, p in pairs(rec.profs) do
+				for rid, readyAt in pairs(not Store.IsClassSkill(sl) and p.cds or {}) do
 					local e = entry(guid, rec)
 					if e.reachable or not reachableOnly then
 						e.recipeID, e.readyAt, e.ready = rid, readyAt, readyAt <= now

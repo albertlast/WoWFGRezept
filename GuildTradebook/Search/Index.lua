@@ -23,7 +23,7 @@ local function isMember(guid)
 end
 
 function Index.IsProfessionVisible(rec, skillLine)
-	return not Roster.IsProfessionContradicted(rec.guid, skillLine)
+	return not Store.IsClassSkill(skillLine) and not Roster.IsProfessionContradicted(rec.guid, skillLine)
 end
 
 function Index.Rebuild()

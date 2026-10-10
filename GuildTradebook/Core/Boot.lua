@@ -95,6 +95,8 @@ local function slash(input)
 		ns.Widgets.ShowText(L.LOG_TITLE, header .. "\n" .. table.concat(ns.log, "\n"))
 	elseif cmd == "dump" then
 		dump(rest)
+	elseif cmd == "export" then
+		ns.Export.Command(rest)
 	elseif cmd == "stats" then
 		stats()
 	else

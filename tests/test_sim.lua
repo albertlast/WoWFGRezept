@@ -1245,6 +1245,59 @@ test("server profession data hides stale primary professions", function()
 	eq(#cb.ns.Index.Crafters(3914), 1, "partial server data is not evidence")
 end)
 
+test("rogue Poisons are a class skill: not shared; an older record that has them hides them", function()
+	math.randomseed(12)
+	local world = H.NewWorld()
+	local POISONS = 40
+	local r = world:AddChar({ guid = guid(1), name = "Rina", class = "ROGUE", profs = {
+		[TAILORING] = tailoring(150, { [3914] = 2568 }),
+		[POISONS] = { rank = 200, maxRank = 300, name = "Poisons", secondary = true, recipes = { [8681] = 6947 } },
+	} })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	local cb = world:Login(b.guid)
+	local cr = world:Login(r.guid)
+	world:Run(60)
+	cr:OpenTradeSkill(TAILORING)
+	cr:OpenTradeSkill(POISONS)
+	world:Run(120)
+	falsy(cr:Record(r.guid).profs[POISONS], "not in the rogue's own record")
+	falsy(cb:Record(r.guid).profs[POISONS], "not shared")
+	eq(#cb.ns.Index.Crafters(3914), 1)
+	-- A record from an older version still carries Poisons: hidden everywhere.
+	local old = cb:Record(r.guid)
+	old.profs[POISONS] = { rank = 200, maxRank = 300, recipes = { [8681] = 6947 }, cds = { [8681] = 0 } }
+	cb.ns.Index.dirty = true
+	eq(#cb.ns.Index.Crafters(8681), 0, "not searchable")
+	eq(#cb.ns.Store.ProfessionSkillLines(old), 1, "only Tailoring counts")
+	for _, m in ipairs(cb.ns.Export.Build().members) do
+		for _, p in ipairs(m.professions) do truthy(p.id ~= POISONS, "not exported") end
+	end
+end)
+
+test("server profession data never hides professions the owner marks as not primary", function()
+	math.randomseed(13)
+	local world = H.NewWorld()
+	local OTHER = 777 -- a non-primary skill with a crafting window
+	local r = world:AddChar({ guid = guid(1), name = "Rina", profs = {
+		[TAILORING] = tailoring(150, { [3914] = 2568 }),
+		[OTHER] = { rank = 50, maxRank = 300, name = "Other", secondary = true, recipes = { [9991] = 9992 } },
+	} })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	local cb = world:Login(b.guid)
+	local cr = world:Login(r.guid)
+	world:Run(60)
+	cr:OpenTradeSkill(TAILORING)
+	cr:OpenTradeSkill(OTHER)
+	world:Run(120)
+	falsy(cb:Record(r.guid).profs[OTHER].primary)
+	-- The server lists the two primary professions: Tailoring and Mining.
+	world.serverProfs[r.guid] = { TAILORING, 186 }
+	cb.ns.Roster.Refresh()
+	cb.ns.Index.dirty = true
+	falsy(cb.ns.Roster.IsProfessionContradicted(r.guid, OTHER))
+	eq(#cb.ns.Index.Crafters(9991), 1, "stays searchable")
+end)
+
 test("reagents are fetched from the guild on demand", function()
 	local world, a, b = threeMembers()
 	world:Login(b.guid)
@@ -1295,22 +1348,82 @@ test("100 online, one more logs in with an up-to-date copy: talks to one partner
 	truthy(world.messages <= 8)
 end)
 
-test("100 online, fresh install logs in: one elected partner sends the pool once", function()
+test("100 online, fresh install logs in: two partners split the pool, each record sent once", function()
 	local world = bigGuild(100, 5)
 	local fresh = world:AddChar({ guid = guid(501), name = "Fresh" })
 	world:ResetCounters()
 	local cf = world:Login(fresh.guid)
 	world:Run(200)
 	local t = world.byType
-	print(("       fresh install: %d messages %s"):format(world.messages, H.Describe(t)))
+	print(("       fresh install: %d messages %s, %d records"):format(world.messages, H.Describe(t), world.records))
 	eq(t.P, 1, "one partner request")
 	eq(t.A, 1, "exactly one peer accepted")
-	eq(t.H, 2, "login sync + follow-up")
-	truthy((t.D or 0) <= 16, "at most one digest per bucket")
-	truthy((t.R or 0) <= 100 + 2, "each record sent about once")
+	eq(t.H, 2, "elected partner + second partner (instead of the login follow-up)")
+	truthy((t.D or 0) <= 16 + 8, "one digest per bucket from the first partner, the even ones from the second")
+	truthy(world.records <= 100 + 2, "each record sent about once: " .. world.records)
+	truthy((t.B or 0) > 0 and (t.R or 0) <= 2, "records go in batches")
 	for i = 1, 100 do
 		truthy(cf:Record(guid(i)), "fresh client has member " .. i)
 	end
+end)
+
+test("fresh install with only one partner online: the deferred half follows after the wait, nothing twice", function()
+	local world = bigGuild(12, 41)
+	for i = 2, 12 do world:Logout(guid(i)) end
+	world:Run(30)
+	local fresh = world:AddChar({ guid = guid(502), name = "Fresh" })
+	world:ResetCounters()
+	local cf = world:Login(fresh.guid)
+	world:Run(cf.ns.Protocol.SPLIT_WAIT + 60)
+	for i = 1, 12 do
+		truthy(cf:Record(guid(i)), "fresh client has member " .. i)
+	end
+	truthy(world.records <= 12 + 1, "each record once: " .. world.records)
+end)
+
+test("load model: send queue like ChatThrottleLib, ALERT and NORMAL overtake a long BULK transfer", function()
+	local world = H.NewWorld({ bandwidth = 800 })
+	local from = { guid = "G", char = { name = "A-Realm", realm = "Realm", partition = 1 }, env = {} }
+	local sentAt = {}
+	local function send(label, size, prio)
+		world:Enqueue(from, size, prio, function() sentAt[label] = world.clock.t end)
+	end
+	local t0 = world.clock.t
+	send("small", 100, "NORMAL")
+	eq(sentAt.small, t0, "idle queue and enough bandwidth: at once")
+	send("bulk", 20000, "BULK")
+	world:Run(1)
+	send("alert", 60, "ALERT")
+	send("normal", 300, "NORMAL")
+	world:Run(60)
+	truthy(sentAt.alert - t0 < 2, "alert within a second or so")
+	truthy(sentAt.normal - t0 < 3)
+	truthy(sentAt.bulk - t0 > 15, "the bulk transfer takes its time at 800 B/s")
+end)
+
+test("rank-up batches stretch with the number of active senders", function()
+	local world = bigGuild(3, 42)
+	local P = world.online[guid(1)].ns.Protocol
+	local function range()
+		local lo, hi = math.huge, 0
+		for _ = 1, 50 do
+			local d = P.MinorDelay()
+			lo, hi = math.min(lo, d), math.max(hi, d)
+		end
+		return lo, hi
+	end
+	local lo, hi = range()
+	truthy(lo >= 48 and hi <= 72, ("small guild: about 60 s (%.0f-%.0f)"):format(lo, hi))
+	local now = world.online[guid(1)].env.GetTime()
+	for i = 1, 199 do P.guildSenders["Player-1-F" .. i] = now end
+	lo, hi = range()
+	truthy(lo >= 235 and hi <= 370, ("200 active senders: about 300 s (%.0f-%.0f)"):format(lo, hi))
+	for i = 200, 999 do P.guildSenders["Player-1-F" .. i] = now end
+	lo, hi = range()
+	truthy(hi <= P.MINOR_DELAY_MAX * 1.2, ("never above the cap (%.0f)"):format(hi))
+	-- Old entries drop out.
+	for g in pairs(P.guildSenders) do P.guildSenders[g] = now - P.SENDER_WINDOW - 1 end
+	eq(P.ActiveSenders(now), 1)
 end)
 
 test("30 online see a member leave at once: no messages, every copy hidden", function()
@@ -1614,4 +1727,58 @@ test("recipe categories relayed by 0.1.0 arrive once a newer client sends the re
 	world:Run(30)
 	eq(cc.env.GuildTradebookDB.recipeFacts[3914].cat, 10, "category from the crafter")
 	eq(cc.ns.Categories.Name(10), "Category 10", "with its name")
+end)
+
+test("export: the pool as JSON, also into the SavedVariables", function()
+	math.randomseed(9)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", recipeCats = { [3914] = 10 },
+		cooldowns = { [3915] = 3600 },
+		profs = { [TAILORING] = tailoring(150, { [3914] = 2568, [3915] = 2569 }) } })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	local cb = world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(120)
+	local E = cb.ns.Export
+	-- Encoder: sorted keys, arrays, escapes, integers without exponent.
+	eq(E.ToJSON({ b = 1, a = { 1, 2 }, c = E.Array(), d = {}, e = 'x"\n', f = 1.5, g = 2 ^ 40, h = true }),
+		'{"a":[1,2],"b":1,"c":[],"d":{},"e":"x\\"\\n","f":1.5,"g":1099511627776,"h":true}')
+	eq(E.ToJSON({ [10] = "x" }), '{"10":"x"}', "number keys become strings")
+
+	local json = E.Command("")
+	eq(cb.env.GuildTradebookExport.json, json, "kept for the SavedVariables")
+	local data = E.Build()
+	eq(data.format, 1)
+	eq(#data.members, 2, "Anna and Bert (own record too)")
+	local anna
+	for _, m in ipairs(data.members) do if m.guid == a.guid then anna = m end end
+	eq(anna.name, a.name)
+	eq(anna.professions[1].id, TAILORING)
+	eq(#anna.professions[1].recipes, 2)
+	eq(anna.professions[1].cooldowns[1].recipe, 3915)
+	truthy(anna.professions[1].cooldowns[1].readyAt > 0, "time of a shared cooldown")
+	eq(data.recipes["3914"].item, 2568)
+	eq(data.recipes["3914"].category, 10)
+	eq(data.categories["10"].name, "Category 10")
+	truthy(json:find('"recipes":{"3914":', 1, true), "recipe table keyed by ID")
+	-- One character only.
+	local only = E.Build("ann")
+	eq(#only.members, 1)
+	eq(only.members[1].guid, a.guid)
+	-- A filter nobody matches keeps the previous export.
+	eq(E.Command("nobody here"), nil)
+	eq(cb.env.GuildTradebookExport.json, json, "previous export kept")
+	-- "zip": compressed text for the window, plain JSON kept.
+	E.compress = function(text) return "<" .. #text .. ">" end
+	local plain, shown = E.Command("zip")
+	eq(plain, json)
+	eq(shown, "GTB1:<" .. #json .. ">")
+	eq(cb.env.GuildTradebookExport.json, json)
+	local _, shownAnna = E.Command("ZIP anna")
+	truthy(shownAnna:find("^GTB1:"), "zip with a name filter")
+	E.compress = function() error("no encoder") end
+	local _, fallback = E.Command("zip")
+	eq(fallback, json, "plain JSON when compressing fails")
 end)
