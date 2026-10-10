@@ -17,7 +17,7 @@ mockMeta.__call = function() return mock() end
 local function uiEnv(client)
 	local env = client.env
 	local frames = {}
-	local tooltipHooks = {}
+	local tooltipHooks, unitHooks = {}, {}
 	local lists = {}
 
 	env.UIParent = mock()
@@ -71,9 +71,11 @@ local function uiEnv(client)
 		return f
 	end
 	env.TooltipDataProcessor = {
-		AddTooltipPostCall = function(_, fn) table.insert(tooltipHooks, fn) end,
+		AddTooltipPostCall = function(kind, fn)
+			table.insert(kind == 2 and unitHooks or tooltipHooks, fn)
+		end,
 	}
-	env.Enum.TooltipDataType = { Item = 0 }
+	env.Enum.TooltipDataType = { Item = 0, Unit = 2 }
 	env.C_Spell = { GetSpellName = function(id) return "Recipe " .. id end }
 	env.C_Item = {
 		GetItemInfo = function(id)
@@ -121,7 +123,7 @@ local function uiEnv(client)
 		local chunk = assert(loadfile(H.ADDON_DIR .. file, "t", env))
 		chunk("GuildTradebook", client.ns)
 	end
-	return { lists = lists, tooltipHooks = tooltipHooks, settings = registered }
+	return { lists = lists, tooltipHooks = tooltipHooks, unitHooks = unitHooks, settings = registered }
 end
 
 print("UI smoke")
@@ -192,6 +194,40 @@ test("tabs, rows and tooltip run against real pool data", function()
 	cb.env.GuildTradebookDB.options.tooltipRecipes = false
 	eq(#linesFor(9002), 0, "option off")
 	cb.env.GuildTradebookDB.options.tooltipRecipes = true
+
+	-- Player tooltips: a guild member's professions, primary first.
+	local function unitLines(guid)
+		lines = {}
+		for _, hook in ipairs(ui.unitHooks) do hook(tooltip, { guid = guid }) end
+		return lines
+	end
+	local anna = unitLines("Player-1-00000001")
+	truthy(anna[1] and anna[1]:find(" 150/300", 1, true), "primary line with skill level: " .. tostring(anna[1]))
+	eq(#anna, 1, "one profession, one line")
+	-- Secondary professions only with their own option (default off).
+	local bertRec = cb.ns.GetGuildData().chars["Player-1-00000002"]
+	bertRec.profs[185] = { rank = 150, maxRank = 225 }
+	eq(#unitLines("Player-1-00000002"), 0, "secondary only: nothing by default")
+	cb.env.GuildTradebookDB.options.tooltipSecondary = true
+	local withSecondary = unitLines("Player-1-00000002")
+	eq(#withSecondary, 1)
+	truthy(withSecondary[1]:find("150/225", 1, true))
+	cb.env.GuildTradebookDB.options.tooltipSecondary = false
+	bertRec.profs[185] = nil
+	local P = cb.ns.Tooltip.ProfessionLines({ guid = "g", profs = {
+		[165] = { rank = 225, maxRank = 300, primary = true },
+		[202] = { rank = 180, maxRank = 300, primary = true },
+		[185] = { rank = 150, maxRank = 225 },
+		[129] = { rank = 225, maxRank = 225 },
+	} }, function(_, sl) return sl == 202 end)
+	eq(#P.primary, 1, "a primary the server contradicts is left out")
+	truthy(P.primary[1]:find("225/300", 1, true))
+	truthy(P.secondary:find(", ", 1, true), "secondary ones share a line")
+	eq(#unitLines("Player-1-00000999"), 0, "not a guild member with data")
+	eq(#unitLines(nil), 0)
+	cb.env.GuildTradebookDB.options.tooltipProfessions = false
+	eq(#unitLines("Player-1-00000001"), 0, "option off")
+	cb.env.GuildTradebookDB.options.tooltipProfessions = true
 
 	-- Settings panel: one checkbox per option, bound to the saved options.
 	cb.ns.Settings.Register()

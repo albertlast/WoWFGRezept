@@ -4,10 +4,13 @@ Tooltip lines:
                     "Craftable by guild: 23 members (online: Anna, Bert, Cleo +2)"
   recipe items   -> "Known in your guild by 3: A, B, C" or "Not known in your guild yet"
                     (matched by the name after "Pattern: ", "Recipe: ", ...)
+  guild members  -> "Tailoring 225/300" / "Enchanting 180/300" (a line each;
+                    option tooltipProfessions) and, dimmed, "Cooking 150/225,
+                    First Aid 225/225" (option tooltipSecondary, default off)
 ]]
 local _, ns = ...
 
-local L, Index, W = ns.L, ns.Index, ns.Widgets
+local L, Index, W, Store, Roster = ns.L, ns.Index, ns.Widgets, ns.Store, ns.Roster
 local Tooltip = {}
 ns.Tooltip = Tooltip
 
@@ -124,6 +127,46 @@ local function onItem(tooltip, itemID)
 	end
 end
 
+--[[
+Pure: a member's professions for the tooltip:
+  { primary = { "Tailoring 225/300", ... }, secondary = "Cooking 150/225, ..." | nil }
+Primary professions get a line each: German names are long ("Lederverarbeitung
+225/300"), two on one line would wrap in the middle on a narrow unit tooltip.
+The secondary ones share one dimmed line. Primary professions the server says
+the member no longer has are left out (stale relayed data).
+]]
+function Tooltip.ProfessionLines(rec, contradicted)
+	local primary, secondary = {}, {}
+	local skillLines = ns.Util.SortedKeys(rec.profs)
+	Index.SortSkillLines(skillLines, function(sl) return rec.profs[sl].primary end)
+	for _, sl in ipairs(skillLines) do
+		local p = rec.profs[sl]
+		if not (contradicted and contradicted(rec.guid, sl)) then
+			local text = ("%s %d/%d"):format(Index.SkillLineName(sl), p.rank, p.maxRank)
+			table.insert(p.primary and primary or secondary, text)
+		end
+	end
+	return { primary = primary, secondary = #secondary > 0 and table.concat(secondary, ", ") or nil }
+end
+
+local function isMember(guid)
+	return Roster.IsMember(guid)
+end
+
+local function onUnit(tooltip, guid)
+	if not ns.db or not ns.db.options.tooltipProfessions or not guid then return end
+	local gd = ns.GetGuildData()
+	local rec = gd and gd.chars[guid]
+	if not rec or not Store.IsShareable(rec, isMember) then return end
+	local lines = Tooltip.ProfessionLines(rec, Roster.IsProfessionContradicted)
+	for _, line in ipairs(lines.primary) do
+		tooltip:AddLine(line, 0.4, 0.8, 1, true)
+	end
+	if lines.secondary and ns.db.options.tooltipSecondary then
+		tooltip:AddLine(lines.secondary, 0.6, 0.6, 0.6, true)
+	end
+end
+
 function Tooltip.Start()
 	if TooltipDataProcessor and Enum.TooltipDataType then
 		TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
@@ -135,6 +178,23 @@ function Tooltip.Start()
 		GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
 			local _, link = tooltip:GetItem()
 			onItem(tooltip, link and C_Item.GetItemInfoInstant(link))
+		end)
+	end
+	if TooltipDataProcessor and Enum.TooltipDataType and Enum.TooltipDataType.Unit then
+		TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
+			if tooltip == GameTooltip then
+				local guid = data and data.guid
+				if not guid and tooltip.GetUnit then
+					local _, unit = tooltip:GetUnit()
+					guid = unit and UnitGUID(unit)
+				end
+				onUnit(tooltip, guid)
+			end
+		end)
+	elseif GameTooltip.HookScript then
+		GameTooltip:HookScript("OnTooltipSetUnit", function(tooltip)
+			local _, unit = tooltip:GetUnit()
+			onUnit(tooltip, unit and UnitGUID(unit))
 		end)
 	end
 end
