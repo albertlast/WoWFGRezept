@@ -1761,6 +1761,23 @@ test("recipe categories travel with the record; names come in the viewer's langu
 	truthy(cg.ns.Categories.Of(3915) == 11)
 end)
 
+test("grey skills travel with the record (order of the recipe list)", function()
+	math.randomseed(7)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", recipeTrivial = { [3914] = 50, [3915] = 110 },
+		profs = { [TAILORING] = tailoring(150, { [3914] = 2568, [3915] = 2569 }) } })
+	local g = world:AddChar({ guid = guid(2), name = "Greta" })
+	local cg = world:Login(g.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(120)
+	eq(cg:Record(a.guid).profs[TAILORING].trivial[3915], 110, "published after the scan")
+	local db = cg.env.GuildTradebookDB
+	eq(db.recipeFacts[3914].trivial, 50)
+	eq(db.recipeFacts[3915].trivial, 110)
+end)
+
 test("recipe categories relayed by 0.1.0 arrive once a newer client sends the record", function()
 	math.randomseed(8)
 	local world = H.NewWorld()

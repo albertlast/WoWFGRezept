@@ -387,6 +387,41 @@ test("recipe categories: unhashed, on the wire per profession, filled in later",
 	eq(Store.Accept(gd, H.DeepCopy(r), ctx(1000)), "same")
 end)
 
+test("grey skills: unhashed, on the wire in recipe order, filled in later", function()
+	local r = rec(A, 100, 0, { [197] = { rank = 10, maxRank = 75, recipes = { [1] = 2, [3] = 4, [5] = 0 } } })
+	local h = r.h
+	eq(Store.ApplyRecipeExtra(r, 197, "trivial", { [1] = 40, [5] = 120, [99] = 7 }, true), true)
+	eq(r.profs[197].trivial[99], nil, "only recipes of the record")
+	eq(Store.Rehash(r), h, "grey skills are not hashed")
+	local w = Store.ToWire(r)
+	eq(table.concat(w[8][1][10], ","), "40,0,120", "one per recipe, 0 = unknown")
+	local back = Store.FromWire(w)
+	eq(back.profs[197].trivial[1], 40)
+	eq(back.profs[197].trivial[3], nil)
+	eq(back.profs[197].trivial[5], 120)
+	eq(back.h, h)
+	-- A list that does not fit the recipes is dropped, not the record.
+	w[8][1][10] = { 40, 120 }
+	local bad = Store.FromWire(w)
+	truthy(bad, "record still accepted")
+	eq(bad.profs[197].trivial, nil)
+	-- None known: an empty list.
+	local none = rec(A, 100, 0, { [197] = { rank = 10, maxRank = 75, recipes = { [1] = 2 } } })
+	eq(#Store.ToWire(none)[8][1][10], 0)
+	-- A copy without them (relayed by 0.3.0) gets them from the same version.
+	local gd = { chars = {} }
+	local stripped = H.DeepCopy(r)
+	stripped.profs[197].trivial = nil
+	eq(Store.Accept(gd, stripped, ctx(1000)), "accepted")
+	eq(Store.Accept(gd, H.DeepCopy(r), ctx(1000)), "filled")
+	eq(gd.chars[A].profs[197].trivial[5], 120)
+	-- And they reach the fact cache.
+	local db = Store.InitDB(nil)
+	Store.LearnFactsFromRecord(db, r, "b")
+	eq(db.recipeFacts[5].trivial, 120)
+	eq(db.recipeFacts[3].trivial, nil)
+end)
+
 test("category names: own language first, then English, German, any", function()
 	local db = Store.InitDB(nil)
 	eq(Store.SetCategory(db, 10, { order = 3, names = { frFR = "Capes" } }, false), true)

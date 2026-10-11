@@ -297,6 +297,10 @@ function Scanner.ResolveFact(recipeID, info)
 	local fact = { item = schematic.outputItemID or 0, enchant = enchant, reagents = reagents }
 	local cat = info and info.categoryID
 	if Util.IsInt(cat, 1, 2 ^ 31) then fact.cat = cat end
+	-- Grey from this skill on: the profession window sorts by it (highest
+	-- first). The skill needed to learn a recipe is not in the API.
+	local trivial = info and info.maxTrivialLevel
+	if Util.IsInt(trivial, 1, 10000) then fact.trivial = trivial end
 	Store.SetFact(ns.db, recipeID, fact, true, Scanner.BuildKey())
 	return fact
 end
@@ -395,7 +399,7 @@ function Scanner.ScanTradeSkill()
 	if not ids or #ids == 0 then return end
 
 	local prof = own.profs[skillLine]
-	local recipes, cooldowns, cats, catIDs, count = {}, {}, {}, {}, 0
+	local recipes, cooldowns, cats, catIDs, trivial, count = {}, {}, {}, {}, {}, 0
 	for _, recipeID in ipairs(ids) do
 		local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
 		if info and info.learned and not info.isDummyRecipe and not info.isGatheringRecipe
@@ -407,6 +411,7 @@ function Scanner.ScanTradeSkill()
 				cats[recipeID] = fact.cat
 				catIDs[fact.cat] = true
 			end
+			trivial[recipeID] = fact and fact.trivial
 			count = count + 1
 		end
 	end
@@ -430,11 +435,13 @@ function Scanner.ScanTradeSkill()
 		cooldownsChanged = true
 	end
 	local categoriesChanged = Store.ApplyCategories(own, skillLine, cats, complete)
+	local trivialChanged = Store.ApplyRecipeExtra(own, skillLine, "trivial", trivial, complete)
 	if recipesChanged then
 		Scanner.Commit(own, Store.ChangeKind(prof))
-	elseif cooldownsChanged or categoriesChanged then
+	elseif cooldownsChanged or categoriesChanged or trivialChanged then
 		-- A started cooldown is not urgent: it rides the 60 s batch, and so
-		-- do categories (first scan after the update that brought them).
+		-- do categories and grey skills (first scan after the update that
+		-- brought them).
 		Scanner.Commit(own, "minor")
 	end
 end
@@ -449,6 +456,10 @@ function Scanner.OnRecipeLearned(_, recipeID)
 		if fact and fact.cat then
 			p.cats = p.cats or {}
 			p.cats[recipeID] = fact.cat
+		end
+		if fact and fact.trivial then
+			p.trivial = p.trivial or {}
+			p.trivial[recipeID] = fact.trivial
 		end
 		Scanner.Commit(own, Store.ChangeKind(p))
 	end

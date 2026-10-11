@@ -51,12 +51,24 @@ function RecipeList.KeysFor(recipeID, skillLine)
 	return { "p:" .. skillLine, "c:" .. skillLine .. ":" .. categoryOf(recipeID) }
 end
 
+-- Like the profession window: the recipe that turns grey last first;
+-- recipes whose grey skill is unknown (crafters with older versions) follow
+-- by name.
+local function byTrivial(a, b)
+	local fa, fb = ns.db.recipeFacts[a.recipeID], ns.db.recipeFacts[b.recipeID]
+	local ta, tb = fa and fa.trivial or 0, fb and fb.trivial or 0
+	if ta ~= tb then return ta > tb end
+	if a.name ~= b.name then return a.name < b.name end
+	return a.recipeID < b.recipeID
+end
+
 --[[
 Rows: { kind = "group", key, label, count, open, level, profession? } and the
 search results ({recipeID, ...}) with level set.
-isOpen(key) -> bool.
+isOpen(key) -> bool. bySkillOrder: recipes in profession window order, else
+in the order of results (by name, used while searching).
 ]]
-function RecipeList.Rows(results, allProfessions, isOpen)
+function RecipeList.Rows(results, allProfessions, isOpen, bySkillOrder)
 	local bySkill = {}
 	for _, r in ipairs(results) do
 		local sl = r.skillLine or 0
@@ -64,6 +76,11 @@ function RecipeList.Rows(results, allProfessions, isOpen)
 		bySkill[sl] = bySkill[sl] or {}
 		bySkill[sl][id] = bySkill[sl][id] or {}
 		table.insert(bySkill[sl][id], r)
+	end
+	if bySkillOrder then
+		for _, cats in pairs(bySkill) do
+			for _, list in pairs(cats) do table.sort(list, byTrivial) end
+		end
 	end
 	local skills = Util.SortedKeys(bySkill)
 	Index.SortSkillLines(skills, function(sl) return Index.primarySkill[sl] end)
@@ -264,7 +281,7 @@ local function refresh(_, arg)
 	end
 	ui.crafterLabel:SetShown(state.crafter ~= nil)
 	ui.crafterClear:SetShown(state.crafter ~= nil)
-	ui.results:SetData(RecipeList.Rows(results, state.skillLine == 0, isOpen))
+	ui.results:SetData(RecipeList.Rows(results, state.skillLine == 0, isOpen, not searching()))
 	for _, r in ipairs(results) do
 		if not Categories.Of(r.recipeID) then
 			Categories.Shown()

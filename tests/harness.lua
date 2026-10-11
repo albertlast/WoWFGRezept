@@ -794,7 +794,11 @@ function H.NewClient(world, char)
 		end,
 		-- char.recipeCats[rid] = categoryID; the game names categories in the
 		-- client's language ("Category 10" / "Kategorie 10").
-		GetRecipeInfo = function(rid) return { recipeID = rid, learned = true, categoryID = (char.recipeCats or {})[rid] } end,
+		-- char.recipeTrivial[rid] = skill at which the recipe turns grey.
+		GetRecipeInfo = function(rid)
+			return { recipeID = rid, learned = true, categoryID = (char.recipeCats or {})[rid],
+				maxTrivialLevel = (char.recipeTrivial or {})[rid] or 0 }
+		end,
 		GetCategoryInfo = function(id)
 			local de = (char.locale or "enUS"):sub(1, 2) == "de"
 			return { categoryID = id, name = (de and "Kategorie " or "Category ") .. id, parentCategoryID = 0, uiOrder = id }

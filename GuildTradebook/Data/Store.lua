@@ -14,7 +14,8 @@ Internal record:
     profs = { [skillLineID] = { rank, maxRank, primary?, scannedAt?, unverified?,
                                 recipes = { [recipeID] = outputItemID or 0 } | nil,
                                 cds = { [recipeID] = readyAt (server time, 0 = ready) } | nil,
-                                cats = { [recipeID] = categoryID } | nil } },  -- not hashed
+                                cats = { [recipeID] = categoryID } | nil,      -- not hashed
+                                trivial = { [recipeID] = skill } | nil } },    -- not hashed
     h,                                     -- content hash
     recvAt?, recvFrom?, goneSince? }       -- local metadata, never sent
 ]]
@@ -220,6 +221,7 @@ function Store.Accept(gd, rec, ctx, sender)
 			for sl, p in pairs(rec.profs) do
 				local cp = cur.profs[sl]
 				if cp and p.cats and not cp.cats then cp.cats, filled = p.cats, true end
+				if cp and p.trivial and not cp.trivial then cp.trivial, filled = p.trivial, true end
 			end
 			return filled and "filled" or "same"
 		end
@@ -400,20 +402,26 @@ end
 -- changed (the caller publishes: the categories are not hashed, but a new
 -- version carries them to the guild).
 function Store.ApplyCategories(own, skillLine, cats, complete)
+	return Store.ApplyRecipeExtra(own, skillLine, "cats", cats, complete)
+end
+
+-- The same for any unhashed per-recipe extra of a profession ("cats",
+-- "trivial").
+function Store.ApplyRecipeExtra(own, skillLine, key, values, complete)
 	local p = own.profs[skillLine]
 	if not p or not p.recipes then return false end
 	local new = {}
 	for rid in pairs(p.recipes) do
-		new[rid] = cats[rid] or (not complete and p.cats and p.cats[rid]) or nil
+		new[rid] = values[rid] or (not complete and p[key] and p[key][rid]) or nil
 	end
-	local old, changed = p.cats or {}, false
-	for rid, cat in pairs(new) do
-		if old[rid] ~= cat then changed = true end
+	local old, changed = p[key] or {}, false
+	for rid, v in pairs(new) do
+		if old[rid] ~= v then changed = true end
 	end
 	for rid in pairs(old) do
 		if new[rid] == nil then changed = true end
 	end
-	p.cats = next(new) and new or nil
+	p[key] = next(new) and new or nil
 	return changed
 end
 
@@ -437,6 +445,7 @@ function Store.RemoveRecipes(own, skillLine, shouldRemove)
 		p.recipes[rid] = nil
 		if p.cds then p.cds[rid] = nil end
 		if p.cats then p.cats[rid] = nil end
+		if p.trivial then p.trivial[rid] = nil end
 		removed = true
 	end
 	return removed
@@ -479,9 +488,11 @@ function Store.MergeIncomingSelf(own, incoming)
 				for rid, readyAt in pairs(ip.cds) do p.cds[rid] = readyAt end
 				changed = true
 			end
-			if ip.cats and not p.cats then
-				p.cats = {}
-				for rid, cat in pairs(ip.cats) do p.cats[rid] = cat end
+			for _, key in ipairs({ "cats", "trivial" }) do
+				if ip[key] and not p[key] then
+					p[key] = {}
+					for rid, v in pairs(ip[key]) do p[key][rid] = v end
+				end
 			end
 			if changed then
 				p.unverified = true
@@ -682,7 +693,9 @@ end
 -- content hash, so 0.1.0 clients (which drop it) compute the same hash and
 -- versions stay comparable. It changes only with a new version anyway.
 -- The same holds for slot 9 of a profession: the recipe categories,
--- grouped as {categoryID, count, recipeID, ..., categoryID, count, ...}.
+-- grouped as {categoryID, count, recipeID, ..., categoryID, count, ...},
+-- and slot 10: the skill at which each recipe turns grey (sort order of the
+-- profession window), one per recipe in recipe ID order, 0 = unknown.
 -- Older layout comment:
 --   { guid, name, class, level, ver, seq, player|"",
 --     { {sl, rank, maxRank, scannedAt, unverified(0/1), {rid, item, ...}|false, primary(0/1),
@@ -696,13 +709,18 @@ function Store.ToWire(rec)
 	local profs = {}
 	for _, sl in ipairs(Util.SortedKeys(rec.profs)) do
 		local p = rec.profs[sl]
-		local flat = false
+		local flat, trivial = false, {}
 		if p.recipes then
 			flat = {}
+			local known = false
 			for _, rid in ipairs(Util.SortedKeys(p.recipes)) do
 				flat[#flat + 1] = rid
 				flat[#flat + 1] = p.recipes[rid]
+				local skill = p.trivial and p.trivial[rid]
+				trivial[#trivial + 1] = skill or 0
+				known = known or skill ~= nil
 			end
+			if not known then trivial = {} end
 		end
 		local cds = {}
 		for _, rid in ipairs(Util.SortedKeys(p.cds or {})) do
@@ -723,7 +741,7 @@ function Store.ToWire(rec)
 			cats[#cats + 1] = #byCat[cat]
 			for _, rid in ipairs(byCat[cat]) do cats[#cats + 1] = rid end
 		end
-		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds, cats }
+		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds, cats, trivial }
 	end
 	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.player or "", profs, rec.loc or "",
 		rec.offer or "" }
@@ -746,6 +764,21 @@ local function categoriesFromWire(flat, recipes)
 		i = i + 2 + n
 	end
 	return next(cats) and cats or nil
+end
+
+-- Grey skills of one profession (slot 10), aligned with the recipes in ID
+-- order. An extra like the categories: a list that does not fit is dropped.
+local function trivialFromWire(flat, recipes)
+	if type(flat) ~= "table" or not recipes then return nil end
+	local ids = Util.SortedKeys(recipes)
+	if #flat ~= #ids then return nil end
+	local trivial = {}
+	for i, rid in ipairs(ids) do
+		local skill = flat[i]
+		if not Util.IsInt(skill, 0, 10000) then return nil end
+		if skill > 0 then trivial[rid] = skill end
+	end
+	return next(trivial) and trivial or nil
 end
 
 -- Validates untrusted input. Returns record or nil, reason.
@@ -771,7 +804,7 @@ function Store.FromWire(w)
 	for i = 1, #profs do
 		local p = profs[i]
 		if type(p) ~= "table" then return nil, "prof" end
-		local sl, rank, maxRank, scannedAt, unverified, flat, primary, cdFlat, catFlat = p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]
+		local sl, rank, maxRank, scannedAt, unverified, flat, primary, cdFlat, catFlat, trivialFlat = p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10]
 		if not Util.IsInt(sl, 1, 2 ^ 31) or rec.profs[sl] then return nil, "skillLine" end
 		if not Util.IsInt(rank, 0, 10000) or not Util.IsInt(maxRank, 0, 10000) then return nil, "rank" end
 		if not Util.IsInt(scannedAt, 0, 2 ^ 40) or (unverified ~= 0 and unverified ~= 1) or (primary ~= 0 and primary ~= 1) then
@@ -800,6 +833,7 @@ function Store.FromWire(w)
 		rec.profs[sl] = {
 			cds = cds,
 			cats = categoriesFromWire(catFlat, recipes),
+			trivial = trivialFromWire(trivialFlat, recipes),
 			rank = rank, maxRank = maxRank,
 			scannedAt = scannedAt ~= 0 and scannedAt or nil,
 			unverified = unverified == 1 or nil,
@@ -814,7 +848,8 @@ end
 -- Recipe facts -----------------------------------------------------------------
 -- recipeFacts[recipeID] = { item = outputItemID (0 = none), enchant = bool,
 --                           reagents = { {itemID, qty, optional(0/1)}, ... } | nil, build,
---                           cat = categoryID | nil }
+--                           cat = categoryID | nil,
+--                           trivial = skill at which the recipe turns grey | nil }
 -- Facts are static game data, not ownership data, so any source may fill them.
 -- A local API result overrides remote values.
 
@@ -839,6 +874,10 @@ function Store.SetFact(db, recipeID, fact, isLocal, build)
 		changed = changed or cur.cat ~= fact.cat
 		cur.cat = fact.cat
 	end
+	if fact.trivial ~= nil and (isLocal or cur.trivial == nil) then
+		changed = changed or cur.trivial ~= fact.trivial
+		cur.trivial = fact.trivial
+	end
 	if fact.reagents and (isLocal or not cur.reagents) then
 		cur.reagents = fact.reagents
 		changed = true
@@ -849,8 +888,8 @@ function Store.SetFact(db, recipeID, fact, isLocal, build)
 	return changed
 end
 
--- Copies outputItemIDs and categories carried by a record into the fact
--- cache. Returns true if a category was new.
+-- Copies outputItemIDs, categories and grey skills carried by a record into
+-- the fact cache. Returns true if a category was new.
 function Store.LearnFactsFromRecord(db, rec, build)
 	local newCategory = false
 	for _, p in pairs(rec.profs) do
@@ -867,6 +906,12 @@ function Store.LearnFactsFromRecord(db, rec, build)
 			if not cur or cur.cat == nil then
 				Store.SetFact(db, rid, { cat = cat }, false, build)
 				newCategory = true
+			end
+		end
+		for rid, skill in pairs(p.trivial or {}) do
+			local cur = db.recipeFacts[rid]
+			if not cur or cur.trivial == nil then
+				Store.SetFact(db, rid, { trivial = skill }, false, build)
 			end
 		end
 	end

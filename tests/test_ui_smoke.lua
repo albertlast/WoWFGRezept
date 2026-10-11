@@ -351,6 +351,16 @@ test("tabs, rows and tooltip run against real pool data", function()
 	UI.Show("search")
 	dbB.recipeFacts[3915].cat, dbB.recipeFacts[3914].cat = nil, nil
 	dbB.categories[10], dbB.categories[11] = nil, nil
+	-- Profession window order: greys last first, unknown ones after, by
+	-- name; search results stay by name.
+	dbB.recipeFacts[3915].trivial = 75
+	eq(shape(RL.Rows(all, true, always, true)), "#197/2,3915,3914", "known grey skill before unknown")
+	dbB.recipeFacts[3914].trivial = 90
+	eq(shape(RL.Rows(all, true, always, true)), "#197/2,3914,3915", "highest first")
+	dbB.recipeFacts[3914].trivial = 60
+	eq(shape(RL.Rows(all, true, always, true)), "#197/2,3915,3914")
+	eq(shape(RL.Rows(all, true, always)), "#197/2,3914,3915", "searching: by name")
+	dbB.recipeFacts[3915].trivial, dbB.recipeFacts[3914].trivial = nil, nil
 
 	-- Members tab -> Recipes tab filtered to one member.
 	cb.env.searchBox:SetText("recipe 3914")

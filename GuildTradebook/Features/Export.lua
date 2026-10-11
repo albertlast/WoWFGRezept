@@ -206,10 +206,11 @@ function Export.Build(filter)
 	for rid, sl in pairs(recipeSkill) do
 		local item = ns.Index.OutputItem(rid)
 		local cat = ns.Categories.Of(rid)
+		local fact = ns.db.recipeFacts[rid]
 		data.recipes[tostring(rid)] = {
 			name = ns.Index.RecipeName(rid), item = item,
 			itemName = item > 0 and C_Item.GetItemNameByID(item) or nil,
-			profession = sl, category = cat,
+			profession = sl, category = cat, greyAt = fact and fact.trivial,
 		}
 		if cat then categories[cat] = true end
 	end
