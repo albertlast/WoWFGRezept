@@ -178,6 +178,7 @@ end
 -- "To Anna: [Guild Tradebook] ..." would clutter the answering player's
 -- chat; the answer is in "/gtb log" instead.
 local function hideOwnAnswer(_, _, text)
+	if Util.IsSecret(text) then return false end
 	local at = ChatResponder.sent[text]
 	return at ~= nil and GetTime() - at < 10
 end
@@ -276,6 +277,7 @@ local function askerName(askerGUID, playerName)
 end
 
 function ChatResponder.OnGuildChat(_, text, playerName, _, _, _, _, _, _, _, _, _, askerGUID)
+	if Util.IsSecret(text, playerName, askerGUID) then return end
 	local ok, query = pcall(ChatResponder.ParseQuery, text)
 	if not ok or not query then return end
 	if not ns.db or not ns.GetGuildData() then return end
@@ -332,6 +334,7 @@ end
 -- "!craft <item>" whispered to us: nobody else saw it, answer right away.
 -- Only guild members get an answer.
 function ChatResponder.OnWhisper(_, text, playerName, _, _, _, _, _, _, _, _, _, askerGUID)
+	if Util.IsSecret(text, playerName, askerGUID) then return end
 	local ok, query = pcall(ChatResponder.ParseQuery, text)
 	if not ok or not query then return end
 	if not ns.db or not ns.GetGuildData() then return end

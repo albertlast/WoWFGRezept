@@ -18,6 +18,19 @@ function Util.Hash(str)
 	return floor(h)
 end
 
+-- WoW's "secret values": data the client hides from addons in some
+-- situations (seen: the player GUID of a world tooltip). They may be shown,
+-- but not used as table keys, compared or searched; every entry point that
+-- takes data from the game skips them. True if any argument is secret.
+function Util.IsSecret(...)
+	local isSecret = issecretvalue
+	if not isSecret then return false end
+	for i = 1, select("#", ...) do
+		if isSecret((select(i, ...))) then return true end
+	end
+	return false
+end
+
 function Util.IsInt(v, lo, hi)
 	return type(v) == "number" and v == floor(v) and v >= lo and v <= hi
 end

@@ -242,6 +242,17 @@ test("tabs, rows and tooltip run against real pool data", function()
 	truthy(P.secondary:find(", ", 1, true), "secondary ones share a line")
 	eq(#unitLines("Player-1-00000999"), 0, "not a guild member with data")
 	eq(#unitLines(nil), 0)
+	-- A "secret" GUID (the client hides it, e.g. world tooltips in combat):
+	-- using it as a table key raises an error in the game; it is skipped.
+	local SECRET = "Player-1-00000001-secret"
+	cb.env.issecretvalue = function(v) return v == SECRET end
+	local chars = cb.ns.GetGuildData().chars
+	setmetatable(chars, { __index = function(_, k)
+		if k == SECRET then error("attempted to index a table that cannot be indexed with secret keys") end
+	end })
+	eq(#unitLines(SECRET), 0, "secret GUID: no lines, no error")
+	setmetatable(chars, nil)
+	cb.env.issecretvalue = nil
 	cb.env.GuildTradebookDB.options.tooltipProfessions = false
 	eq(#unitLines("Player-1-00000001"), 0, "option off")
 	cb.env.GuildTradebookDB.options.tooltipProfessions = true

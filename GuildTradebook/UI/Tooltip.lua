@@ -104,7 +104,7 @@ local function onRecipeItem(tooltip, name, subclassID)
 end
 
 local function onItem(tooltip, itemID)
-	if not ns.db or not itemID or not ns.GetGuildData() then return end
+	if not ns.db or not itemID or ns.Util.IsSecret(itemID) or not ns.GetGuildData() then return end
 	local options = ns.db.options
 
 	local rids = Index.RecipesForItem(itemID)
@@ -154,7 +154,7 @@ local function isMember(guid)
 end
 
 local function onUnit(tooltip, guid)
-	if not ns.db or not ns.db.options.tooltipProfessions or not guid then return end
+	if not ns.db or not ns.db.options.tooltipProfessions or not guid or ns.Util.IsSecret(guid) then return end
 	local gd = ns.GetGuildData()
 	local rec = gd and gd.chars[guid]
 	if not rec or not Store.IsShareable(rec, isMember) then return end

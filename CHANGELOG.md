@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 (in development)
+
+- Fix: Lua error "attempted to index a table that cannot be indexed with secret keys" on player tooltips. The client hides some values from addons in certain situations ("secret values", here the player GUID of a world tooltip); the tooltips, chat, system and addon message handlers now skip them.
+
 ## 0.3.0 (2026-10-11)
 
 - The settings window is opened with the game's own C_SettingsUtil.OpenSettingsPanel (/gtb options, minimap button). Opened with Settings.OpenToCategory, it could block protected settings later in the session (reported: choosing the voice chat service showed "GuildTradebook was blocked").

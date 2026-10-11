@@ -298,6 +298,7 @@ refresh (up to REFRESH_INTERVAL later, or later still). It is noted for
 every client alike (see "Online state"); a roster refresh is requested.
 ]]
 function Roster.OnSystemMessage(_, text)
+	if Util.IsSecret(text) then return end
 	local name, online = Roster.ParseOnlineMessage(text)
 	if not name then return end
 	local guid = Roster.GuidByName(name)

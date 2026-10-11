@@ -1492,6 +1492,28 @@ test("idle guild: periodic sync stays cheap", function()
 	truthy(perRound <= 30 * 2 + 10, "about one hello + ack per client and round")
 end)
 
+test("secret values from the game (chat, system and addon messages) are skipped, not an error", function()
+	local world = bigGuild(3, 24)
+	local secret = {}
+	for _, client in pairs(world.online) do
+		client.env.issecretvalue = function(v) return secret[v] == true end
+	end
+	local nora = world:AddChar({ guid = guid(901), name = "Nora" })
+	secret["!craft Recipe 1001"] = true
+	world:GuildChat(nora.name, "!craft Recipe 1001")
+	world:Run(30)
+	eq(#craftAnswers(world, nora.name), 0, "a secret question is not answered")
+	local c1 = world.online[guid(1)]
+	secret["SECRET-SYSTEM"] = true
+	c1.ns.Roster.OnSystemMessage(nil, "SECRET-SYSTEM")
+	c1.ns.Protocol.OnSystemMessage(nil, "SECRET-SYSTEM")
+	c1.ns.Protocol.OnComm(c1.ns.PREFIX, "SECRET-SYSTEM", "GUILD", "M2-Realm")
+	-- Normal questions still work.
+	world:GuildChat(nora.name, "!craft Recipe 1002")
+	world:Run(30)
+	eq(#craftAnswers(world, nora.name), 1)
+end)
+
 test("!craft from a member without the addon: exactly one answer", function()
 	local world = bigGuild(30, 23)
 	local nora = world:AddChar({ guid = guid(900), name = "Nora" }) -- no addon, never logs in

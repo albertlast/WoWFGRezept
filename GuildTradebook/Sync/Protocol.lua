@@ -264,6 +264,7 @@ local function whisperFailedName(text)
 end
 
 function P.OnSystemMessage(_, text)
+	if Util.IsSecret(text) then return end
 	local target, entry = whisperFailedName(text)
 	if not target then return end
 	P.whispered[target] = nil
@@ -289,6 +290,7 @@ function P.OnSystemMessage(_, text)
 end
 
 local function hideFailedWhisper(_, _, text)
+	if Util.IsSecret(text) then return false end
 	return whisperFailedName(text) ~= nil
 end
 
@@ -982,6 +984,7 @@ function P.Handle(msg, channel, sender)
 end
 
 function P.OnComm(prefix, text, channel, sender)
+	if Util.IsSecret(prefix, text, channel, sender) then return end
 	if prefix ~= ns.PREFIX then return end
 	if type(text) == "string" and text:sub(1, #P.DIAG) == P.DIAG then
 		P.OnDiag(text, channel, sender)
