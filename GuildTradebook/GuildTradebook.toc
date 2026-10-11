@@ -3,7 +3,7 @@
 ## Notes: Shares known recipes automatically inside your guild and finds craftable gear upgrades.
 ## Notes-deDE: Teilt bekannte Rezepte automatisch in der Gilde und findet herstellbare Ausrüstungsverbesserungen.
 ## Author: albertlast
-## Version: 0.3.0-dev
+## Version: 0.3.0
 ## X-Build: 0
 ## SavedVariables: GuildTradebookDB, GuildTradebookExport
 ## SavedVariablesPerCharacter: GuildTradebookCharDB

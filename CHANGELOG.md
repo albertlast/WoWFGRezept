@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (in development)
+## 0.3.0 (2026-10-11)
 
 - The settings window is opened with the game's own C_SettingsUtil.OpenSettingsPanel (/gtb options, minimap button). Opened with Settings.OpenToCategory, it could block protected settings later in the session (reported: choosing the voice chat service showed "GuildTradebook was blocked").
 - Fix: right after crafting, every recipe in the window reports the global cooldown (1-2 s), and the addon took that for a recipe cooldown: whole professions then showed "ready" for recipes without any cooldown. A recipe now counts as a cooldown recipe only with at least 60 s remaining (or charges); the false entries disappear the next time the owner opens that profession window.
