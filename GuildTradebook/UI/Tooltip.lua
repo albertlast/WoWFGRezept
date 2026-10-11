@@ -153,8 +153,10 @@ local function isMember(guid)
 	return Roster.IsMember(guid)
 end
 
+-- Secret values are checked before any other use (even a nil test): the
+-- game marks UnitGUID and the tooltip's unit as possibly secret.
 local function onUnit(tooltip, guid)
-	if not ns.db or not ns.db.options.tooltipProfessions or not guid or ns.Util.IsSecret(guid) then return end
+	if ns.Util.IsSecret(guid) or not guid or not ns.db or not ns.db.options.tooltipProfessions then return end
 	local gd = ns.GetGuildData()
 	local rec = gd and gd.chars[guid]
 	if not rec or not Store.IsShareable(rec, isMember) then return end
@@ -165,6 +167,12 @@ local function onUnit(tooltip, guid)
 	if lines.secondary and ns.db.options.tooltipSecondary then
 		tooltip:AddLine(lines.secondary, 0.6, 0.6, 0.6, true)
 	end
+end
+
+local function tooltipUnitGUID(tooltip)
+	local _, unit = tooltip:GetUnit()
+	if ns.Util.IsSecret(unit) or not unit then return nil end
+	return UnitGUID(unit)
 end
 
 function Tooltip.Start()
@@ -184,17 +192,15 @@ function Tooltip.Start()
 		TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
 			if tooltip == GameTooltip then
 				local guid = data and data.guid
-				if not guid and tooltip.GetUnit then
-					local _, unit = tooltip:GetUnit()
-					guid = unit and UnitGUID(unit)
+				if not ns.Util.IsSecret(guid) and not guid and tooltip.GetUnit then
+					guid = tooltipUnitGUID(tooltip)
 				end
 				onUnit(tooltip, guid)
 			end
 		end)
 	elseif GameTooltip.HookScript then
 		GameTooltip:HookScript("OnTooltipSetUnit", function(tooltip)
-			local _, unit = tooltip:GetUnit()
-			onUnit(tooltip, unit and UnitGUID(unit))
+			onUnit(tooltip, tooltipUnitGUID(tooltip))
 		end)
 	end
 end
