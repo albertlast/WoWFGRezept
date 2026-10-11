@@ -2,6 +2,8 @@
 
 ## 0.3.0 (in development)
 
+- The settings window is opened with the game's own C_SettingsUtil.OpenSettingsPanel (/gtb options, minimap button). Opened with Settings.OpenToCategory, it could block protected settings later in the session (reported: choosing the voice chat service showed "GuildTradebook was blocked").
+- Fix: right after crafting, every recipe in the window reports the global cooldown (1-2 s), and the addon took that for a recipe cooldown: whole professions then showed "ready" for recipes without any cooldown. A recipe now counts as a cooldown recipe only with at least 60 s remaining (or charges); the false entries disappear the next time the owner opens that profession window.
 - Less traffic in big, busy guilds (measured with a new load simulation): rank-ups are batched longer the more members broadcast (the guild sends about 40 per minute however many craft); a fresh install takes half the records from a second partner at the same time and never requests a record twice; records sent in a sync go up to 16 per message, sorted by profession, so they compress far better.
 - Rogue Poisons are no longer shared: they are a class skill the game lists among the professions, only rogues use poisons and every rogue makes their own. A rogue's record drops them at the next profession check; records from older versions that still carry them are not shown (search, tooltips, Members tab, export).
 - Fix: the server check of primary professions could hide a profession the owner marks as not primary (it hit Poisons). Only professions marked primary are compared with the server now.

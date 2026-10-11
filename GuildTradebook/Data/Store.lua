@@ -364,6 +364,20 @@ function Store.ApplyCooldowns(own, skillLine, observed, now, hidden)
 	return changed
 end
 
+-- Removes the cooldown entries of one profession for which
+-- shouldRemove(recipeID) is true. Returns true if anything was removed.
+function Store.RemoveCooldowns(own, skillLine, shouldRemove)
+	local p = own.profs[skillLine]
+	if not (p and p.cds) then return false end
+	local doomed = {}
+	for rid in pairs(p.cds) do
+		if shouldRemove(rid) then doomed[#doomed + 1] = rid end
+	end
+	for _, rid in ipairs(doomed) do p.cds[rid] = nil end
+	if not next(p.cds) then p.cds = nil end
+	return #doomed > 0
+end
+
 -- Replaces every cooldown time of a record with CD_HIDDEN (the owner stopped
 -- sharing them). Returns true if anything changed; the caller publishes a
 -- new version.

@@ -156,6 +156,43 @@ test("cooldowns reach the guild and show who is ready", function()
 	truthy(cb.ns.Index.Crafters(17187)[1].ready, "ready after the cooldown")
 end)
 
+test("the global cooldown after crafting is no recipe cooldown; false entries of older versions go", function()
+	math.randomseed(22)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = {
+		[TAILORING] = tailoring(150, { [3914] = 2568, [3915] = 2569 }),
+		[ALCHEMY] = { rank = 300, maxRank = 300, name = "Alchemy", recipes = { [17187] = 12360 } },
+	}, cooldowns = { [3914] = 1.5, [3915] = 1.5 } }) -- right after a craft: every recipe reports 1.5 s
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	local cb = world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(150)
+	falsy(cb:Record(a.guid).profs[TAILORING].cds, "no cooldown entries")
+	eq(cb.ns.Index.Crafters(3914)[1].readyAt, nil, "so no \"ready\" tag")
+
+	-- A record from an older version marked every recipe: the next scan cleans it.
+	ca:Record(a.guid).profs[TAILORING].cds = { [3914] = 0, [3915] = 0 }
+	a.cooldowns = {}
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(150)
+	falsy(ca:Record(a.guid).profs[TAILORING].cds, "cleaned in the own record")
+	falsy(cb:Record(a.guid).profs[TAILORING].cds, "and in the guild's copy")
+
+	-- A real cooldown recipe under the global cooldown counts as ready.
+	a.cooldowns = { [17187] = 86400 }
+	ca:OpenTradeSkill(ALCHEMY)
+	world:Run(150)
+	truthy(cb:Record(a.guid).profs[ALCHEMY].cds[17187] > world.clock.t, "on cooldown")
+	a.cooldowns = { [17187] = 1.5 }
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(5)
+	ca:OpenTradeSkill(ALCHEMY)
+	world:Run(150)
+	eq(cb:Record(a.guid).profs[ALCHEMY].cds[17187], 0, "ready")
+end)
+
 test("cooldowns not shared (option): the guild sees the crafter, never as ready; real times come back when turned on", function()
 	math.randomseed(26)
 	local world = H.NewWorld()

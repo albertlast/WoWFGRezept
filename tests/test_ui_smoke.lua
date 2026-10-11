@@ -268,7 +268,15 @@ test("tabs, rows and tooltip run against real pool data", function()
 	end
 	eq(ui.settings.category.name, "Guild Tradebook")
 	cb.ns.Settings.Open()
-	eq(ui.settings.opened, 42)
+	eq(ui.settings.opened, 42, "fallback without C_SettingsUtil")
+	-- With the game's own opener, Settings.OpenToCategory (taints) is not used.
+	ui.settings.opened = nil
+	local panel
+	cb.env.C_SettingsUtil = { OpenSettingsPanel = function(id) panel = id end }
+	cb.ns.Settings.Open()
+	eq(panel, 42)
+	eq(ui.settings.opened, nil, "OpenToCategory not called")
+	cb.env.C_SettingsUtil = nil
 
 	-- Item rows: game tooltip on hover (price addons hook it), shift-click links.
 	local scripts, shown, linked = {}, {}, {}

@@ -339,21 +339,28 @@ end
 
 --[[
 Cooldown of one recipe: seconds remaining (0 = ready), or nil if the recipe
-has no known cooldown. A ready cooldown recipe looks like any other recipe,
-so a recipe counts as a cooldown recipe once it was seen on cooldown or
-reports charges; that knowledge is kept in recipeFacts and in the record.
+has no cooldown. A ready cooldown recipe looks like any other recipe, so a
+recipe counts as a cooldown recipe once it was seen with at least
+MIN_COOLDOWN remaining, or reports charges (recipeFacts[id].cdSeen).
+Shorter ones are the global cooldown after a cast: right after crafting,
+every recipe of the window reports it for a second or two (seen in game:
+a whole profession showed "ready"). Older versions marked those in
+fact.cd; that flag is ignored.
 ]]
-function Scanner.ReadCooldown(recipeID, knownCooldown)
+Scanner.MIN_COOLDOWN = 60
+
+function Scanner.ReadCooldown(recipeID)
 	if not C_TradeSkillUI.GetRecipeCooldown then return nil end
 	local cooldown, _, charges, maxCharges = C_TradeSkillUI.GetRecipeCooldown(recipeID)
-	local onCooldown = cooldown ~= nil and cooldown > 0 and not (charges and charges > 0)
+	local remaining = (cooldown and cooldown > 0 and not (charges and charges > 0)) and cooldown or 0
 	local fact = ns.db.recipeFacts[recipeID]
-	if onCooldown or (maxCharges and maxCharges > 0) then
-		if fact then fact.cd = true end
-	elseif not (knownCooldown or (fact and fact.cd)) then
+	if remaining >= Scanner.MIN_COOLDOWN or (maxCharges and maxCharges > 0) then
+		if fact then fact.cdSeen = true end
+	elseif not (fact and fact.cdSeen) then
 		return nil
 	end
-	return onCooldown and cooldown or 0
+	-- A known cooldown recipe under the global cooldown is ready.
+	return remaining >= Scanner.MIN_COOLDOWN and remaining or 0
 end
 
 -- Reads the open profession window, if it is the player's own.
@@ -395,7 +402,7 @@ function Scanner.ScanTradeSkill()
 			and not info.isSalvageRecipe and not info.isRecraft and not isForeign(own, skillLine, recipeID) then
 			local fact = Scanner.ResolveFact(recipeID, info)
 			recipes[recipeID] = fact and fact.item or 0
-			cooldowns[recipeID] = Scanner.ReadCooldown(recipeID, prof.cds and prof.cds[recipeID] ~= nil)
+			cooldowns[recipeID] = Scanner.ReadCooldown(recipeID)
 			if fact and fact.cat then
 				cats[recipeID] = fact.cat
 				catIDs[fact.cat] = true
@@ -417,6 +424,11 @@ function Scanner.ScanTradeSkill()
 	end
 	-- Not shared (option): the guild sees the cooldown, never as ready.
 	local cooldownsChanged = Store.ApplyCooldowns(own, skillLine, cooldowns, now, not ns.db.options.shareCooldowns)
+	-- Entries of scanned recipes without a cooldown go (older versions took
+	-- the global cooldown for one).
+	if Store.RemoveCooldowns(own, skillLine, function(rid) return recipes[rid] ~= nil and cooldowns[rid] == nil end) then
+		cooldownsChanged = true
+	end
 	local categoriesChanged = Store.ApplyCategories(own, skillLine, cats, complete)
 	if recipesChanged then
 		Scanner.Commit(own, Store.ChangeKind(prof))
