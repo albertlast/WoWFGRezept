@@ -113,6 +113,8 @@ This writes `dist/GuildTradebook-<version>.zip`.
 
 The commit time becomes the build number, so `/gtb versions` notices newer builds. The copy in the repo reports its TOC version with build 0.
 
+Update notice: when a guildmate runs a newer release, one chat line ("Version 0.4.0 is out (you have 0.3.0).") at most once a day per account until you update; a newer release is announced right away. Only releases count; test builds and `-dev` copies are never announced, and a test build or `-dev` copy of your own counts as older than its release.
+
 Every addon message carries the sender's version. A guildmate whose build can not exchange data with yours (another protocol, or a build from before the sender GUID) is reported once in chat instead of being silently ignored.
 
 ### To verify in game

@@ -44,16 +44,56 @@ function Versions.Compare(myBuild, otherBuild)
 	return otherBuild > myBuild and "newer" or "older"
 end
 
+--[[
+Update notice. Only releases count ("0.4.0"): test builds ("0.4.0-d8dcb0e")
+and development copies ("0.4.0-dev") are never announced. A test build or
+development copy of this copy counts as older than its own release. One
+chat line a day (account-wide) while this copy is behind, and right away
+for an even newer release. ns.db.updateTold = { version, day }.
+]]
+-- {major, minor, patch}, prerelease (anything after the numbers), or nil.
+function Versions.Parse(version)
+	if type(version) ~= "string" then return nil end
+	local a, b, c, rest = version:match("^(%d+)%.(%d+)%.(%d+)(.*)$")
+	if not a then return nil end
+	return { tonumber(a), tonumber(b), tonumber(c) }, rest ~= ""
+end
+
+-- True if `theirs` is a release newer than `mine`.
+function Versions.IsNewerRelease(mine, theirs)
+	local t, prerelease = Versions.Parse(theirs)
+	local m, minePre = Versions.Parse(mine)
+	if not t or prerelease or not m then return false end
+	for i = 1, 3 do
+		if t[i] ~= m[i] then return t[i] > m[i] end
+	end
+	return minePre
+end
+
+-- Local calendar day (UTC day where the game's date is missing).
+local function today()
+	local now = ns.Now()
+	return date and date("%Y-%m-%d", now) or tostring(math.floor(now / 86400))
+end
+
+function Versions.NoteRelease(version)
+	local mine = Versions.Mine()
+	if not ns.db or not Versions.IsNewerRelease(mine, version) then return end
+	local told = type(ns.db.updateTold) == "table" and ns.db.updateTold or {}
+	-- The newest release known (one told earlier may be newer than this one).
+	local newest = Versions.IsNewerRelease(version, told.version) and told.version or version
+	local day = today()
+	if told.day == day and told.version and not Versions.IsNewerRelease(told.version, newest) then return end
+	ns.db.updateTold = { version = newest, day = day }
+	ns.Print(L.UPDATE_AVAILABLE:format(newest, mine))
+end
+
 -- A message from a compatible build.
 function Versions.Seen(name, version, build)
 	if not Util.IsString(version, 40) then version = nil end
 	if not Util.IsInt(build, 0, 2 ^ 40) then build = 0 end
 	Versions.byName[name] = { version = version, build = build, seen = GetTime() }
-	local _, myBuild = Versions.Mine()
-	if Versions.Compare(myBuild, build) == "newer" and not Versions.toldNewer then
-		Versions.toldNewer = true
-		ns.Print(L.VERSION_NEWER:format(Util.ShortName(name), version or "?"))
-	end
+	Versions.NoteRelease(version)
 end
 
 -- A message this build can not read. theirProtocol: the sender's protocol
@@ -64,6 +104,7 @@ function Versions.SeenIncompatible(name, version, theirProtocol)
 		version = Util.IsString(version, 40) and version or nil,
 		incompatible = true, newerProtocol = newer, seen = GetTime(),
 	}
+	if Util.IsString(version, 40) then Versions.NoteRelease(version) end
 	if not Versions.notified[name] then
 		Versions.notified[name] = true
 		ns.Print((newer and L.VERSION_UPDATE_NEEDED or L.VERSION_INCOMPATIBLE):format(Util.ShortName(name)))

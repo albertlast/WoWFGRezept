@@ -2,6 +2,8 @@
 
 ## 0.4.0 (in development)
 
+- Update notice: when a guild member runs a newer release, one quiet chat line ("Version 0.4.0 is out (you have 0.3.0).") at most once a day per account until you update (a newer release is announced right away), instead of "X uses a newer Guild Tradebook" in every session. Only releases count: test builds (`0.4.0-d8dcb0e`) and development copies (`-dev`) are never announced.
+
 - Recipes tab: inside each category the recipes are in the order of the profession window, highest first, instead of A-Z. The game gives addons the skill at which a recipe turns grey (the window sorts by it), not the skill needed to learn it; crafters share it with their record once they open the profession window with 0.4.0. Recipes whose value is not known yet follow A-Z; search results stay A-Z. The export lists it as `greyAt`.
 - Fix: Lua error "attempted to index a table that cannot be indexed with secret keys" on player tooltips. The client hides some values from addons in certain situations ("secret values", here the player GUID of a world tooltip); the tooltips, chat, system and addon message handlers now skip them. The player tooltip checks the unit token as well, and checks before any other use of the value.
 

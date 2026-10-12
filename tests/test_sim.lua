@@ -703,20 +703,80 @@ test("/gtb versions lists every online addon user; an outdated build is named", 
 	truthy(text:find("Bert: 0.1.0-bbbbbbb", 1, true) and text:find("newer", 1, true), text)
 	truthy(text:find("Cleo: 0.1.0-aaaaaaa", 1, true), text)
 	truthy(text:find("Olli: ", 1, true) and text:find("outdated", 1, true), text)
-	-- Notices: one about the newer build, one about the outdated guildmate.
+	-- Notices: none about Bert's newer test build, one about the outdated guildmate.
 	local function told(pattern)
 		for _, line in ipairs(world.log) do
 			if line:find("^Anna%-Realm: ") and line:find(pattern, 1, true) then return true end
 		end
 		return false
 	end
-	truthy(told("Bert uses a newer Guild Tradebook"), "newer notice")
+	falsy(told("is out"), "test builds are not announced")
 	truthy(told("Olli uses an outdated Guild Tradebook"), "outdated notice")
 	-- Asking again right away does not make everyone answer again.
 	world:ResetCounters()
 	ca.ns.Versions.Request()
 	world:Run(10)
 	falsy(world.byType.N, "no second round of answers")
+end)
+
+test("update notice: releases only, one chat line a day per account", function()
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Anna", version = "0.3.0", build = 100 })
+	local alt = world:AddChar({ guid = guid(5), name = "Alba", version = "0.3.0", build = 100, account = a.account })
+	local ca = world:Login(a.guid)
+	local Versions = ca.ns.Versions
+	-- The rule.
+	truthy(Versions.IsNewerRelease("0.3.0", "0.4.0"))
+	truthy(Versions.IsNewerRelease("0.3.0", "1.0.0"))
+	truthy(Versions.IsNewerRelease("0.9.0", "0.10.0"), "numbers, not text")
+	truthy(Versions.IsNewerRelease("0.4.0-dev", "0.4.0"), "the release is newer than its development copy")
+	truthy(Versions.IsNewerRelease("0.4.0-d8dcb0e", "0.4.0"), "and than its test build")
+	falsy(Versions.IsNewerRelease("0.3.0", "0.4.0-dev"), "development copies are ignored")
+	falsy(Versions.IsNewerRelease("0.3.0", "0.4.0-d8dcb0e"), "test builds are ignored")
+	falsy(Versions.IsNewerRelease("0.4.0", "0.4.0"))
+	falsy(Versions.IsNewerRelease("0.4.0", "0.3.0"))
+	falsy(Versions.IsNewerRelease("0.3.0", nil))
+	falsy(Versions.IsNewerRelease("?", "0.4.0"), "own version unknown")
+	-- The chat line.
+	local function notices()
+		local n = 0
+		for _, line in ipairs(world.log) do
+			if line:find(" is out ", 1, true) then n = n + 1 end
+		end
+		return n
+	end
+	Versions.Seen("Bert-Realm", "0.4.0-d8dcb0e", 200)
+	Versions.Seen("Bert-Realm", "0.4.0-dev", 0)
+	eq(notices(), 0, "nothing for test builds and development copies")
+	Versions.Seen("Bert-Realm", "0.4.0", 300)
+	eq(notices(), 1)
+	truthy(world.log[#world.log]:find("Version 0.4.0 is out (you have 0.3.0).", 1, true), world.log[#world.log])
+	Versions.Seen("Cleo-Realm", "0.4.0", 300)
+	Versions.SeenIncompatible("Dana-Realm", "0.4.0", 99)
+	eq(notices(), 1, "once a day")
+	-- Another character of the account: already told today.
+	world:Logout(a.guid)
+	local cAlt = world:Login(alt.guid)
+	cAlt.ns.Versions.Seen("Bert-Realm", "0.4.0", 300)
+	eq(notices(), 1, "once a day per account")
+	cAlt.ns.Versions.Seen("Bert-Realm", "0.5.0", 400)
+	eq(notices(), 2, "a newer release right away")
+	cAlt.ns.Versions.Seen("Cleo-Realm", "0.4.0", 300)
+	eq(notices(), 2, "an older release after a newer one: nothing")
+	-- The next day: once more, naming the newest release known.
+	cAlt.env.GuildTradebookDB.updateTold.day = "yesterday"
+	cAlt.ns.Versions.Seen("Cleo-Realm", "0.4.0", 300)
+	eq(notices(), 3, "again the next day")
+	truthy(world.log[#world.log]:find("Version 0.5.0 is out", 1, true), world.log[#world.log])
+	cAlt.ns.Versions.Seen("Bert-Realm", "0.5.0", 400)
+	eq(notices(), 3)
+	-- Updated: quiet.
+	cAlt.env.GuildTradebookDB.updateTold.day = "yesterday"
+	alt.version = "0.5.0"
+	world:Logout(alt.guid)
+	cAlt = world:Login(alt.guid)
+	cAlt.ns.Versions.Seen("Bert-Realm", "0.5.0", 400)
+	eq(notices(), 3, "nothing once up to date")
 end)
 
 test("/gtb diag: the sender sees its own echo, others see the test message", function()
