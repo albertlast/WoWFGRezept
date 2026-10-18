@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Guild Tradebook</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#20345a"/>
+      <stop offset="1" stop-color="#0a1424"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="256" cy="270" r="196" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 270) scale(1 0.77) translate(-256 -270)">
+      <stop offset="0" stop-color="#5a8fd0" stop-opacity="0.43"/>
+      <stop offset="1" stop-color="#5a8fd0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f3d77f"/>
+      <stop offset="1" stop-color="#b4832a"/>
+    </linearGradient>
+    <linearGradient id="pageL" gradientUnits="userSpaceOnUse" x1="92" y1="0" x2="256" y2="0">
+      <stop offset="0" stop-color="#f7ebc9"/>
+      <stop offset="1" stop-color="#d2b47a"/>
+    </linearGradient>
+    <linearGradient id="pageR" gradientUnits="userSpaceOnUse" x1="256" y1="0" x2="420" y2="0">
+      <stop offset="0" stop-color="#d2b47a"/>
+      <stop offset="1" stop-color="#f7ebc9"/>
+    </linearGradient>
+    <linearGradient id="ribbon" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d03a2c"/>
+      <stop offset="1" stop-color="#8f1c18"/>
+    </linearGradient>
+    <linearGradient id="goldFrame" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+      <stop offset="0" stop-color="#f3d77f"/>
+      <stop offset="1" stop-color="#b4832a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background and frame -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <ellipse cx="256" cy="270" rx="196" ry="150" fill="url(#glow)"/>
+  <rect x="14" y="14" width="484" height="484" rx="84" fill="none" stroke="url(#goldFrame)" stroke-width="7"/>
+  <rect x="26" y="26" width="460" height="460" rx="74" fill="none" stroke="#8a6d2b" stroke-opacity="0.78" stroke-width="2"/>
+
+  <!-- Book: leather cover, pages, spine -->
+  <g fill="#6b3b1c" stroke="#d4ad55" stroke-width="3.5">
+    <path d="M256 242 C212 213 142 205 76 221 L76 349 C142 335 212 341 256 371 Z"/>
+    <path d="M256 242 C300 213 370 205 436 221 L436 349 C370 335 300 341 256 371 Z"/>
+  </g>
+  <g stroke="#b89a5a" stroke-width="1.5">
+    <path d="M256 230 C215 203 150 197 92 210 L92 336 C150 323 215 329 256 357 Z" fill="url(#pageL)"/>
+    <path d="M256 230 C297 203 362 197 420 210 L420 336 C362 323 297 329 256 357 Z" fill="url(#pageR)"/>
+  </g>
+  <line x1="256" y1="230" x2="256" y2="357" stroke="#7a5a22" stroke-width="3"/>
+
+  <!-- Lines of text -->
+  <g stroke="#7b5a2b" stroke-opacity="0.67" stroke-width="3.2" stroke-linecap="round">
+    <line x1="112" y1="232"   x2="232" y2="250"/>
+    <line x1="112" y1="248.5" x2="212" y2="263.5"/>
+    <line x1="112" y1="265"   x2="232" y2="283"/>
+    <line x1="112" y1="281.5" x2="196" y2="294.1"/>
+    <line x1="112" y1="298"   x2="224" y2="314.8"/>
+    <line x1="112" y1="314.5" x2="182" y2="325"/>
+    <line x1="400" y1="232"   x2="280" y2="250"/>
+    <line x1="400" y1="248.5" x2="300" y2="263.5"/>
+    <line x1="400" y1="265"   x2="280" y2="283"/>
+    <line x1="400" y1="281.5" x2="316" y2="294.1"/>
+    <line x1="400" y1="298"   x2="288" y2="314.8"/>
+    <line x1="400" y1="314.5" x2="330" y2="325"/>
+  </g>
+  <g fill="#c08a22">
+    <circle cx="106.5" cy="232"   r="3.5"/>
+    <circle cx="106.5" cy="248.5" r="3.5"/>
+    <circle cx="106.5" cy="265"   r="3.5"/>
+    <circle cx="106.5" cy="281.5" r="3.5"/>
+    <circle cx="106.5" cy="298"   r="3.5"/>
+    <circle cx="106.5" cy="314.5" r="3.5"/>
+  </g>
+
+  <!-- Red bookmark: the guild banner -->
+  <polygon points="272,350 312,356 312,440 292,420 272,440" fill="url(#ribbon)" stroke="#e6c15f" stroke-width="3"/>
+  <circle cx="292" cy="381" r="9" fill="url(#gold)"/>
+
+  <!-- Three guild members, linked: sharing -->
+  <g stroke="#f0cd72" stroke-opacity="0.82" stroke-width="6" stroke-linecap="round">
+    <line x1="256" y1="96"  x2="150" y2="150"/>
+    <line x1="256" y1="96"  x2="362" y2="150"/>
+    <line x1="150" y1="150" x2="362" y2="150"/>
+  </g>
+  <g id="member-top">
+    <circle cx="256" cy="96" r="30" fill="url(#gold)"/>
+    <circle cx="256" cy="96" r="22" fill="#13213d"/>
+    <circle cx="256" cy="88" r="7" fill="url(#gold)"/>
+    <path d="M242 110 A14 13 0 0 1 270 110 Z" fill="url(#gold)"/>
+  </g>
+  <g id="member-left">
+    <circle cx="150" cy="150" r="30" fill="url(#gold)"/>
+    <circle cx="150" cy="150" r="22" fill="#13213d"/>
+    <circle cx="150" cy="142" r="7" fill="url(#gold)"/>
+    <path d="M136 164 A14 13 0 0 1 164 164 Z" fill="url(#gold)"/>
+  </g>
+  <g id="member-right">
+    <circle cx="362" cy="150" r="30" fill="url(#gold)"/>
+    <circle cx="362" cy="150" r="22" fill="#13213d"/>
+    <circle cx="362" cy="142" r="7" fill="url(#gold)"/>
+    <path d="M348 164 A14 13 0 0 1 376 164 Z" fill="url(#gold)"/>
+  </g>
+</svg>

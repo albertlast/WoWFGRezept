@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 (in development)
+
+- The TOC carries the CurseForge project ID (`X-Curse-Project-ID`), so the CurseForge app recognizes the addon.
+
 ## 0.5.0 (2026-10-18)
 
 - Tooltip filter: a new settings sub-page ("Tooltip filter") lists all professions of the guild pool with their groups (categories) as an open/close tree. Mark a profession or a group and item tooltips no longer show who can craft it ("Craftable by guild", "Known in your guild"), e.g. First Aid bandages that everyone makes. First Aid and Fishing are hidden by default (from the first start, before any profession is known); unmark them to see them again. A marked profession hides all its groups; clicking its check mark (marking or unmarking) clears the marks of its groups, so unmarking shows everything of it again. "Show everything" resets all. The Recipes tab, `!craft` and the wishlist are not affected.
