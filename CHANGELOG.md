@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 (in development)
+
+- Item tooltips ("Craftable by guild", "Known in your guild by"): every person is listed once. Before, two characters of the same player (you and your alt, or an online character and its offline alt shown as "Alt (Main)") were two entries and counted as two members. Now the one you can reach best is shown: you, else the online one, else the one reachable through another online character.
+
+- Minimap glow means "something new": opening the Wishlist tab counts the crafters online now as seen, and the glow comes back only for a crafter you have not seen yet this session (or one who went offline and returned). The tooltip still lists everyone online for your wishes.
+- Wishlist: each wish has Pause and Remove buttons between the name and the crafters. A paused wish stays on the list (greyed) but gives no chat notice, sound or glow until you resume it; right-click no longer removes a wish.
+
 ## 0.4.0 (2026-10-12)
 
 - Update notice: when a guild member runs a newer release, one quiet chat line ("Version 0.4.0 is out (you have 0.3.0).") at most once a day per account until you update (a newer release is announced right away), instead of "X uses a newer Guild Tradebook" in every session. Only releases count: test builds (`0.4.0-d8dcb0e`) and development copies (`-dev`) are never announced.

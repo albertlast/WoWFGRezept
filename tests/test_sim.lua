@@ -337,6 +337,65 @@ test("wishlist: notice and sound right at login, not at the next roster refresh;
 	eq(#cb.ns.Wishlist.ReadyNow(), 0, "glow off within 5 s of the logout")
 end)
 
+test("wishlist: the glow is for crafters not seen yet; a paused wish stays quiet but kept", function()
+	math.randomseed(25)
+	local world, a, b = threeMembers()
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(TAILORING)
+	world:Run(150)
+	local cb = world.online[b.guid]
+	local W = cb.ns.Wishlist
+	W.Toggle(3914)
+	truthy(W.HasNew(), "a crafter online, not seen yet: glow")
+	W.MarkSeen()
+	falsy(W.HasNew(), "seen in the Wishlist tab: no glow")
+	eq(#W.ReadyNow(), 1, "still listed in the minimap tooltip")
+	W.Toggle(3915)
+	truthy(W.HasNew(), "a new wish with an online crafter: glow again")
+	W.MarkSeen()
+	-- Offline and back: news again.
+	world:Logout(a.guid)
+	world:Run(5)
+	falsy(W.HasNew())
+	world:Login(a.guid)
+	world:Run(5)
+	truthy(W.HasNew(), "back online counts as new")
+	W.MarkSeen()
+
+	-- Paused: no notice, sound or glow; the wish is kept.
+	W.SetPaused(3914, true)
+	W.SetPaused(3915, true)
+	truthy(W.IsPaused(3914))
+	eq(#W.ReadyNow(), 0)
+	world:Logout(a.guid)
+	world:Run(5)
+	world.log = {}
+	cb.sounds = {}
+	world:Login(a.guid)
+	world:Run(5)
+	for _, line in ipairs(world.log) do
+		falsy(line:find("Bert", 1, true) == 1 and line:find("can craft", 1, true), line)
+	end
+	eq(#cb.sounds, 0, "no sound")
+	falsy(W.HasNew(), "no glow")
+	truthy(W.Has(3914), "still on the wishlist")
+	local list = W.Entries()
+	eq(#list, 2)
+	truthy(list[1].paused and list[2].paused)
+	-- Resumed: the crafter online now is news again.
+	W.SetPaused(3914, false)
+	truthy(W.HasNew())
+	eq(W.Entries()[1].recipeID, 3914, "active wishes before paused ones")
+	-- Removing forgets the pause; adding again starts unpaused.
+	W.Toggle(3915)
+	W.Toggle(3915)
+	falsy(W.IsPaused(3915))
+	W.SetPaused(4000, true)
+	falsy(W.IsPaused(4000), "only wished recipes can be paused")
+end)
+
 test("roster: login and logout messages are recognized", function()
 	local world = H.NewWorld()
 	local c = world:Login(world:AddChar({ guid = guid(1), name = "Anna" }).guid)

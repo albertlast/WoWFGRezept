@@ -4,16 +4,36 @@ craft one of them comes online, you get a chat notice (once per member and
 recipe per session). Purely local: no network traffic.
 
 ns.charDB.wishlist[recipeID] = time added (server time)
+ns.charDB.wishPaused[recipeID] = true: kept on the list, but no notice,
+  sound or glow until resumed.
+
+The minimap glow means "something new": opening the Wishlist tab marks the
+crafters online now as seen (for this session), and only a crafter not seen
+yet makes it glow again. One who goes offline counts as new when back.
 ]]
 local _, ns = ...
 
 local L, Index, Roster, Util = ns.L, ns.Index, ns.Roster, ns.Util
-local Wishlist = { alerted = {} }
+local Wishlist = { alerted = {}, seen = {} }
 ns.Wishlist = Wishlist
 
 local function entries()
 	ns.charDB.wishlist = ns.charDB.wishlist or {}
 	return ns.charDB.wishlist
+end
+
+local function paused()
+	if type(ns.charDB.wishPaused) ~= "table" then ns.charDB.wishPaused = {} end
+	return ns.charDB.wishPaused
+end
+
+-- Wished and not paused: { [recipeID] = time added }.
+local function active()
+	local out, p = {}, paused()
+	for rid, at in pairs(entries()) do
+		if not p[rid] then out[rid] = at end
+	end
+	return out
 end
 
 function Wishlist.Has(recipeID)
@@ -24,13 +44,25 @@ function Wishlist.Toggle(recipeID)
 	local list = entries()
 	if list[recipeID] then
 		list[recipeID] = nil
+		paused()[recipeID] = nil
 	else
 		list[recipeID] = ns.Now()
 	end
 	ns.Emit("WishlistChanged")
 end
 
--- Sorted entries for the UI: { recipeID, name, itemID, crafters, online }.
+function Wishlist.IsPaused(recipeID)
+	return recipeID ~= nil and paused()[recipeID] == true
+end
+
+function Wishlist.SetPaused(recipeID, on)
+	if not entries()[recipeID] then return end
+	paused()[recipeID] = on and true or nil
+	ns.Emit("WishlistChanged")
+end
+
+-- Sorted entries for the UI: { recipeID, name, itemID, crafters, online, paused }.
+-- Paused ones last.
 function Wishlist.Entries()
 	local out = {}
 	for rid in pairs(entries()) do
@@ -42,22 +74,25 @@ function Wishlist.Entries()
 		out[#out + 1] = {
 			recipeID = rid, name = Index.RecipeName(rid) or ("#" .. rid),
 			itemID = Index.OutputItem(rid), crafters = crafters, online = online,
+			paused = Wishlist.IsPaused(rid),
 		}
 	end
 	table.sort(out, function(a, b)
+		if a.paused ~= b.paused then return b.paused end
 		if (a.online > 0) ~= (b.online > 0) then return a.online > 0 end
 		return a.name < b.name
 	end)
 	return out
 end
 
--- Wished recipes that a member other than you can craft and can be asked now
--- (online, or online on another character of the same person):
--- { {recipeID, name, online = {crafter, ...}}, ... }. Drives the minimap glow.
+-- Wished recipes (not paused) that a member other than you can craft and can
+-- be asked now (online, or online on another character of the same person):
+-- { {recipeID, name, online = {crafter, ...}}, ... }. Shown in the minimap
+-- tooltip.
 function Wishlist.ReadyNow()
 	local out = {}
 	if not ns.charDB or not ns.GetGuildData() then return out end
-	for rid in pairs(entries()) do
+	for rid in pairs(active()) do
 		local online = {}
 		for _, c in ipairs(Index.Crafters(rid)) do
 			if c.reachable and not c.isSelf then online[#online + 1] = c end
@@ -68,6 +103,40 @@ function Wishlist.ReadyNow()
 	end
 	table.sort(out, function(a, b) return a.name < b.name end)
 	return out
+end
+
+-- Keys ("recipeID:guid") of the crafters ReadyNow lists.
+local function readyKeys()
+	local keys = {}
+	for _, entry in ipairs(Wishlist.ReadyNow()) do
+		for _, c in ipairs(entry.online) do keys[entry.recipeID .. ":" .. c.guid] = true end
+	end
+	return keys
+end
+
+-- True if a crafter in ReadyNow was not seen yet: drives the minimap glow.
+-- Crafters no longer reachable are forgotten, so they count as new when back.
+function Wishlist.HasNew()
+	local keys, new = readyKeys(), false
+	for key in pairs(Wishlist.seen) do
+		if not keys[key] then Wishlist.seen[key] = nil end
+	end
+	for key in pairs(keys) do
+		if not Wishlist.seen[key] then new = true end
+	end
+	return new
+end
+
+-- The Wishlist tab is open: everything ready now counts as seen.
+function Wishlist.MarkSeen()
+	local changed = false
+	for key in pairs(readyKeys()) do
+		if not Wishlist.seen[key] then
+			Wishlist.seen[key] = true
+			changed = true
+		end
+	end
+	if changed then ns.Emit("WishlistSeen") end
 end
 
 --[[
@@ -133,7 +202,7 @@ function Wishlist.Check()
 	local now = reachableChars()
 	local before = Wishlist.onlineBefore
 	Wishlist.onlineBefore = now
-	local wished = entries()
+	local wished = active()
 	if not next(wished) then return end
 
 	if not before then

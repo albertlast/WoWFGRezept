@@ -54,7 +54,30 @@ function Tooltip.CrafterText(crafters)
 	return text
 end
 
--- Unique crafters of several recipes (the same item can have more than one).
+--[[
+One entry per person: characters of the same player (shared player ID) are
+listed once, as the one you can reach best: you, else online, else reachable
+through another online character, else the first. Keeps the order of the
+list. playerOf(guid) -> key of the person.
+]]
+function Tooltip.OnePerPlayer(crafters, playerOf)
+	local function rank(c)
+		return c.isSelf and 3 or c.online and 2 or c.reachable and 1 or 0
+	end
+	local best = {}
+	for _, c in ipairs(crafters) do
+		local key = playerOf(c.guid)
+		if not best[key] or rank(c) > rank(best[key]) then best[key] = c end
+	end
+	local out = {}
+	for _, c in ipairs(crafters) do
+		if best[playerOf(c.guid)] == c then out[#out + 1] = c end
+	end
+	return out
+end
+
+-- Unique crafters of several recipes (the same item can have more than one),
+-- one per person.
 local function craftersOf(recipeIDs)
 	local list, seen = {}, {}
 	for _, rid in ipairs(recipeIDs) do
@@ -65,7 +88,7 @@ local function craftersOf(recipeIDs)
 			end
 		end
 	end
-	return list
+	return Tooltip.OnePerPlayer(list, Index.PlayerKey)
 end
 
 -- name (lowercase) -> recipeIDs, rebuilt with the index.

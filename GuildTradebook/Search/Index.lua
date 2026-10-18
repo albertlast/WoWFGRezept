@@ -106,6 +106,14 @@ local function cooldownOf(rec, recipeID)
 	end
 end
 
+-- Identifies the person behind a character: the shared player ID, or the
+-- character itself when it has none.
+function Index.PlayerKey(guid)
+	local gd = ns.GetGuildData()
+	local rec = gd and gd.chars[guid]
+	return rec and rec.player or guid
+end
+
 -- Other characters of the same person (shared player ID), or an empty list.
 function Index.Siblings(guid)
 	Index.Ensure()

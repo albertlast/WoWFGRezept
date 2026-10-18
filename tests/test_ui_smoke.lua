@@ -169,6 +169,9 @@ test("tabs, rows and tooltip run against real pool data", function()
 	cb.ns.UI.ShowRecipe(3914)
 	cb.ns.Wishlist.Toggle(3914)
 	UI.Show("wishlist")
+	cb.ns.Wishlist.SetPaused(3914, true) -- greyed row
+	UI.Show("wishlist")
+	cb.ns.Wishlist.SetPaused(3914, false)
 	UI.Show("upgrades")
 	UI.Show("members")
 	UI.Toggle()
@@ -484,6 +487,27 @@ test("tabs, rows and tooltip run against real pool data", function()
 	many[6] = viaAlt
 	eq(Tooltip.CrafterText(many), "online: Alty (Mainy)")
 
+	-- One entry per person: you and your alt, or an online character and its
+	-- offline alt, are one crafter.
+	local function who(list)
+		local names = {}
+		for _, c in ipairs(list) do names[#names + 1] = c.guid end
+		return table.concat(names, ",")
+	end
+	local owner = { me = "P1", alt = "P1", bobby = "P2", bob = "P2", cleo = "P3" }
+	local function playerOf(guid) return owner[guid] or guid end
+	local pool = {
+		{ guid = "alt", online = false },
+		{ guid = "me", isSelf = true, online = true },
+		{ guid = "bob", online = true },
+		{ guid = "bobby", online = false, reachable = true, via = {} },
+		{ guid = "cleo", online = false },
+		{ guid = "solo", online = false },
+	}
+	eq(who(Tooltip.OnePerPlayer(pool, playerOf)), "me,bob,cleo,solo", "you instead of your alt; the online one instead of its alt")
+	eq(who(Tooltip.OnePerPlayer({ pool[4], pool[3] }, playerOf)), "bob", "online before reachable through another")
+	eq(who(Tooltip.OnePerPlayer({ { guid = "alt" }, { guid = "me", online = false } }, playerOf)), "alt", "equal: the first one")
+
 	-- Minimap button (LibDataBroker + LibDBIcon + LibCustomGlow, like Gargul).
 	local calls = { shown = nil, glowStarted = 0, glowStopped = 0 }
 	local fakeButton = {}
@@ -532,6 +556,14 @@ test("tabs, rows and tooltip run against real pool data", function()
 	calls.object.OnTooltipShow({ AddLine = function(_, t) lines[#lines + 1] = t end,
 		AddDoubleLine = function(_, l, r) lines[#lines + 1] = l .. " = " .. r end })
 	truthy(table.concat(lines, "|"):find("Recipe 3915 = ", 1, true), "tooltip lists the wished recipe and who is online")
+	-- Opening the Wishlist tab: seen, the glow stops; the tooltip still lists it.
+	cb.ns.UI.Show("wishlist")
+	eq(MB.glowing, false, "seen in the Wishlist tab: no glow")
+	lines = {}
+	calls.object.OnTooltipShow({ AddLine = function(_, t) lines[#lines + 1] = t end,
+		AddDoubleLine = function(_, l, r) lines[#lines + 1] = l .. " = " .. r end })
+	truthy(table.concat(lines, "|"):find("Recipe 3915 = ", 1, true), "still in the tooltip")
+	eq(MB.glowing, false, "the tooltip does not turn it back on")
 
 	cb.ns.Wishlist.Toggle(3914)
 	cb.ns.Wishlist.Toggle(3915)

@@ -25,8 +25,8 @@ end
 local function onTooltipShow(tooltip)
 	tooltip:AddLine(L.TITLE, 1, 1, 1)
 	local ready = ns.Wishlist.ReadyNow()
-	if (#ready > 0) ~= MinimapButton.glowing then
-		ns.Debug("minimap glow out of date (should be", tostring(#ready > 0) .. "), updating")
+	if ns.Wishlist.HasNew() ~= MinimapButton.glowing then
+		ns.Debug("minimap glow out of date, updating")
 		MinimapButton.Update()
 	end
 	if #ready > 0 then
@@ -69,10 +69,11 @@ local function register()
 	MinimapButton.registered = true
 end
 
--- Glow while a wished recipe has an online crafter (other than you).
+-- Glow while a wished recipe has an online crafter (other than you) not seen
+-- in the Wishlist tab yet.
 function MinimapButton.Update()
 	local _, icon, glow = libs()
-	local glowing = #ns.Wishlist.ReadyNow() > 0
+	local glowing = ns.Wishlist.HasNew()
 	if glowing ~= MinimapButton.glowing then
 		ns.Debug("minimap glow:", tostring(glowing))
 	end
@@ -96,9 +97,8 @@ end
 -- "/gtb glow": what the glow should show and what it does, for the log.
 function MinimapButton.Report()
 	local ldb, icon, glow = libs()
-	local ready = ns.Wishlist.ReadyNow()
-	ns.Print(("glow: should=%s option=%s libs: LDB=%s DBIcon=%s CustomGlow=%s"):format(
-		tostring(#ready > 0), tostring(ns.db.options.minimapButton), tostring(ldb ~= nil), tostring(icon ~= nil),
+	ns.Print(("glow: should=%s (ready=%d) option=%s libs: LDB=%s DBIcon=%s CustomGlow=%s"):format(
+		tostring(ns.Wishlist.HasNew()), #ns.Wishlist.ReadyNow(), tostring(ns.db.options.minimapButton), tostring(ldb ~= nil), tostring(icon ~= nil),
 		tostring(glow ~= nil)))
 	MinimapButton.Update()
 	local button = icon and icon:GetMinimapButton(ADDON)
@@ -150,5 +150,6 @@ function MinimapButton.Start()
 	ns.On("RosterUpdated", updateSoon)
 	ns.On("RecordsChanged", updateSoon)
 	ns.On("WishlistChanged", updateSoon)
+	ns.On("WishlistSeen", MinimapButton.Update)
 	ns.On("GuildChanged", updateSoon)
 end
