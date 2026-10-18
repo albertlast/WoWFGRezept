@@ -44,6 +44,76 @@ function Categories.Order(id)
 	return cat and cat.order or nil
 end
 
+--[[
+Groups, as the Recipes tab and the tooltip filter see them: the category
+when it has a name, else OTHER (0).
+]]
+Categories.OTHER = 0
+
+function Categories.Group(recipeID)
+	local id = Categories.Of(recipeID)
+	return (id and Categories.Name(id)) and id or Categories.OTHER
+end
+
+function Categories.Label(id)
+	return id ~= Categories.OTHER and Categories.Name(id) or ns.L.CATEGORY_OTHER
+end
+
+-- Sorts group IDs like the profession window: the game's order, then by
+-- name; OTHER last.
+function Categories.SortGroups(ids)
+	table.sort(ids, function(a, b)
+		if (a == Categories.OTHER) ~= (b == Categories.OTHER) then return b == Categories.OTHER end
+		local oa, ob = Categories.Order(a), Categories.Order(b)
+		if oa and ob and oa ~= ob then return oa < ob end
+		local na, nb = Categories.Label(a), Categories.Label(b)
+		if na ~= nb then return na < nb end
+		return a < b
+	end)
+end
+
+--[[
+Tooltip filter: professions and groups whose crafters are not named in item
+tooltips ("everyone makes bandages"). ns.db.tooltipHidden holds keys:
+  "p:<skillLine>"   a whole profession
+  "c:<categoryID>"  one category (the IDs are unique across professions)
+  "o:<skillLine>"   the recipes of a profession without a named category
+]]
+function Categories.FilterKey(kind, id)
+	return kind .. ":" .. id
+end
+
+function Categories.IsKeyHidden(key)
+	return ns.db.tooltipHidden[key] == true
+end
+
+function Categories.SetKeyHidden(key, hidden)
+	ns.db.tooltipHidden[key] = hidden and true or nil
+end
+
+-- True if the recipe is hidden by its profession or its group.
+function Categories.IsHidden(recipeID)
+	local hidden = ns.db.tooltipHidden
+	if not next(hidden) then return false end
+	local sl = ns.Index.recipeSkill[recipeID]
+	if sl and hidden["p:" .. sl] then return true end
+	local group = Categories.Group(recipeID)
+	if group ~= Categories.OTHER then
+		return hidden["c:" .. group] == true
+	end
+	return sl ~= nil and hidden["o:" .. sl] == true
+end
+
+-- The recipes that are not hidden (a new list).
+function Categories.Visible(recipeIDs)
+	ns.Index.Ensure()
+	local out = {}
+	for _, rid in ipairs(recipeIDs) do
+		if not Categories.IsHidden(rid) then out[#out + 1] = rid end
+	end
+	return out
+end
+
 local function online(guid)
 	local m = Roster.Get(guid)
 	return m ~= nil and m.online == true

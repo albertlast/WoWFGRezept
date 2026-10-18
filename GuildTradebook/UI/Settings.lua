@@ -4,6 +4,8 @@ Settings API. The checkboxes write straight into GuildTradebookDB.options,
 which the rest of the addon reads on every use, so changes apply at once.
 Sub-page "Stat weights": one slider per stat for the Upgrades tab, stored
 per character (GuildTradebookCharDB.statWeights; class and spec differ).
+Sub-page "Tooltip filter": professions and groups left out of item tooltips
+(UI/FilterPage.lua).
 ]]
 local ADDON, ns = ...
 
@@ -46,6 +48,7 @@ function Settings_.Register()
 	end
 	-- Sub-pages exist before the page is registered.
 	Settings_.RegisterWeights(category)
+	if ns.FilterPage then ns.FilterPage.Register(category) end
 	Settings.RegisterAddOnCategory(category)
 	Settings_.category = category
 end

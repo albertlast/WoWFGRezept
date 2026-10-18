@@ -123,12 +123,16 @@ local function uiEnv(client)
 		end,
 		CreateSliderOptions = function(min, max, step) return { min = min, max = max, step = step } end,
 		CreateSlider = function(_, setting, options) setting.slider = options end,
+		RegisterCanvasLayoutSubcategory = function(parent, frame, name)
+			registered.canvas = { parent = parent, frame = frame, name = name }
+			return registered.canvas
+		end,
 		RegisterAddOnCategory = function(category) registered.category = category end,
 		OpenToCategory = function(id) registered.opened = id end,
 	}
 	env.ITEM_MOD_INTELLECT_SHORT = "Intellect"
 	env.CHESTSLOT = "Chest"
-	for _, file in ipairs({ "UI/Widgets.lua", "UI/Main.lua", "UI/SearchTab.lua", "UI/UpgradeTab.lua", "UI/WishlistTab.lua", "UI/MembersTab.lua", "UI/Tooltip.lua", "UI/Settings.lua", "UI/MinimapButton.lua" }) do
+	for _, file in ipairs({ "UI/Widgets.lua", "UI/Main.lua", "UI/SearchTab.lua", "UI/UpgradeTab.lua", "UI/WishlistTab.lua", "UI/MembersTab.lua", "UI/Tooltip.lua", "UI/FilterPage.lua", "UI/Settings.lua", "UI/MinimapButton.lua" }) do
 		local chunk = assert(loadfile(H.ADDON_DIR .. file, "t", env))
 		chunk("GuildTradebook", client.ns)
 	end
@@ -280,6 +284,9 @@ test("tabs, rows and tooltip run against real pool data", function()
 		eq(s.tbl[s.key], 1)
 		eq(s.slider.max, 5)
 	end
+	eq(ui.settings.canvas.name, "Tooltip filter", "sub-page for the tooltip filter")
+	eq(ui.settings.canvas.parent, ui.settings.category or ui.settings.canvas.parent)
+	cb.ns.FilterPage.Refresh() -- renders (mock rows) without error
 	eq(ui.settings.category.name, "Guild Tradebook")
 	cb.ns.Settings.Open()
 	eq(ui.settings.opened, 42, "fallback without C_SettingsUtil")
@@ -344,6 +351,74 @@ test("tabs, rows and tooltip run against real pool data", function()
 	eq(shape(RL.Rows(all, true, always)), "#197/2,Umhänge/1,3915,Other/1,3914", "Other last")
 	dbB.categories[11] = { order = 2, names = { enUS = "Cloaks" } }
 	eq(shape(RL.Rows(all, true, always)), "#197/2,Umhänge/1,3915,Cloaks/1,3914", "by the game's order")
+
+	-- Tooltip filter page: professions with their groups; marks hide recipes.
+	local FP, Cats = cb.ns.FilterPage, cb.ns.Categories
+	local function tree()
+		local out = {}
+		for _, r in ipairs(FP.Rows()) do
+			out[#out + 1] = (r.kind == "profession" and "P:" or "g:") .. r.label .. "/" .. r.count
+				.. (r.hidden and "!" or "") .. (r.locked and "L" or "")
+		end
+		return table.concat(out, ",")
+	end
+	-- Default: First Aid and Fishing are hidden; nothing else is.
+	eq(dbB.tooltipHidden["p:129"], true)
+	eq(dbB.tooltipHidden["p:356"], true)
+	eq(Cats.IsHidden(3914), false, "Tailoring is not hidden by default")
+	-- By profession, so a recipe of a profession that shows up later is hidden
+	-- at once (a fresh install knows no professions yet).
+	cb.ns.Index.recipeSkill[99999] = 129
+	eq(Cats.IsHidden(99999), true, "a First Aid recipe")
+	cb.ns.Index.recipeSkill[99999] = nil
+	dbB.tooltipHidden = {} -- a user who cleared everything
+	cb.ns.db.tooltipHidden = dbB.tooltipHidden
+	local savedTooltip = cb.env.GameTooltip
+	cb.env.GameTooltip = tooltip -- the hooks act on the game tooltip only
+	eq(tree(), "P:#197/2", "closed profession")
+	FP.open["p:197"] = true
+	eq(tree(), "P:#197/2,g:Umhänge/1,g:Cloaks/1")
+	eq(FP.Rows()[1].groups, 2)
+	eq(Cats.IsHidden(3914), false)
+	eq(#linesFor(2568) > 0, true, "crafters shown")
+	dbB.tooltipHidden["c:11"] = true -- Cloaks
+	eq(tree(), "P:#197/2,g:Umhänge/1,g:Cloaks/1!")
+	eq(FP.Rows()[1].hiddenGroups, 1)
+	eq(Cats.IsHidden(3914), true, "the hidden group")
+	eq(Cats.IsHidden(3915), false, "the other group stays")
+	eq(#linesFor(2568), 0, "no crafters line for a hidden group")
+	eq(#linesFor(2569) > 0, true, "other group still shown")
+	dbB.tooltipHidden["p:197"] = true
+	eq(tree(), "P:#197/2!,g:Umhänge/1!L,g:Cloaks/1!L", "a profession hides and locks its groups")
+	eq(#linesFor(2569), 0, "the whole profession hidden")
+	eq(#linesFor(9001), 0, "no 'known in your guild' for its recipes either")
+	eq(#Cats.Visible({ 3914, 3915 }), 0)
+	-- Unmarking the profession shows everything of it again, also groups
+	-- marked on their own before.
+	FP.SetHidden(FP.Rows()[2], false) -- locked group: no change
+	eq(Cats.IsHidden(3914), true)
+	FP.SetHidden(FP.Rows()[1], false)
+	eq(next(dbB.tooltipHidden), nil, "all marks of the profession are gone")
+	eq(Cats.IsHidden(3914) or Cats.IsHidden(3915), false)
+	-- Marking a profession replaces the marks of its groups.
+	FP.SetHidden(FP.Rows()[2], true)
+	eq(dbB.tooltipHidden["c:10"], true)
+	FP.SetHidden(FP.Rows()[1], true)
+	eq(dbB.tooltipHidden["c:10"], nil, "the profession covers its groups")
+	eq(dbB.tooltipHidden["p:197"], true)
+	FP.SetHidden(FP.Rows()[1], false)
+	eq(next(dbB.tooltipHidden), nil)
+	-- Recipes without a named category: the group "Other" of the profession.
+	dbB.recipeFacts[3915].cat, dbB.recipeFacts[3914].cat = nil, nil
+	FP.open["p:197"] = true
+	eq(tree(), "P:#197/2,g:Other/2")
+	dbB.tooltipHidden["o:197"] = true
+	eq(Cats.IsHidden(3914) and Cats.IsHidden(3915), true, "Other hidden")
+	dbB.tooltipHidden["o:197"] = nil
+	dbB.recipeFacts[3915].cat = 10
+	dbB.recipeFacts[3914].cat = 11
+	FP.open["p:197"] = nil
+	cb.env.GameTooltip = savedTooltip
 	eq(shape(RL.Rows(all, false, always)), "Umhänge/1,3915,Cloaks/1,3914", "one profession: categories only")
 	eq(shape(RL.Rows(all, true, function(key) return key == "p:197" end)), "#197/2,Umhänge/1,Cloaks/1", "closed categories")
 	eq(shape(RL.Rows(all, true, function() return false end)), "#197/2", "closed profession")

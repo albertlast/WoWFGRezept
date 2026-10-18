@@ -39,6 +39,7 @@ UI\UpgradeTab.lua
 UI\WishlistTab.lua
 UI\MembersTab.lua
 UI\Tooltip.lua
+UI\FilterPage.lua
 UI\Settings.lua
 UI\MinimapButton.lua
 

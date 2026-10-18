@@ -422,6 +422,23 @@ test("grey skills: unhashed, on the wire in recipe order, filled in later", func
 	eq(db.recipeFacts[3].trivial, nil)
 end)
 
+test("tooltip filter: First Aid and Fishing hidden by default, the user's marks stay", function()
+	local db = Store.InitDB(nil)
+	eq(db.tooltipHidden["p:129"], true, "First Aid, before any profession is known")
+	eq(db.tooltipHidden["p:356"], true, "Fishing")
+	eq(ns.Util.Count(db.tooltipHidden), 2, "nothing else")
+	db.tooltipHidden["p:129"] = nil -- the user shows First Aid again
+	db.tooltipHidden["c:7"] = true
+	local again = Store.InitDB(db)
+	eq(again.tooltipHidden["p:129"], nil, "not marked again")
+	eq(again.tooltipHidden["c:7"], true)
+	local cleared = Store.InitDB({ schema = Store.SCHEMA, tooltipHidden = {} })
+	eq(next(cleared.tooltipHidden), nil, "'Show everything' stays")
+	-- Defaults are copies: marks do not leak into the constant.
+	db.tooltipHidden["p:1"] = true
+	eq(Store.TOOLTIP_HIDDEN_DEFAULT["p:1"], nil)
+end)
+
 test("category names: own language first, then English, German, any", function()
 	local db = Store.InitDB(nil)
 	eq(Store.SetCategory(db, 10, { order = 3, names = { frFR = "Capes" } }, false), true)

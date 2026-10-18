@@ -38,6 +38,12 @@ Store.COOLDOWN_TOLERANCE = 120      -- seconds of drift ignored when re-reading 
 -- the crafter is listed, but never as ready. Far in the future, so 0.1.0
 -- clients (which accept up to 2^40) also never show it as ready.
 Store.CD_HIDDEN = 2 ^ 38
+-- Professions left out of item tooltips until the user marks them again
+-- (settings, "Tooltip filter"): everyone makes bandages and fish dishes.
+Store.TOOLTIP_HIDDEN_DEFAULT = {
+	["p:129"] = true,  -- First Aid
+	["p:356"] = true,  -- Fishing
+}
 Store.NUM_BUCKETS = 16
 
 -- Professions are shared when the game gives them a crafting window (see
@@ -92,6 +98,12 @@ function Store.InitDB(saved)
 	saved.guilds = saved.guilds or {}
 	saved.recipeFacts = saved.recipeFacts or {}
 	saved.categories = saved.categories or {}
+	if type(saved.tooltipHidden) ~= "table" then
+		-- Not set up yet: the default filter. It is by skill line, so it works
+		-- before a single profession is known; later marks are the user's.
+		saved.tooltipHidden = {}
+		for key in pairs(Store.TOOLTIP_HIDDEN_DEFAULT) do saved.tooltipHidden[key] = true end
+	end
 	saved.account = saved.account or {}
 	saved.account.chars = saved.account.chars or {}
 	saved.options = saved.options or {}

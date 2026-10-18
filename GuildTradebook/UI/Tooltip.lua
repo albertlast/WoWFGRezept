@@ -118,6 +118,8 @@ local function onRecipeItem(tooltip, name, subclassID)
 	local taught = name:match("^[^:]+:%s*(.+)$")
 	if not taught then return end
 	local known = recipesByName(taught)
+	known = known and ns.Categories.Visible(known)
+	if known and #known == 0 then return end -- hidden by the tooltip filter
 	local crafters = known and craftersOf(known) or {}
 	if #crafters > 0 then
 		tooltip:AddLine(L.TOOLTIP_KNOWN_BY:format(#crafters) .. " " .. Tooltip.CrafterText(crafters), 0.4, 0.8, 1, true)
@@ -132,7 +134,8 @@ local function onItem(tooltip, itemID)
 
 	local rids = Index.RecipesForItem(itemID)
 	if rids then
-		local crafters = options.tooltip and craftersOf(rids) or {}
+		rids = ns.Categories.Visible(rids) -- tooltip filter (settings)
+		local crafters = options.tooltip and #rids > 0 and craftersOf(rids) or {}
 		if #crafters > MAX_NAMES then
 			tooltip:AddLine(L.TOOLTIP_CRAFTABLE .. " " .. L.TOOLTIP_MEMBERS:format(#crafters)
 				.. " (" .. Tooltip.CrafterText(crafters) .. ")", 0.4, 0.8, 1, true)

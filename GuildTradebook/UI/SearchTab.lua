@@ -107,14 +107,7 @@ function RecipeList.Rows(results, allProfessions, isOpen, bySkillOrder)
 			if #ids == 1 and ids[1] == OTHER then
 				add(cats[OTHER], level)
 			else
-				table.sort(ids, function(a, b)
-					if (a == OTHER) ~= (b == OTHER) then return b == OTHER end
-					local oa, ob = Categories.Order(a), Categories.Order(b)
-					if oa and ob and oa ~= ob then return oa < ob end
-					local na, nb = categoryLabel(a), categoryLabel(b)
-					if na ~= nb then return na < nb end
-					return a < b
-				end)
+				Categories.SortGroups(ids)
 				for _, id in ipairs(ids) do
 					local key = "c:" .. sl .. ":" .. id
 					local open = isOpen(key)

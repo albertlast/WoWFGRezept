@@ -2,6 +2,7 @@
 
 ## 0.5.0 (in development)
 
+- Tooltip filter: a new settings sub-page ("Tooltip filter") lists all professions of the guild pool with their groups (categories) as an open/close tree. Mark a profession or a group and item tooltips no longer show who can craft it ("Craftable by guild", "Known in your guild"), e.g. First Aid bandages that everyone makes. First Aid and Fishing are hidden by default (from the first start, before any profession is known); unmark them to see them again. A marked profession hides all its groups; clicking its check mark (marking or unmarking) clears the marks of its groups, so unmarking shows everything of it again. "Show everything" resets all. The Recipes tab, `!craft` and the wishlist are not affected.
 - Item tooltips ("Craftable by guild", "Known in your guild by"): every person is listed once. Before, two characters of the same player (you and your alt, or an online character and its offline alt shown as "Alt (Main)") were two entries and counted as two members. Now the one you can reach best is shown: you, else the online one, else the one reachable through another online character.
 
 - Minimap glow means "something new": opening the Wishlist tab counts the crafters online now as seen, and the glow comes back only for a crafter you have not seen yet this session (or one who went offline and returned). The tooltip still lists everyone online for your wishes.
