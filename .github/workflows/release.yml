@@ -1,0 +1,53 @@
+name: Release
+
+# Release: set "## Version" in the TOC to 0.6.0 (no -dev), date the CHANGELOG entry,
+# commit, then:  git tag -a v0.6.0 -m "Guild Tradebook 0.6.0" && git push origin v0.6.0
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # GitHub release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # package.py takes the build number from the commit time
+
+      - name: Tag matches the TOC version
+        run: |
+          toc=$(sed -n 's/^## Version: \([^[:space:]]*\).*/\1/p' GuildTradebook/GuildTradebook.toc)
+          if [ "v$toc" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match TOC version $toc" >&2
+            exit 1
+          fi
+
+      - name: Tests
+        run: |
+          sudo apt-get install -y --no-install-recommends lua5.4
+          lua5.4 tests/run.lua
+
+      - name: Package
+        run: python3 tools/package.py
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python3 tools/changelog.py "$version" > notes.md
+          prerelease=""
+          case "$version" in *alpha*|*beta*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "dist/GuildTradebook-$version.zip" \
+            --title "$version" --notes-file notes.md $prerelease
+
+      - name: CurseForge
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python3 tools/upload_curseforge.py "dist/GuildTradebook-$version.zip" "$version"

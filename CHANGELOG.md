@@ -3,6 +3,7 @@
 ## 0.6.0 (in development)
 
 - The TOC carries the CurseForge project ID (`X-Curse-Project-ID`), so the CurseForge app recognizes the addon.
+- Release pipeline: pushing a tag `vX.Y.Z` runs the tests, builds the zip with `tools/package.py`, creates the GitHub release and uploads to CurseForge (`.github/workflows/release.yml`).
 
 ## 0.5.0 (2026-10-18)
 
