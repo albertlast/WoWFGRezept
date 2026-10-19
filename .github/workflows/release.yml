@@ -39,7 +39,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          python3 tools/changelog.py "$version" > notes.md
+          python3 tools/changelog.py "${version%%-*}" > notes.md # a beta shares its release's entry
           prerelease=""
           case "$version" in *alpha*|*beta*) prerelease="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" "dist/GuildTradebook-$version.zip" \
