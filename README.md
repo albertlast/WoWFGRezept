@@ -30,6 +30,10 @@ Every guild member running the addon shares their recipes automatically, and mem
 
 ![Members tab, Players view: players with professions, skill levels and data age](docs/screenshots/members-players.png)
 
+**Item tooltip:** items a guild member can craft show "Craftable by guild" with the number of crafters and who is online. Patterns and recipes show who in the guild already knows them.
+
+![Item tooltip: Roasted Boar Meat, craftable by 6 guild members](docs/screenshots/item-tooltip-craftable.png)
+
 **Player tooltip:** hovering a guild member, in the world or on a unit frame, adds their professions with skill levels (`Herbalism 28/75`) to the tooltip, one line per primary profession.
 
 ![Player tooltip with a profession line: Herbalism 28/75](docs/screenshots/tooltip-player-professions.png)

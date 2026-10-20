@@ -59,6 +59,8 @@ See who shares what and how fresh it is. The **Professions** view shows who is c
 
 "Craftable by guild: ..." on items, "Known in your guild by ..." on recipes, and the professions of a guild member when you hover them. A **tooltip filter** in the settings hides basics everyone makes (First Aid and Fishing are off by default).
 
+![Item tooltip with the guild crafters](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/item-tooltip-craftable.png)
+
 ![Player tooltip with professions](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/tooltip-player-professions.png)
 
 ## More
@@ -154,6 +156,8 @@ Wer teilt was, und wie aktuell sind die Daten? Die Ansicht **Berufe** zeigt, wer
 
 „Herstellbar in der Gilde: …“ bei Gegenständen, „In deiner Gilde bekannt bei …“ bei Rezepten und die Berufe eines Gildenmitglieds, wenn du die Maus darauf hältst. Ein **Tooltip-Filter** in den Einstellungen blendet Alltägliches aus, das jeder kann (Erste Hilfe und Angeln sind standardmäßig aus).
 
+![Item-Tooltip mit den Herstellern der Gilde](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/item-tooltip-craftable.png)
+
 ![Spieler-Tooltip mit Berufen](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/tooltip-player-professions.png)
 
 ## Mehr
@@ -205,4 +209,5 @@ Die Bilder liegen in `docs/screenshots/` und sind in der Beschreibung über `raw
 | `minimap-glow.png` | Der Minimap-Knopf leuchtet, wenn ein Hersteller online kommt | The minimap button glows when a crafter comes online |
 | `members-professions.png` | Berufe der Gilde mit Mitgliederzahl und höchster Stufe | Guild professions with member count and highest skill |
 | `members-players.png` | Spieler mit Charakteren, Berufen und Alter der Daten | Players with characters, professions and age of the data |
+| `item-tooltip-craftable.png` | „Herstellbar in der Gilde“ direkt im Item-Tooltip | "Craftable by guild" right in the item tooltip |
 | `tooltip-player-professions.png` | Berufe im Spieler-Tooltip | Professions in the player tooltip |
