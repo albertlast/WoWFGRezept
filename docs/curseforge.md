@@ -11,7 +11,7 @@ Not part of the addon zip. Update the file list and the changelog with every upl
 | Author | albertlast |
 | Project ID | 1752487 (`## X-Curse-Project-ID` in the TOC) |
 | Categories | Professions, Guild, Tooltip (whatever the form offers that fits) |
-| Source / issues | none yet (no public repository) |
+| Source / issues | https://github.com/albertlast/WoWFGRezept (public) |
 | License | your choice; the form requires one ("All Rights Reserved" is allowed) |
 
 ### Summary (max. 250 characters)
@@ -27,13 +27,42 @@ Guild recipe sharing: every member who runs the addon shares their recipes, so y
 
 Built for **World of Warcraft: Forever** (interface 16001). Available in English and German.
 
-## Features
+## Recipes
 
-- **Recipes tab:** search all guild recipes, filter by profession, grouped like the profession window (profession > category, collapsible, in the window's order). Click a recipe to see who can craft it (online first, click to whisper) and the reagents.
-- **Upgrades tab:** pick an item type, a slot and the stats you care about; the addon lists craftable items by guild members that beat your equipped item and shows how many levels you still need. Stat weights per stat in the settings.
-- **Wishlist:** mark recipes you want. A chat notice (and a glowing minimap button) tells you when a crafter comes online. Pause single wishes if you do not want to be bothered.
-- **Members tab:** every member with their professions and crafting cooldowns (you can choose not to share yours), search by name, alts grouped under one player.
-- **Tooltips:** "Craftable by guild: ..." on items, "Known in your guild by ..." on recipes, professions on player tooltips. A **tooltip filter** in the settings hides basics everyone makes (First Aid and Fishing are off by default).
+Every recipe the guild can craft, grouped like the profession window (profession > category). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, click to whisper) and the reagents with how many you have against how many you need.
+
+![Recipes tab](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
+
+## Upgrades
+
+Pick an item type, a slot and the stats you care about. The addon lists craftable items by guild members that beat what you wear, with the stat gain and how many levels you still need. You can give every stat its own weight in the settings.
+
+![Upgrades tab](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/upgrades.png)
+
+## Wishlist
+
+Mark the recipes you want. When a guild member who can craft one comes online, you get a chat notice and the minimap button starts to glow. Pause single wishes if you do not want to be bothered.
+
+![Wishlist tab](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/wishlist.png)
+
+![Glowing minimap button](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/minimap-glow.png)
+
+## Members
+
+See who shares what and how fresh it is. The **Professions** view shows who is close to the skill cap and which profession your guild still lacks; the **Players** view lists every player with their characters, skill levels and crafting cooldowns (you can choose not to share yours). Alts are grouped under one player, and members without the addon show up with the professions the server reports.
+
+![Members tab, Professions view](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/members-professions.png)
+
+![Members tab, Players view](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/members-players.png)
+
+## Tooltips
+
+"Craftable by guild: ..." on items, "Known in your guild by ..." on recipes, and the professions of a guild member when you hover them. A **tooltip filter** in the settings hides basics everyone makes (First Aid and Fishing are off by default).
+
+![Player tooltip with professions](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/tooltip-player-professions.png)
+
+## More
+
 - **`!craft <item>` in guild chat:** the addon answers by whisper for members without the addon (can be turned off).
 - **Export** of the guild data as JSON for Discord bots or spreadsheets (`/gtb export`).
 
@@ -50,7 +79,9 @@ Built for **World of Warcraft: Forever** (interface 16001). Available in English
 - Rogue Poisons are not shared (a class skill, everyone makes their own).
 - Settings: Options > AddOns > Guild Tradebook (sub-pages: stat weights, tooltip filter). `/gtb` shows all commands.
 
-Questions or bugs? Use the comments or message the author.
+Source code and issues: https://github.com/albertlast/WoWFGRezept
+
+Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
 ## File upload (0.5.0)
@@ -91,13 +122,42 @@ Gildenrezepte automatisch teilen: Such nach, was jeder in der Gilde herstellen k
 
 Gebaut für **World of Warcraft: Forever** (Interface 16001). Auf Englisch und Deutsch.
 
-## Funktionen
+## Rezepte
 
-- **Reiter Rezepte:** alle Gildenrezepte durchsuchen, nach Beruf filtern, gruppiert wie im Berufsfenster (Beruf > Kategorie, einklappbar, in der Reihenfolge des Fensters). Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien.
-- **Reiter Verbesserungen:** Gegenstandsart, Platz und die Werte wählen, die dir wichtig sind. Das Addon listet herstellbare Gegenstände von Gildenmitgliedern, die besser sind als dein angelegter, und zeigt, wie viele Stufen dir noch fehlen. Gewichtung pro Wert in den Einstellungen.
-- **Wunschliste:** Rezepte markieren, die du haben willst. Ein Chat-Hinweis (und ein leuchtender Minimap-Knopf) meldet, wenn ein Hersteller online kommt. Einzelne Wünsche lassen sich pausieren.
-- **Reiter Mitglieder:** alle Mitglieder mit Berufen und Herstellungs-Abklingzeiten (deine eigenen kannst du für dich behalten), Suche nach Namen, Twinks unter einem Spieler zusammengefasst.
-- **Tooltips:** „Herstellbar in der Gilde: …“ bei Gegenständen, „In deiner Gilde bekannt bei …“ bei Rezepten, Berufe im Spieler-Tooltip. Ein **Tooltip-Filter** in den Einstellungen blendet Alltägliches aus, das jeder kann (Erste Hilfe und Angeln sind standardmäßig aus).
+Alle Rezepte, die die Gilde herstellen kann, gruppiert wie im Berufsfenster (Beruf > Kategorie). Suche nach Rezept- oder Gegenstandsnamen oder filtere nach Beruf. Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien mit dem, was du hast, und dem, was du brauchst.
+
+![Reiter Rezepte](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
+
+## Verbesserungen
+
+Wähle Gegenstandsart, Platz und die Werte, die dir wichtig sind. Das Addon listet herstellbare Gegenstände von Gildenmitgliedern, die besser sind als dein angelegter, mit dem Wertegewinn und den Stufen, die dir noch fehlen. In den Einstellungen bekommt jeder Wert sein eigenes Gewicht.
+
+![Reiter Verbesserungen](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/upgrades.png)
+
+## Wunschliste
+
+Markiere die Rezepte, die du haben willst. Sobald ein Gildenmitglied online kommt, das eines herstellen kann, bekommst du einen Chat-Hinweis und der Minimap-Knopf beginnt zu leuchten. Einzelne Wünsche lassen sich pausieren.
+
+![Reiter Wunschliste](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/wishlist.png)
+
+![Leuchtender Minimap-Knopf](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/minimap-glow.png)
+
+## Mitglieder
+
+Wer teilt was, und wie aktuell sind die Daten? Die Ansicht **Berufe** zeigt, wer kurz vor der Maximalstufe steht und welcher Beruf in der Gilde noch fehlt; die Ansicht **Spieler** listet jeden Spieler mit seinen Charakteren, Skillstufen und Abklingzeiten (deine eigenen kannst du für dich behalten). Twinks sind unter einem Spieler zusammengefasst, und Mitglieder ohne das Addon erscheinen mit den Berufen, die der Server meldet.
+
+![Reiter Mitglieder, Ansicht Berufe](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/members-professions.png)
+
+![Reiter Mitglieder, Ansicht Spieler](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/members-players.png)
+
+## Tooltips
+
+„Herstellbar in der Gilde: …“ bei Gegenständen, „In deiner Gilde bekannt bei …“ bei Rezepten und die Berufe eines Gildenmitglieds, wenn du die Maus darauf hältst. Ein **Tooltip-Filter** in den Einstellungen blendet Alltägliches aus, das jeder kann (Erste Hilfe und Angeln sind standardmäßig aus).
+
+![Spieler-Tooltip mit Berufen](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/tooltip-player-professions.png)
+
+## Mehr
+
 - **`!craft <Gegenstand>` im Gildenchat:** Das Addon antwortet per Flüstern für Mitglieder ohne das Addon (abschaltbar).
 - **Export** der Gildendaten als JSON für Discord-Bots oder Tabellen (`/gtb export`).
 
@@ -114,7 +174,9 @@ Gebaut für **World of Warcraft: Forever** (Interface 16001). Auf Englisch und D
 - Schurken-Gifte werden nicht geteilt (Klassenfertigkeit, jeder macht seine eigenen).
 - Einstellungen: Optionen > AddOns > Guild Tradebook (Unterseiten: Wertegewichtung, Tooltip-Filter). `/gtb` zeigt alle Befehle.
 
-Fragen oder Fehler? Schreib einen Kommentar oder melde dich beim Autor.
+Quellcode und Fehlermeldungen: https://github.com/albertlast/WoWFGRezept
+
+Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich beim Autor.
 ```
 
 ### Changelog (Markdown)
@@ -133,11 +195,14 @@ Fragen oder Fehler? Schreib einen Kommentar oder melde dich beim Autor.
 
 ### Bildunterschriften für Screenshots
 
-| Bild | Deutsch | English |
+Die Bilder liegen in `docs/screenshots/` und sind in der Beschreibung über `raw.githubusercontent.com` eingebunden (erst nach dem Push auf `main`). Für die Galerie des Projekts (Reiter Images) werden dieselben Dateien hochgeladen.
+
+| Datei | Deutsch | English |
 |---|---|---|
-| Rezepte-Tab (ein Beruf aufgeklappt) | Alle Gildenrezepte durchsuchen, gruppiert wie im Berufsfenster | Search every guild recipe, grouped like the profession window |
-| Rezept mit Herstellerliste | Wer es herstellen kann, online zuerst, mit Materialien | Who can craft it, online first, with reagents |
-| Wunschliste mit Pause/Entfernen | Wunschliste mit Hinweis, wenn ein Hersteller online kommt | Wishlist with a notice when a crafter comes online |
-| Verbesserungen-Tab | Herstellbare Verbesserungen für dich, mit den Stufen bis zur Nutzbarkeit | Craftable upgrades for you, with levels until usable |
-| Tooltip eines Gegenstands | „Herstellbar in der Gilde“ direkt im Item-Tooltip | "Craftable by guild" right in the item tooltip |
-| Einstellungsseite Tooltip-Filter | Berufe und Gruppen im Tooltip ausblenden | Hide professions and groups in tooltips |
+| `recipes.png` | Alle Gildenrezepte, gruppiert wie im Berufsfenster, mit Herstellern und Materialien | Every guild recipe, grouped like the profession window, with crafters and reagents |
+| `upgrades.png` | Herstellbare Verbesserungen für dich, mit den Stufen bis zur Nutzbarkeit | Craftable upgrades for you, with the levels until usable |
+| `wishlist.png` | Wunschliste mit Pause und Entfernen | Wishlist with Pause and Remove |
+| `minimap-glow.png` | Der Minimap-Knopf leuchtet, wenn ein Hersteller online kommt | The minimap button glows when a crafter comes online |
+| `members-professions.png` | Berufe der Gilde mit Mitgliederzahl und höchster Stufe | Guild professions with member count and highest skill |
+| `members-players.png` | Spieler mit Charakteren, Berufen und Alter der Daten | Players with characters, professions and age of the data |
+| `tooltip-player-professions.png` | Berufe im Spieler-Tooltip | Professions in the player tooltip |

@@ -4,6 +4,36 @@ Guild recipe sharing for **World of Warcraft: Forever** (interface 16001).
 
 Every guild member running the addon shares their recipes automatically, and members relay the recipes of others. You can search all guild recipes, even when the crafter is offline. You can also find **gear upgrades** that guild members can craft for you.
 
+## Screenshots
+
+**Recipes:** every recipe the guild can craft, grouped like the profession window (profession > category, with the recipe count). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, then the most recently confirmed; click to whisper) and the reagents with how many you have against how many you need (red = missing). **Add to wishlist** puts it on your wishlist.
+
+![Recipes tab: Camp Chair with its reagents and the guild members who craft it](docs/screenshots/recipes.png)
+
+**Upgrades:** pick an item type, a slot and the stats you care about. The list shows craftable items that beat what you wear, with the gain (`+9`) and, for items you cannot wear yet, how many levels you still need (`in 9 levels`). The crafters are listed on the right. Bind-on-pickup items and non-upgrades can be shown, and the level range is adjustable.
+
+![Upgrades tab: craftable leather items for Strength, with the stat gain and the crafters](docs/screenshots/upgrades.png)
+
+**Wishlist:** the recipes you want, with the guild members who can craft each one on the right (a green marker means online). Click a wish to open the recipe. **Pause** keeps a wish on the list without notices, sound or glow; **Remove** deletes it.
+
+![Wishlist tab: one wish with Pause and Remove buttons and its crafters](docs/screenshots/wishlist.png)
+
+**Minimap button:** it glows when a guild member who can craft something on your wishlist comes online. Hovering shows what and who, and a click opens the Wishlist.
+
+![Minimap button glowing yellow because a crafter of a wishlist recipe is online](docs/screenshots/minimap-glow.png)
+
+**Members, Professions view:** one group per profession with the number of members and the highest skill in it: who is close to the cap, and which profession the guild still lacks. Secondary professions (Cooking, First Aid, Fishing) are dimmed.
+
+![Members tab, Professions view: professions with member count and highest skill](docs/screenshots/members-professions.png)
+
+**Members, Players view:** each player with their characters, professions, skill levels and recipe counts, how fresh the data is (`confirmed 9d ago`) and crafting cooldowns that are ready. A profession that has not been opened yet shows `not scanned yet`. Guild members without the addon are listed greyed out with the professions the server reports for them.
+
+![Members tab, Players view: players with professions, skill levels and data age](docs/screenshots/members-players.png)
+
+**Player tooltip:** hovering a guild member, in the world or on a unit frame, adds their professions with skill levels (`Herbalism 28/75`) to the tooltip, one line per primary profession.
+
+![Player tooltip with a profession line: Herbalism 28/75](docs/screenshots/tooltip-player-professions.png)
+
 ## Install
 
 Copy (or link) the `GuildTradebook` folder into the game's `Interface/AddOns/` folder. During the beta, Forever installs as `World of Warcraft/_classic_beta_/` (product `wow_classic_beta`, build 1.60.x); the folder name for the live release is not known yet.
