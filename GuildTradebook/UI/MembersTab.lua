@@ -462,6 +462,11 @@ local function build(content)
 	local function menuItems(data)
 		local items = {}
 		if not data.guid then return items end
+		-- The online character (or the same player's online one); never yourself or your alts.
+		local inviteTarget = Index.ContactFor(data)
+		if inviteTarget then
+			items[#items + 1] = { L.MENU_INVITE, function() W.InviteToParty(inviteTarget) end }
+		end
 		if ns.Link.TargetOf(data.guid) then
 			if ns.Link.OfferPendingFor(data.guid) then
 				items[#items + 1] = { L.LINK_MENU_CANCEL, ns.Link.CancelOffer }

@@ -191,6 +191,17 @@ function W.SendTell(name)
 	end
 end
 
+-- Invites a character to your party. Same name form as SendTell: "First Last"
+-- without the own realm.
+function W.InviteToParty(name)
+	name = ns.Util.ShortName(name)
+	if C_PartyInfo and C_PartyInfo.InviteUnit then
+		C_PartyInfo.InviteUnit(name)
+	elseif InviteUnit then
+		InviteUnit(name)
+	end
+end
+
 local ONLINE_STAR = "|cff20ff20*|r"
 
 local function coloredName(name, class)
