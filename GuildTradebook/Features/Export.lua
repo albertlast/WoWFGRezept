@@ -18,7 +18,7 @@ Format 1:
     confirmedAt (= ver), version = { ver, seq, hash },
     receivedAt, receivedFrom, shareable,
     professions = [ { id, name, rank, maxRank, primary, unverified,
-      scannedAt, serverContradicts,
+      scannedAt, serverContradicts, spec (spell ID) | null, specName | null,
       recipes = [ recipeID, ... ] | null (not scanned yet),
       cooldowns = [ { recipe, readyAt (0 = ready) | null (not shared) } ] } ] } ],
   withoutAddon = [ { guid, name, class, level, online, professions = [ name ] } ],
@@ -130,6 +130,7 @@ local function professionsOf(rec, recipes)
 			primary = p.primary == true, unverified = p.unverified == true, scannedAt = p.scannedAt,
 			serverContradicts = Roster.IsProfessionContradicted(rec.guid, sl) and true or false,
 			cooldowns = Export.Array(),
+			spec = p.spec, specName = ns.Index.SpecName(p.spec),
 		}
 		if p.recipes then
 			entry.recipes = Export.Array(Util.SortedKeys(p.recipes))

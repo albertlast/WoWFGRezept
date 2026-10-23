@@ -139,24 +139,6 @@ local function toggle(key)
 	end
 end
 
--- Reagents: local client first, then the guild (FACT_REQ). See Protocol.
-local function reagentsFor(recipeID)
-	local fact = ns.db.recipeFacts[recipeID]
-	if fact and fact.reagents then
-		return fact.reagents
-	end
-	local ok, schematic = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
-	if ok and schematic and schematic.reagentSlotSchematics and #schematic.reagentSlotSchematics > 0 then
-		ns.Scanner.ResolveFact(recipeID, nil)
-		fact = ns.db.recipeFacts[recipeID]
-		if fact and fact.reagents and #fact.reagents > 0 then
-			return fact.reagents
-		end
-	end
-	ns.Protocol.RequestFacts({ recipeID })
-	return nil
-end
-
 local function itemLabel(itemID, fallback)
 	if itemID and itemID > 0 then
 		local _, link = C_Item.GetItemInfo(itemID)
@@ -188,7 +170,7 @@ end
 
 local function refreshReagents(rid)
 	local d = ui.detail
-	local reagents = rid and reagentsFor(rid)
+	local reagents = rid and ns.Reagents.ForRecipe(rid)
 	local rows = {}
 	if not rid then
 		d.reagents:SetText("")
@@ -453,13 +435,30 @@ local function build(content)
 
 	local header = W.Text(detail, "GameFontNormal")
 	header:SetPoint("TOPLEFT", detail.reagentArea, "BOTTOMLEFT", 0, -8)
-	header:SetText(L.CRAFTERS .. " |cff999999(" .. L.WHISPER .. ": click)|r")
+	header:SetText(L.CRAFTERS .. " |cff999999(" .. L.CRAFTERS_HINT .. ")|r")
+
+	-- Right-click on a crafter: whisper, invite, reagents by mail (for the
+	-- number of crafts set above).
+	local function crafterMenu(owner, c)
+		local items = {}
+		local target = Index.ContactFor(c)
+		if target then
+			items[#items + 1] = { L.WHISPER, function() W.SendTell(target) end }
+			items[#items + 1] = { L.MENU_INVITE, function() W.InviteToParty(target) end }
+		end
+		items[#items + 1] = ns.Mail.MenuItem(c, state.selected, state.crafts)
+		W.OpenMenu(owner, Util.ShortName(c.name), items)
+	end
 
 	ui.crafters = W.CreateList(detail, 18, function(row)
 		row.text = W.Text(row)
 		row.text:SetPoint("LEFT", 4, 0)
 		row.text:SetPoint("RIGHT", -4, 0)
-		row:SetScript("OnClick", function(self)
+		row:SetScript("OnClick", function(self, button)
+			if button == "RightButton" then
+				crafterMenu(self, self.data)
+				return
+			end
 			local target = Index.ContactFor(self.data)
 			if target then
 				W.SendTell(target)

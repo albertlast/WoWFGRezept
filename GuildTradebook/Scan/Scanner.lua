@@ -168,6 +168,50 @@ local function remindUnscanned(own, snapshot)
 	end
 end
 
+--[[
+Specializations (Dragonscale Leatherworking, Gnomish Engineering, ...) are
+spells of their own, so the spellbook tells which one a character has. The
+spell IDs of the classic game, as TOGProfessionMaster lists them (MIT). The
+Weaponsmith sub-specs come before Weaponsmith itself: a swordsmith knows
+both. A profession without a list, or a client where an ID means nothing,
+simply has no specialization.
+]]
+Scanner.SPECS = {
+	[165] = { 10656, 10658, 10660 },             -- Leatherworking: Dragonscale, Elemental, Tribal
+	[164] = { 17039, 17040, 17041, 9788, 9787 }, -- Blacksmithing: Swordsmith, Hammersmith, Axesmith, Armorsmith, Weaponsmith
+	[202] = { 20219, 20222 },                    -- Engineering: Gnomish, Goblin
+	[171] = { 28672, 28675, 28677 },             -- Alchemy: Transmutation, Potion, Elixir Master
+	[197] = { 26797, 26798, 26801 },             -- Tailoring: Spellfire, Mooncloth, Shadoweave
+}
+
+local function isSpellKnown(spellID)
+	if C_SpellBook and C_SpellBook.IsSpellKnown then
+		return C_SpellBook.IsSpellKnown(spellID) == true
+	end
+	return IsSpellKnown ~= nil and IsSpellKnown(spellID) == true
+end
+
+-- The specialization spell this character knows for a profession, or nil.
+function Scanner.ReadSpec(skillLine)
+	for _, spellID in ipairs(Scanner.SPECS[skillLine] or {}) do
+		if isSpellKnown(spellID) then return spellID end
+	end
+	return nil
+end
+
+-- Returns whether a specialization changed, and whether a lost one waits
+-- for a second look (see Store.ApplySpec).
+local function updateSpecs(own, allowClear)
+	local changed, pending = false, false
+	for sl in pairs(own.profs) do
+		if Scanner.SPECS[sl] then
+			local c, p = Store.ApplySpec(own, sl, Scanner.ReadSpec(sl), allowClear)
+			changed, pending = changed or c, pending or p
+		end
+	end
+	return changed, pending
+end
+
 function Scanner.Reconcile(allowRemove)
 	local own = Scanner.GetOwn()
 	if not own then return end
@@ -177,9 +221,14 @@ function Scanner.Reconcile(allowRemove)
 	if profKind == "major" or kind == nil then
 		kind = profKind or kind
 	end
-	if #removals > 0 and not allowRemove then
-		-- The profession list can be empty or partial during loading screens;
-		-- only drop a profession if a second look agrees.
+	local specChanged, specPending = updateSpecs(own, allowRemove)
+	if specChanged then
+		kind = kind or "minor"
+	end
+	if (#removals > 0 or specPending) and not allowRemove then
+		-- The profession list (and the spellbook) can be empty or partial
+		-- during loading screens; only drop a profession or a specialization
+		-- if a second look agrees.
 		ns.Debounce("reconcileConfirm", REMOVAL_CONFIRM_DELAY, function()
 			Scanner.Reconcile(true)
 		end)
@@ -367,6 +416,87 @@ function Scanner.ReadCooldown(recipeID)
 	return remaining >= Scanner.MIN_COOLDOWN and remaining or 0
 end
 
+--[[
+Cooldowns without the profession window. A recipe is a spell, and a spell's
+cooldown can be read at any time (at login, right after the craft). Only
+recipes already known as cooldown recipes are read: the entries of the own
+record, which the window scan creates. In combat the game hides cooldowns
+from addons (secret values); they are skipped and read again afterwards.
+Item cooldowns of a profession (Salt Shaker) are stored like a recipe
+cooldown, under the spell the item casts.
+]]
+Scanner.ITEM_COOLDOWNS = {
+	{ item = 15846, skillLine = 165 }, -- Salt Shaker (Leatherworking)
+}
+
+-- Seconds remaining (0 = ready) from a cooldown's start and duration, or nil
+-- when it can not be read. A duration below MIN_COOLDOWN is the global
+-- cooldown: ready.
+local function remainingOf(start, duration)
+	if Util.IsSecret(start, duration) or type(start) ~= "number" or type(duration) ~= "number" then return nil end
+	if start <= 0 or duration < Scanner.MIN_COOLDOWN then return 0 end
+	return math.max(0, start + duration - GetTime())
+end
+
+function Scanner.ReadSpellCooldown(spellID)
+	if not (C_Spell and C_Spell.GetSpellCooldown) then return nil end
+	local info = C_Spell.GetSpellCooldown(spellID)
+	-- isEnabled false: on hold until something else ends, not readable.
+	if type(info) ~= "table" or info.isEnabled == false then return nil end
+	return remainingOf(info.startTime, info.duration)
+end
+
+-- spellID and seconds remaining of an item cooldown, or nil while the item
+-- is not owned (bags, bank once opened) or not loaded yet.
+function Scanner.ReadItemCooldown(itemID)
+	if not (C_Container and C_Container.GetItemCooldown and C_Item.GetItemSpell) then return nil end
+	local _, spellID = C_Item.GetItemSpell(itemID)
+	if not Util.IsInt(spellID, 1, 2 ^ 31) then
+		C_Item.RequestLoadItemDataByID(itemID)
+		return nil
+	end
+	local start, duration, enable = C_Container.GetItemCooldown(itemID)
+	if enable == 0 or enable == false then return nil end
+	local remaining = remainingOf(start, duration)
+	if not remaining or (remaining == 0 and (C_Item.GetItemCount(itemID, true) or 0) == 0) then return nil end
+	return spellID, remaining
+end
+
+function Scanner.ScanCooldowns()
+	local own = Scanner.GetOwn()
+	if not own then return end
+	local now, changed = ns.Now(), false
+	for sl, p in pairs(own.profs) do
+		local observed = {}
+		-- "Ready" never replaces a running cooldown: a cooldown does not end
+		-- early, and a reading that can not see it must not reset it.
+		local function observe(id, remaining)
+			local old = p.cds and p.cds[id]
+			if remaining and not (remaining == 0 and old and old > now) then
+				observed[id] = remaining
+			end
+		end
+		for rid in pairs(p.cds or {}) do
+			-- Recipes only: an item cooldown's spell has no spell cooldown.
+			if p.recipes and p.recipes[rid] then
+				observe(rid, Scanner.ReadSpellCooldown(rid))
+			end
+		end
+		for _, ic in ipairs(Scanner.ITEM_COOLDOWNS) do
+			if ic.skillLine == sl then
+				local spellID, remaining = Scanner.ReadItemCooldown(ic.item)
+				if spellID then observe(spellID, remaining) end
+			end
+		end
+		if next(observed) and Store.ApplyCooldowns(own, sl, observed, now, not ns.db.options.shareCooldowns) then
+			changed = true
+		end
+	end
+	if changed then
+		Scanner.Commit(own, "minor")
+	end
+end
+
 -- Reads the open profession window, if it is the player's own.
 function Scanner.ScanTradeSkill()
 	if not C_TradeSkillUI.IsTradeSkillReady() then return end
@@ -491,9 +621,19 @@ function Scanner.Start()
 	ns.RegisterEvent("NEW_RECIPE_LEARNED", Scanner.OnRecipeLearned)
 	ns.RegisterEvent("SKILL_LINES_CHANGED", reconcileSoon)
 	ns.RegisterEvent("PLAYER_LEVEL_UP", reconcileSoon)
+	-- A specialization learned (or unlearned) at a trainer or by a quest.
+	ns.RegisterEvent("SPELLS_CHANGED", reconcileSoon)
+	-- Cooldowns: after a craft or an item use, and after combat (hidden in it).
+	local function cooldownsSoon()
+		ns.Debounce("cooldowns", 3, Scanner.ScanCooldowns)
+	end
+	ns.RegisterEvent("SPELL_UPDATE_COOLDOWN", cooldownsSoon)
+	ns.RegisterEvent("BAG_UPDATE_COOLDOWN", cooldownsSoon)
+	ns.RegisterEvent("PLAYER_REGEN_ENABLED", cooldownsSoon)
 	ns.On("RosterReady", function()
 		extendAdoption()
 		reconcileSoon()
+		cooldownsSoon()
 	end)
 	-- The server told us our exact name (Protocol, own echoed message).
 	ns.On("PlayerNameLearned", reconcileSoon)

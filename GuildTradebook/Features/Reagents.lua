@@ -29,6 +29,26 @@ function Reagents.Check(reagents, crafts, countFn)
 	return rows, missing
 end
 
+-- Reagents of a recipe ({ {itemID, quantity, optional}, ... }): known facts,
+-- else the local client, else asked from the guild (FACT_REQ, see Protocol)
+-- and nil until the answer arrives.
+function Reagents.ForRecipe(recipeID)
+	local fact = ns.db.recipeFacts[recipeID]
+	if fact and fact.reagents then
+		return fact.reagents
+	end
+	local ok, schematic = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
+	if ok and schematic and schematic.reagentSlotSchematics and #schematic.reagentSlotSchematics > 0 then
+		ns.Scanner.ResolveFact(recipeID, nil)
+		fact = ns.db.recipeFacts[recipeID]
+		if fact and fact.reagents and #fact.reagents > 0 then
+			return fact.reagents
+		end
+	end
+	ns.Protocol.RequestFacts({ recipeID })
+	return nil
+end
+
 -- Bank contents are only known after the bank was opened (game behavior).
 function Reagents.Count(itemID)
 	return C_Item.GetItemCount(itemID, true, false, true, true) or 0

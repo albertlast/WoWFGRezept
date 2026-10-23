@@ -65,6 +65,10 @@ local function professionText(rec)
 	for _, sl in ipairs(skillLines) do
 		local p = rec.profs[sl]
 		local text = ("%s %d/%d"):format(Index.SkillLineName(sl), p.rank, p.maxRank)
+		local spec = Index.SpecName(p.spec)
+		if spec then
+			text = text .. " |cff66ccff" .. spec .. "|r"
+		end
 		if not p.recipes then
 			text = text .. " |cffff8000(" .. L.NOT_SCANNED .. ")|r"
 		else
@@ -166,7 +170,10 @@ local function playerRows(gd, reachableOnly, needle)
 			seen[guid] = true
 			local member = Roster.Get(guid)
 			local profNames = {}
-			for _, sl in ipairs(Store.ProfessionSkillLines(rec)) do profNames[#profNames + 1] = Index.SkillLineName(sl) end
+			for _, sl in ipairs(Store.ProfessionSkillLines(rec)) do
+				profNames[#profNames + 1] = Index.SkillLineName(sl)
+				profNames[#profNames + 1] = Index.SpecName(rec.profs[sl].spec)
+			end
 			rows[#rows + 1] = {
 				kind = "member",
 				guid = guid,
@@ -245,7 +252,7 @@ local function flatten(groups, open, needle)
 		if needle ~= "" and not matches(g.header.label, needle) then
 			entries = {}
 			for _, e in ipairs(g.entries) do
-				if matches(e.name, needle) then entries[#entries + 1] = e end
+				if matches(e.name, needle) or (e.spec and matches(e.spec, needle)) then entries[#entries + 1] = e end
 			end
 			forced = true
 		end
@@ -272,6 +279,10 @@ local function professionRows(gd, reachableOnly, open, needle)
 						e.right = ("%d/%d"):format(p.rank, p.maxRank)
 						e.extra = p.recipes and ("|cff999999" .. L.MEMBERS_RECIPES:format(Util.Count(p.recipes)) .. "|r")
 							or ("|cffff8000" .. L.NOT_SCANNED .. "|r")
+						e.spec = Index.SpecName(p.spec)
+						if e.spec then
+							e.extra = "|cff66ccff" .. e.spec .. "|r  " .. e.extra
+						end
 						local g = byLine[sl]
 						if not g then
 							g = { entries = {}, best = 0, primary = false }
@@ -317,6 +328,10 @@ local function cooldownRows(gd, reachableOnly, open, needle)
 					if e.reachable or not reachableOnly then
 						e.recipeID, e.readyAt, e.ready = rid, readyAt, readyAt <= now
 						e.hidden = Store.IsHiddenCooldown(readyAt)
+						local mailedAt = ns.Mail.SentAt(guid, rid)
+						if mailedAt then
+							e.extra = "|cff66ccff" .. L.MAILED_AGO:format(Util.FormatAge(now - mailedAt)) .. "|r"
+						end
 						e.right = e.hidden and ("|cff808080" .. L.CD_NOT_SHARED .. "|r")
 							or e.ready and ("|cff20ff20" .. L.CD_READY .. "|r")
 							or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
@@ -457,8 +472,9 @@ local function build(content)
 	ui.stats:SetPoint("LEFT", search, "RIGHT", 12, 0)
 	ui.stats:SetPoint("RIGHT", ui.reachable, "LEFT", -8, 0)
 
-	-- Right-click menu: account linking (Features/Link.lua). Returns the
-	-- entries for a row: { {label, fn}, ... }.
+	-- Right-click menu: invite, reagents by mail (cooldown rows), account
+	-- linking (Features/Link.lua). Returns the entries for a row:
+	-- { {label, fn, disabled}, ... }.
 	local function menuItems(data)
 		local items = {}
 		if not data.guid then return items end
@@ -466,6 +482,9 @@ local function build(content)
 		local inviteTarget = Index.ContactFor(data)
 		if inviteTarget then
 			items[#items + 1] = { L.MENU_INVITE, function() W.InviteToParty(inviteTarget) end }
+		end
+		if data.recipeID and Index.IsRecipe(data.recipeID) then
+			items[#items + 1] = ns.Mail.MenuItem(data, data.recipeID, 1)
 		end
 		if ns.Link.TargetOf(data.guid) then
 			if ns.Link.OfferPendingFor(data.guid) then
@@ -482,14 +501,7 @@ local function build(content)
 	ui.menuItems = menuItems
 
 	local function openMenu(owner, data)
-		local items = menuItems(data)
-		if #items == 0 or not (MenuUtil and MenuUtil.CreateContextMenu) then return end
-		MenuUtil.CreateContextMenu(owner, function(_, root)
-			root:CreateTitle(Util.ShortName(data.name))
-			for _, item in ipairs(items) do
-				root:CreateButton(item[1], item[2])
-			end
-		end)
+		W.OpenMenu(owner, Util.ShortName(data.name), menuItems(data))
 	end
 
 	-- Click hint, plus the member's addon version when known.
@@ -523,7 +535,8 @@ local function build(content)
 		if data.kind == "group" then
 			MembersView.Toggle(data.key)
 		elseif data.kind == "entry" and data.recipeID then
-			ns.UI.ShowRecipe(data.recipeID)
+			-- An item cooldown (Salt Shaker) has no recipe to open.
+			if Index.IsRecipe(data.recipeID) then ns.UI.ShowRecipe(data.recipeID) end
 		elseif (data.kind == "entry" or data.kind == "member") and data.ver > 0 then
 			ns.UI.ShowCrafter(data.guid, data.skillLine)
 		end
@@ -582,7 +595,7 @@ local function build(content)
 			local data = self.data
 			if data.kind == "group" then return L.CLICK_TOGGLE end
 			if data.kind == "info" then return nil end
-			if data.recipeID then return L.CLICK_OPEN_RECIPE end
+			if data.recipeID then return Index.IsRecipe(data.recipeID) and L.CLICK_OPEN_RECIPE or nil end
 			return data.ver > 0 and L.CLICK_SHOW_RECIPES or L.NO_ADDON_DATA
 		end)
 	end, function(row, data)

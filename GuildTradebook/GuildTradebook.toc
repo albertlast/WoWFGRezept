@@ -29,6 +29,7 @@ Search\Categories.lua
 Search\Upgrades.lua
 Features\Wishlist.lua
 Features\Reagents.lua
+Features\Mail.lua
 Features\ChatResponder.lua
 Features\Link.lua
 Features\Export.lua

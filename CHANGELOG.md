@@ -2,6 +2,13 @@
 
 ## 0.6.0 (in development)
 
+- Reagents by mail: at an open mailbox, right-click a crafter (Recipes tab, or a cooldown in the Members tab) → "Mail reagents". The addon puts the reagents for the number of crafts set in the reagent check into a mail to them: whole stacks where they fit, the rest split off a bigger stack into a free bag slot first; recipient, subject and text are filled in. You send it with the mailbox's Send button. All or nothing: if your bags are short of any reagent, nothing is attached and chat names what is missing (optional reagents stay home; more than 12 stacks do not fit one mail). Crafters you mailed show "reagents mailed 2h ago" for three days.
+- Specializations (Dragonscale/Elemental/Tribal Leatherworking, Armorsmith/Weaponsmith and the weapon masters, Gnomish/Goblin Engineering) are read from the spellbook and shared: in the Members tab (both views, and its search), on player tooltips and in the export (`spec`, `specName`). Older versions pass records on without it; the next copy from a newer client brings it back.
+- Cooldowns stay up to date without the profession window: the cooldowns of your own cooldown recipes are read at login, after a craft and after combat (the game hides them in combat). A reading that sees no cooldown never resets a running one. Each cooldown recipe has to have been seen once in the profession window.
+- Salt Shaker: its cooldown is shared like a profession cooldown (Leatherworking), as soon as the character owns one. It shows in the Members tab's Cooldowns view.
+- Item tooltips no longer show "Craftable by guild" for items that bind on pickup: no crafter could hand them over.
+- Recipes tab: right-click a crafter for Whisper, Invite to party and Mail reagents.
+
 - The TOC carries the CurseForge project ID (`X-Curse-Project-ID`), so the CurseForge app recognizes the addon.
 - Release pipeline: pushing a tag `vX.Y.Z` runs the tests, builds the zip with `tools/package.py`, creates the GitHub release and uploads to CurseForge (`.github/workflows/release.yml`).
 

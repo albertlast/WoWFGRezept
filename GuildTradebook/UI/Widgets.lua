@@ -202,6 +202,19 @@ function W.InviteToParty(name)
 	end
 end
 
+-- Right-click menu: items = { {label, fn, disabled}, ... }. Nothing without
+-- items (or without the game's menu API).
+function W.OpenMenu(owner, title, items)
+	if #items == 0 or not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		root:CreateTitle(title)
+		for _, item in ipairs(items) do
+			local button = root:CreateButton(item[1], item[2] or function() end)
+			if item[3] and button and button.SetEnabled then button:SetEnabled(false) end
+		end
+	end)
+end
+
 local ONLINE_STAR = "|cff20ff20*|r"
 
 local function coloredName(name, class)
@@ -241,6 +254,9 @@ function W.CrafterLabel(c)
 		else
 			tags[#tags + 1] = "|cffff8000" .. L.CD_REMAINING:format(ns.Util.FormatAge(c.readyAt - ns.Now())) .. "|r"
 		end
+	end
+	if c.mailedAt then
+		tags[#tags + 1] = "|cff66ccff" .. L.MAILED_AGO:format(ns.Util.FormatAge(ns.Now() - c.mailedAt)) .. "|r"
 	end
 	if c.online then
 		tags[#tags + 1] = "|cff20ff20" .. L.ONLINE .. "|r"

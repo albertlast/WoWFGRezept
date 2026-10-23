@@ -15,7 +15,8 @@ Internal record:
                                 recipes = { [recipeID] = outputItemID or 0 } | nil,
                                 cds = { [recipeID] = readyAt (server time, 0 = ready) } | nil,
                                 cats = { [recipeID] = categoryID } | nil,      -- not hashed
-                                trivial = { [recipeID] = skill } | nil } },    -- not hashed
+                                trivial = { [recipeID] = skill } | nil,        -- not hashed
+                                spec = spellID | nil } },                      -- not hashed
     h,                                     -- content hash
     recvAt?, recvFrom?, goneSince? }       -- local metadata, never sent
 ]]
@@ -234,6 +235,7 @@ function Store.Accept(gd, rec, ctx, sender)
 				local cp = cur.profs[sl]
 				if cp and p.cats and not cp.cats then cp.cats, filled = p.cats, true end
 				if cp and p.trivial and not cp.trivial then cp.trivial, filled = p.trivial, true end
+				if cp and p.spec and not cp.spec then cp.spec, filled = p.spec, true end
 			end
 			return filled and "filled" or "same"
 		end
@@ -295,7 +297,7 @@ function Store.ReconcileProfessions(own, snapshot, allowRemove)
 			mark("major")
 		else
 			if s.rank < p.rank then
-				p.recipes, p.scannedAt, p.unverified, p.cds = nil, nil, nil, nil
+				p.recipes, p.scannedAt, p.unverified, p.cds, p.spec = nil, nil, nil, nil, nil
 				mark("major")
 			end
 			if p.rank ~= s.rank or p.maxRank ~= s.maxRank or p.primary ~= (s.primary or nil) then
@@ -435,6 +437,21 @@ function Store.ApplyRecipeExtra(own, skillLine, key, values, complete)
 	end
 	p[key] = next(new) and new or nil
 	return changed
+end
+
+--[[
+The specialization of one profession (spell ID, e.g. Dragonscale
+Leatherworking), read from the spellbook. nil = none found: cleared only if
+allowClear, because the spellbook can be incomplete while loading (the
+caller confirms with a second look, like profession removals). Returns
+changed, and true if a clear waits for that confirmation.
+]]
+function Store.ApplySpec(own, skillLine, spec, allowClear)
+	local p = own.profs[skillLine]
+	if not p or p.spec == spec then return false, false end
+	if spec == nil and not allowClear then return false, true end
+	p.spec = spec
+	return true, false
 end
 
 -- Recipe changes of primary professions are published quickly ("major"),
@@ -707,7 +724,8 @@ end
 -- The same holds for slot 9 of a profession: the recipe categories,
 -- grouped as {categoryID, count, recipeID, ..., categoryID, count, ...},
 -- and slot 10: the skill at which each recipe turns grey (sort order of the
--- profession window), one per recipe in recipe ID order, 0 = unknown.
+-- profession window), one per recipe in recipe ID order, 0 = unknown, and
+-- slot 11: the specialization spell (0 = none).
 -- Older layout comment:
 --   { guid, name, class, level, ver, seq, player|"",
 --     { {sl, rank, maxRank, scannedAt, unverified(0/1), {rid, item, ...}|false, primary(0/1),
@@ -753,7 +771,8 @@ function Store.ToWire(rec)
 			cats[#cats + 1] = #byCat[cat]
 			for _, rid in ipairs(byCat[cat]) do cats[#cats + 1] = rid end
 		end
-		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds, cats, trivial }
+		profs[#profs + 1] = { sl, p.rank, p.maxRank, p.scannedAt or 0, p.unverified and 1 or 0, flat, p.primary and 1 or 0, cds, cats, trivial,
+			p.spec or 0 }
 	end
 	return { rec.guid, rec.name or "", rec.class or "", rec.level or 0, rec.ver, rec.seq, rec.player or "", profs, rec.loc or "",
 		rec.offer or "" }
@@ -816,7 +835,7 @@ function Store.FromWire(w)
 	for i = 1, #profs do
 		local p = profs[i]
 		if type(p) ~= "table" then return nil, "prof" end
-		local sl, rank, maxRank, scannedAt, unverified, flat, primary, cdFlat, catFlat, trivialFlat = p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10]
+		local sl, rank, maxRank, scannedAt, unverified, flat, primary, cdFlat, catFlat, trivialFlat, spec = p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11]
 		if not Util.IsInt(sl, 1, 2 ^ 31) or rec.profs[sl] then return nil, "skillLine" end
 		if not Util.IsInt(rank, 0, 10000) or not Util.IsInt(maxRank, 0, 10000) then return nil, "rank" end
 		if not Util.IsInt(scannedAt, 0, 2 ^ 40) or (unverified ~= 0 and unverified ~= 1) or (primary ~= 0 and primary ~= 1) then
@@ -846,6 +865,8 @@ function Store.FromWire(w)
 			cds = cds,
 			cats = categoriesFromWire(catFlat, recipes),
 			trivial = trivialFromWire(trivialFlat, recipes),
+			-- An extra like the categories: a malformed value is dropped.
+			spec = Util.IsInt(spec, 1, 2 ^ 31) and spec or nil,
 			rank = rank, maxRank = maxRank,
 			scannedAt = scannedAt ~= 0 and scannedAt or nil,
 			unverified = unverified == 1 or nil,

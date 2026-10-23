@@ -96,6 +96,12 @@ function Index.RecipeName(recipeID)
 	return name
 end
 
+-- Name of a specialization spell (Store: prof.spec), or nil.
+function Index.SpecName(spellID)
+	if not spellID then return nil end
+	return C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID) or nil
+end
+
 -- readyAt of the crafter's cooldown for recipeID (0 = ready), or nil.
 local function cooldownOf(rec, recipeID)
 	if not rec or not recipeID then return nil end
@@ -164,7 +170,14 @@ local function charInfo(guid, recipeID)
 		isSelf = guid == selfGUID,
 		isAlt = acc ~= nil and guid ~= selfGUID,
 		readyAt = cooldownOf(rec, recipeID),
+		mailedAt = ns.Mail and ns.Mail.SentAt(guid, recipeID), -- reagents mailed to them
 	}
+end
+
+-- True if some member knows recipeID (an item cooldown's spell is none).
+function Index.IsRecipe(recipeID)
+	Index.Ensure()
+	return Index.byRecipe[recipeID] ~= nil
 end
 
 --[[

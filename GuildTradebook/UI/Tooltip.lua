@@ -1,7 +1,8 @@
 --[[
 Tooltip lines:
   crafted items  -> "Craftable by guild: Anna*, Bert" or, with many crafters,
-                    "Craftable by guild: 23 members (online: Anna, Bert, Cleo +2)"
+                    "Craftable by guild: 23 members (online: Anna, Bert, Cleo +2)";
+                    nothing for items that bind on pickup
   recipe items   -> "Known in your guild by 3: A, B, C" or "Not known in your guild yet"
                     (matched by the name after "Pattern: ", "Recipe: ", ...)
   guild members  -> "Tailoring 225/300" / "Enchanting 180/300" (a line each;
@@ -134,6 +135,9 @@ local function onItem(tooltip, itemID)
 
 	local rids = Index.RecipesForItem(itemID)
 	if rids then
+		-- Bind on pickup: a crafter can never hand it over, so who crafts it
+		-- does not help (items still loading get the line).
+		if Index.IsBindOnPickup(itemID) then return end
 		rids = ns.Categories.Visible(rids) -- tooltip filter (settings)
 		local crafters = options.tooltip and #rids > 0 and craftersOf(rids) or {}
 		if #crafters > MAX_NAMES then
@@ -169,6 +173,8 @@ function Tooltip.ProfessionLines(rec, contradicted)
 		local p = rec.profs[sl]
 		if not (contradicted and contradicted(rec.guid, sl)) then
 			local text = ("%s %d/%d"):format(Index.SkillLineName(sl), p.rank, p.maxRank)
+			local spec = Index.SpecName(p.spec)
+			if spec then text = text .. " (" .. spec .. ")" end
 			table.insert(p.primary and primary or secondary, text)
 		end
 	end

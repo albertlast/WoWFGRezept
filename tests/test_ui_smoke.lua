@@ -215,6 +215,48 @@ test("tabs, rows and tooltip run against real pool data", function()
 	truthy(known[1] and known[1]:find("Known in your guild by 1:", 1, true) and known[1]:find("Anna"), "known pattern: " .. tostring(known[1]))
 	eq(linesFor(9002)[1], "Not known in your guild yet")
 	eq(#linesFor(9003), 0, "class books are not profession recipes")
+	-- Bind on pickup: no "Craftable by guild" line (no crafter can hand it over).
+	local getInfo = cb.env.C_Item.GetItemInfo
+	cb.env.C_Item.GetItemInfo = function(id)
+		if id == 2568 then
+			return "Item 2568", "|Hitem:2568|h[Item 2568]|h", 2, 25, 20, "Armor", "Cloth", 1, "INVTYPE_CHEST", 1, 0, 4, 1, 1
+		end
+		return getInfo(id)
+	end
+	eq(#linesFor(2568), 0, "bind on pickup: no crafters line")
+	cb.env.C_Item.GetItemInfo = getInfo
+	truthy(#linesFor(2568) > 0, "bind on equip: the line is back")
+
+	-- Specialization: in the Members tab (and its search) and on player tooltips.
+	local annaRec = cb.ns.GetGuildData().chars["Player-1-00000001"]
+	annaRec.profs[197].spec = 26797
+	local annaRow = cb.ns.MembersView.Rows("players", false, {}, "recipe 26797")
+	eq(#annaRow, 1, "found by the specialization's name")
+	truthy(annaRow[1].profs:find("Recipe 26797", 1, true), annaRow[1].profs)
+	lines = {}
+	for _, hook in ipairs(ui.unitHooks) do hook(tooltip, { guid = "Player-1-00000001" }) end
+	truthy(lines[1] and lines[1]:find("150/300 (Recipe 26797)", 1, true), "player tooltip: " .. tostring(lines[1]))
+	annaRec.profs[197].spec = nil
+
+	-- Right-click menus: a disabled entry stays visible but can not be clicked.
+	local made = {}
+	cb.env.MenuUtil = { CreateContextMenu = function(_, generate)
+		local root = { CreateTitle = function(_, text) made.title = text end }
+		function root:CreateButton(label)
+			local button = { label = label }
+			function button:SetEnabled(on) self.enabled = on end
+			made[#made + 1] = button
+			return button
+		end
+		generate(nil, root)
+	end }
+	cb.ns.Widgets.OpenMenu({}, "Anna", { { "Whisper", function() end }, cb.ns.Mail.MenuItem(cb.ns.Index.Crafters(3914)[1], 3914, 2) })
+	eq(made.title, "Anna")
+	eq(#made, 2)
+	eq(made[1].enabled, nil)
+	eq(made[2].enabled, false, "mail entry disabled without a mailbox")
+	truthy(made[2].label:find("2 craft", 1, true), made[2].label)
+	cb.env.MenuUtil = nil
 	cb.env.GuildTradebookDB.options.tooltipRecipes = false
 	eq(#linesFor(9002), 0, "option off")
 	cb.env.GuildTradebookDB.options.tooltipRecipes = true

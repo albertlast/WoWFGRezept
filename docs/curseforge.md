@@ -29,7 +29,7 @@ Built for **World of Warcraft: Forever** (interface 16001). Available in English
 
 ## Recipes
 
-Every recipe the guild can craft, grouped like the profession window (profession > category). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, click to whisper) and the reagents with how many you have against how many you need.
+Every recipe the guild can craft, grouped like the profession window (profession > category). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, click to whisper) and the reagents with how many you have against how many you need. At a mailbox, **right-click a crafter to mail them the reagents**: the addon splits the stacks and fills in the mail, you click Send.
 
 ![Recipes tab](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
 
@@ -49,7 +49,7 @@ Mark the recipes you want. When a guild member who can craft one comes online, y
 
 ## Members
 
-See who shares what and how fresh it is. The **Professions** view shows who is close to the skill cap and which profession your guild still lacks; the **Players** view lists every player with their characters, skill levels and crafting cooldowns (you can choose not to share yours). Alts are grouped under one player, and members without the addon show up with the professions the server reports.
+See who shares what and how fresh it is. The **Professions** view shows who is close to the skill cap and which profession your guild still lacks; the **Players** view lists every player with their characters, skill levels, specializations (Dragonscale Leatherworking, Gnomish Engineering, ...) and crafting cooldowns (you can choose not to share yours). Cooldowns are kept up to date without opening the profession window, the Salt Shaker included. Alts are grouped under one player, and members without the addon show up with the professions the server reports.
 
 ![Members tab, Professions view](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/members-professions.png)
 
@@ -57,7 +57,7 @@ See who shares what and how fresh it is. The **Professions** view shows who is c
 
 ## Tooltips
 
-"Craftable by guild: ..." on items, "Known in your guild by ..." on recipes, and the professions of a guild member when you hover them. A **tooltip filter** in the settings hides basics everyone makes (First Aid and Fishing are off by default).
+"Craftable by guild: ..." on items (not on bind-on-pickup ones, nobody could hand them over), "Known in your guild by ..." on recipes, and the professions of a guild member when you hover them. A **tooltip filter** in the settings hides basics everyone makes (First Aid and Fishing are off by default).
 
 ![Item tooltip with the guild crafters](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/item-tooltip-craftable.png)
 
@@ -126,7 +126,7 @@ Gebaut für **World of Warcraft: Forever** (Interface 16001). Auf Englisch und D
 
 ## Rezepte
 
-Alle Rezepte, die die Gilde herstellen kann, gruppiert wie im Berufsfenster (Beruf > Kategorie). Suche nach Rezept- oder Gegenstandsnamen oder filtere nach Beruf. Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien mit dem, was du hast, und dem, was du brauchst.
+Alle Rezepte, die die Gilde herstellen kann, gruppiert wie im Berufsfenster (Beruf > Kategorie). Suche nach Rezept- oder Gegenstandsnamen oder filtere nach Beruf. Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien mit dem, was du hast, und dem, was du brauchst. Am Briefkasten **schickt ein Rechtsklick auf einen Hersteller ihm die Materialien per Post**: Das Addon teilt die Stapel und füllt den Brief aus, du klickst auf Senden.
 
 ![Reiter Rezepte](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
 
@@ -146,7 +146,7 @@ Markiere die Rezepte, die du haben willst. Sobald ein Gildenmitglied online komm
 
 ## Mitglieder
 
-Wer teilt was, und wie aktuell sind die Daten? Die Ansicht **Berufe** zeigt, wer kurz vor der Maximalstufe steht und welcher Beruf in der Gilde noch fehlt; die Ansicht **Spieler** listet jeden Spieler mit seinen Charakteren, Skillstufen und Abklingzeiten (deine eigenen kannst du für dich behalten). Twinks sind unter einem Spieler zusammengefasst, und Mitglieder ohne das Addon erscheinen mit den Berufen, die der Server meldet.
+Wer teilt was, und wie aktuell sind die Daten? Die Ansicht **Berufe** zeigt, wer kurz vor der Maximalstufe steht und welcher Beruf in der Gilde noch fehlt; die Ansicht **Spieler** listet jeden Spieler mit seinen Charakteren, Skillstufen, Spezialisierungen (etwa in Lederverarbeitung, Schmiedekunst oder Ingenieurskunst) und Abklingzeiten (deine eigenen kannst du für dich behalten). Die Abklingzeiten bleiben aktuell, ohne dass du das Berufsfenster öffnest, auch die des Salzstreuers. Twinks sind unter einem Spieler zusammengefasst, und Mitglieder ohne das Addon erscheinen mit den Berufen, die der Server meldet.
 
 ![Reiter Mitglieder, Ansicht Berufe](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/members-professions.png)
 
@@ -154,7 +154,7 @@ Wer teilt was, und wie aktuell sind die Daten? Die Ansicht **Berufe** zeigt, wer
 
 ## Tooltips
 
-„Herstellbar in der Gilde: …“ bei Gegenständen, „In deiner Gilde bekannt bei …“ bei Rezepten und die Berufe eines Gildenmitglieds, wenn du die Maus darauf hältst. Ein **Tooltip-Filter** in den Einstellungen blendet Alltägliches aus, das jeder kann (Erste Hilfe und Angeln sind standardmäßig aus).
+„Herstellbar in der Gilde: …“ bei Gegenständen (nicht bei beim Aufheben gebundenen, die könnte niemand weitergeben), „In deiner Gilde bekannt bei …“ bei Rezepten und die Berufe eines Gildenmitglieds, wenn du die Maus darauf hältst. Ein **Tooltip-Filter** in den Einstellungen blendet Alltägliches aus, das jeder kann (Erste Hilfe und Angeln sind standardmäßig aus).
 
 ![Item-Tooltip mit den Herstellern der Gilde](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/item-tooltip-craftable.png)
 

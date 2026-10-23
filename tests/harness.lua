@@ -6,6 +6,10 @@ separate game clients. Runs on stock Lua 5.1-5.4.
 ]]
 local H = {}
 
+-- Stands for a "secret value" (the game hides it from addons, e.g. cooldowns
+-- in combat); the clients' issecretvalue recognizes it.
+H.SECRET = setmetatable({}, { __tostring = function() return "<secret>" end })
+
 local ROOT = (arg and arg[0] and arg[0]:match("^(.*)[/\\]tests[/\\]")) or "."
 H.ADDON_DIR = ROOT .. "/GuildTradebook/"
 
@@ -24,6 +28,7 @@ H.FILES = {
 	"Search/Upgrades.lua",
 	"Features/Wishlist.lua",
 	"Features/Reagents.lua",
+	"Features/Mail.lua",
 	"Features/ChatResponder.lua",
 	"Features/Link.lua",
 	"Features/Export.lua",
@@ -707,13 +712,35 @@ function H.NewClient(world, char)
 		GetSpellName = function(id)
 			return ((char.locale or "enUS"):sub(1, 2) == "de" and "Rezept " or "Recipe ") .. id
 		end,
+		-- char.spellCooldowns[id] = { remaining, duration } (seconds); the
+		-- values are secret while char.inCombat (like the game in combat).
+		GetSpellCooldown = function(id)
+			local cd = (char.spellCooldowns or {})[id]
+			local start, duration = 0, 0
+			if cd then start, duration = clock.t - (cd[2] - cd[1]), cd[2] end
+			if char.inCombat then start, duration = H.SECRET, H.SECRET end
+			return { startTime = start, duration = duration, isEnabled = true, isActive = duration ~= 0 }
+		end,
 	}
+	-- char.itemCooldowns[itemID] = { remaining, duration }; char.itemSpells[itemID] = spellID.
+	env.C_Container = {
+		GetItemCooldown = function(id)
+			local cd = (char.itemCooldowns or {})[id]
+			if not cd then return 0, 0, 1 end
+			return clock.t - (cd[2] - cd[1]), cd[2], 1
+		end,
+	}
+	env.issecretvalue = function(v) return v == H.SECRET end
 	-- world.bindTypes[itemID] = 1 (BoP) / 2 (BoE); missing = not loaded yet.
 	env.C_Item = {
 		GetItemNameByID = function(id)
 			return ((char.locale or "enUS"):sub(1, 2) == "de" and "Gegenstand " or "Item ") .. id
 		end,
 		GetItemCount = function(id) return (char.bags or {})[id] or 0 end,
+		GetItemSpell = function(id)
+			local spellID = (char.itemSpells or {})[id]
+			if spellID then return "Spell " .. spellID, spellID end
+		end,
 		GetItemInfo = function(id)
 			local bind = (world.bindTypes or {})[id]
 			if not bind then return nil end
@@ -767,6 +794,8 @@ function H.NewClient(world, char)
 	end
 	env.C_SpellBook = {
 		GetSpellBookItemInfo = function(slot) return { spellID = slot } end,
+		-- char.spells[spellID] = true: known (specializations).
+		IsSpellKnown = function(id) return (char.spells or {})[id] == true end,
 	}
 	env.Enum = {}
 	env.C_TradeSkillUI = {
@@ -948,7 +977,7 @@ function H.LoadPure()
 		GetNormalizedRealmName = function() return "Realm" end,
 	}, { __index = _G })
 	for _, file in ipairs({ "Locales/enUS.lua", "Core/Init.lua", "Core/Util.lua", "Data/Store.lua", "Search/Upgrades.lua",
-		"Features/Wishlist.lua", "Features/Reagents.lua", "Features/ChatResponder.lua" }) do
+		"Features/Wishlist.lua", "Features/Reagents.lua", "Features/Mail.lua", "Features/ChatResponder.lua" }) do
 		loadInto(H.ADDON_DIR .. file, env)("GuildTradebook", ns)
 	end
 	return ns
