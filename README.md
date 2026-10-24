@@ -95,6 +95,7 @@ Each crafter has to open the professions window once and click each profession t
 - `/gtb export zip [name]` shows it compressed instead: `GTB1:` followed by Base64 of the Deflate-compressed JSON, about 4× smaller (a guild with 70 members: 50 KB → 12.5 KB). The game writes raw Deflate (no zlib header), so in Python: `json.loads(zlib.decompress(base64.b64decode(text[5:]), -15))`; `tools/read_export.py` accepts a text file with it, or `-` for stdin.
 - It is also kept as `GuildTradebookExport` in the SavedVariables. The game writes the file on `/reload` or logout: `WTF/Account/<ACCOUNT>/SavedVariables/GuildTradebook.lua`. `python tools/read_export.py <that file> [out.json]` takes the JSON out of it (the SavedVariables always keep the plain JSON).
 - The format is described at the top of `GuildTradebook/Features/Export.lua` (`format` = 1). Only what your client has synced is in it; exporting sends nothing.
+- Other addons can call `GuildTradebook_BuildExport()`: it returns the same JSON (or nil before the guild data is loaded) and leaves `GuildTradebookExport` alone. RaidTinder Companion uses it to hand the recipes to the RaidTinder bot at logout.
 
 ## How the data stays correct
 

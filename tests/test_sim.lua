@@ -1944,6 +1944,7 @@ test("export: the pool as JSON, also into the SavedVariables", function()
 
 	local json = E.Command("")
 	eq(cb.env.GuildTradebookExport.json, json, "kept for the SavedVariables")
+	eq(cb.env.GuildTradebook_BuildExport(), json, "public function for other addons: the same JSON")
 	local data = E.Build()
 	eq(data.format, 1)
 	eq(#data.members, 2, "Anna and Bert (own record too)")

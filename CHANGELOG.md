@@ -8,6 +8,7 @@
 - Salt Shaker: its cooldown is shared like a profession cooldown (Leatherworking), as soon as the character owns one. It shows in the Members tab's Cooldowns view.
 - Item tooltips no longer show "Craftable by guild" for items that bind on pickup: no crafter could hand them over.
 - Recipes tab: right-click a crafter for Whisper, Invite to party and Mail reagents.
+- For other addons: `GuildTradebook_BuildExport()` returns the export JSON (as `/gtb export`, without the window and without overwriting `GuildTradebookExport`). RaidTinder Companion uses it to bring the guild's recipes to the RaidTinder bot at logout.
 
 - The TOC carries the CurseForge project ID (`X-Curse-Project-ID`), so the CurseForge app recognizes the addon.
 - Release pipeline: pushing a tag `vX.Y.Z` runs the tests, builds the zip with `tools/package.py`, creates the GitHub release and uploads to CurseForge (`.github/workflows/release.yml`).

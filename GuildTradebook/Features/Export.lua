@@ -260,3 +260,12 @@ function Export.Command(rest)
 	end
 	return json, shown
 end
+
+-- For other addons (RaidTinder Companion takes it along at logout): the full
+-- export as JSON, like "/gtb export" but without the copy window and without
+-- touching GuildTradebookExport. nil while the guild data is not loaded.
+function GuildTradebook_BuildExport()
+	if not (ns.GetGuildData and ns.GetGuildData()) then return nil end
+	local ok, json = pcall(function() return Export.ToJSON(Export.Build()) end)
+	return ok and json or nil
+end
