@@ -86,25 +86,26 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.5.0)
+## File upload (0.6.0)
 
-- File: `dist/GuildTradebook-0.5.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+Done by the release workflow (tag `v0.6.0`); for a manual upload:
+
+- File: `dist/GuildTradebook-0.6.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.5.0`
-- Game version: see the form; the TOC says `## Interface: 16001`
+- Display name: `0.6.0`
+- Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
-## 0.5.0
+## 0.6.0
 
-- **Tooltip filter:** new settings page lists all professions of the guild with their groups; mark what should not show "who can craft this" in item tooltips. First Aid and Fishing are hidden by default.
-- **Wishlist:** Pause and Remove buttons on every wish; a paused wish stays on the list but gives no notice, sound or glow.
-- **Minimap glow** only for news: looking at the Wishlist tab counts the crafters online now as seen.
-- **Tooltips:** every person is listed once (you and your alt were two entries).
-- Recipes in the profession window's order (highest skill first); the crafter shares it after opening the profession window with 0.4.0 or later.
-- A short chat line (at most once a day) when a guildmate has a newer release.
-- Fix: error message on player tooltips ("secret values").
+- **Reagents by mail:** at a mailbox, right-click a crafter and choose "Mail reagents": the addon splits the stacks and fills in the mail, you click Send. Nothing is attached if a reagent is missing; chat names it.
+- **Specializations** (Dragonscale Leatherworking, Weaponsmith, Gnomish Engineering, ...) in the Members tab and on player tooltips.
+- **Cooldowns** stay current without opening the profession window; the **Salt Shaker** is shared too.
+- No "Craftable by guild" line for bind-on-pickup items.
+- Right-click menus: Whisper, Invite to party, Mail reagents.
+- For other addons: `GuildTradebook_BuildExport()` returns the export JSON.
 ```
 
 ## Deutsch
@@ -186,15 +187,14 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
-## 0.5.0
+## 0.6.0
 
-- **Tooltip-Filter:** Neue Einstellungsseite mit allen Berufen der Gilde und ihren Gruppen; markiere, bei welchen im Tooltip nicht stehen soll, wer sie herstellt. Erste Hilfe und Angeln sind standardmäßig ausgeblendet.
-- **Wunschliste:** Pause- und Entfernen-Knopf bei jedem Wunsch; ein pausierter Wunsch bleibt auf der Liste, meldet sich aber nicht (kein Hinweis, kein Ton, kein Leuchten).
-- **Minimap-Leuchten** nur noch bei Neuem: Sobald du die Wunschliste angesehen hast, gelten die gerade online befindlichen Hersteller als gesehen.
-- **Tooltips:** Jede Person steht nur einmal da (du und dein Twink waren zwei Einträge).
-- Rezepte in der Reihenfolge des Berufsfensters (höchste Stufe zuerst); der Hersteller teilt sie, sobald er mit 0.4.0 oder neuer sein Berufsfenster geöffnet hat.
-- Kurzer Chat-Hinweis (höchstens einmal am Tag), wenn ein Gildenmitglied ein neueres Release hat.
-- Behoben: Fehlermeldung im Spieler-Tooltip („secret values“).
+- **Materialien per Post:** Am Briefkasten Rechtsklick auf einen Hersteller, „Reagenzien per Post“: Das Addon teilt die Stapel und füllt den Brief aus, du klickst auf Senden. Fehlt ein Material, wird nichts angehängt, und der Chat nennt es.
+- **Spezialisierungen** (etwa in Lederverarbeitung, Schmiedekunst oder Ingenieurskunst) im Reiter Mitglieder und im Spieler-Tooltip.
+- **Abklingzeiten** bleiben aktuell, ohne dass du das Berufsfenster öffnest; auch der **Salzstreuer** wird geteilt.
+- Keine Zeile „Herstellbar in der Gilde“ mehr bei beim Aufheben gebundenen Gegenständen.
+- Rechtsklick-Menüs: Flüstern, In Gruppe einladen, Reagenzien per Post.
+- Für andere Addons: `GuildTradebook_BuildExport()` liefert das Export-JSON.
 ```
 
 ### Bildunterschriften für Screenshots
