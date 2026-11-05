@@ -7,8 +7,12 @@ separate game clients. Runs on stock Lua 5.1-5.4.
 local H = {}
 
 -- Stands for a "secret value" (the game hides it from addons, e.g. cooldowns
--- in combat); the clients' issecretvalue recognizes it.
-H.SECRET = setmetatable({}, { __tostring = function() return "<secret>" end })
+-- in combat); the clients' issecretvalue recognizes it. Like the game's, it
+-- cannot be indexed or iterated (ipairs over it raises an error).
+H.SECRET = setmetatable({}, {
+	__tostring = function() return "<secret>" end,
+	__index = function() error("attempted to index a secret value", 2) end,
+})
 
 local ROOT = (arg and arg[0] and arg[0]:match("^(.*)[/\\]tests[/\\]")) or "."
 H.ADDON_DIR = ROOT .. "/GuildTradebook/"
@@ -658,12 +662,18 @@ function H.NewClient(world, char)
 	}
 	env.C_Club = {
 		GetGuildClubId = function() return 1 end,
+		-- world.clubSecret: "list" hides the member list, "fields" each
+		-- member's entries (the client's secret values).
 		GetClubMembers = function()
+			if world.clubSecret == "list" then return H.SECRET end
 			local ids = {}
 			for i = 1, #world.order do ids[i] = i end
 			return ids
 		end,
 		GetMemberInfo = function(_, memberId)
+			if world.clubSecret == "fields" then
+				return { guid = H.SECRET, profession1ID = H.SECRET, profession2ID = H.SECRET }
+			end
 			local guid = world.order[memberId]
 			local sp = world.serverProfs[guid]
 			return { guid = guid, profession1ID = sp and sp[1], profession2ID = sp and sp[2] }

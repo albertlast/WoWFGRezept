@@ -174,17 +174,24 @@ Roster.SECONDARY_SKILLLINES = {
 	[356] = true, -- Fishing
 }
 
+-- The club data can come as secret values (seen on Forever: the member list
+-- itself). Then the last readable state is kept; a member whose entry is
+-- secret is left out, which means "unknown" and hides nothing.
 function Roster.RefreshServerProfessions()
-	local profs = {}
 	local clubId = C_Club and C_Club.GetGuildClubId and C_Club.GetGuildClubId()
-	if clubId then
-		for _, memberId in ipairs(C_Club.GetClubMembers(clubId) or {}) do
-			local info = C_Club.GetMemberInfo(clubId, memberId)
-			if info and info.guid and (info.profession1ID or info.profession2ID) then
+	if not clubId or Util.IsSecret(clubId) then return end
+	local ids = C_Club.GetClubMembers(clubId)
+	if Util.IsSecret(ids) or type(ids) ~= "table" then return end
+	local profs = {}
+	for _, memberId in ipairs(ids) do
+		local info = not Util.IsSecret(memberId) and C_Club.GetMemberInfo(clubId, memberId)
+		if type(info) == "table" then
+			local guid, p1, p2 = info.guid, info.profession1ID, info.profession2ID
+			if not Util.IsSecret(guid, p1, p2) and type(guid) == "string" and (p1 or p2) then
 				local set = {}
-				if info.profession1ID then set[info.profession1ID] = true end
-				if info.profession2ID then set[info.profession2ID] = true end
-				profs[info.guid] = { profs = set, complete = (info.profession1ID and info.profession2ID) and true or false }
+				if p1 then set[p1] = true end
+				if p2 then set[p2] = true end
+				profs[guid] = { profs = set, complete = (p1 and p2) and true or false }
 			end
 		end
 	end
@@ -248,7 +255,10 @@ function Roster.Refresh()
 		if members[guid] then byName[name] = guid end
 	end
 	Roster.members, Roster.byName = members, byName
-	Roster.RefreshServerProfessions()
+	-- Optional data: a failure here must never stop the roster update below
+	-- (readiness, RosterUpdated), which the sync waits for.
+	local ok, err = pcall(Roster.RefreshServerProfessions)
+	if not ok then ns.Debug("server professions not read:", tostring(err)) end
 
 	-- The first update after login can be partial, so membership is only
 	-- trusted from the second non-empty update on. Until then IsMember returns

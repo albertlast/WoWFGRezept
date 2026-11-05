@@ -1401,6 +1401,29 @@ test("server profession data hides stale primary professions", function()
 	eq(#cb.ns.Index.Crafters(3914), 1, "partial server data is not evidence")
 end)
 
+test("secret club data never breaks the roster update", function()
+	local world, a, b = threeMembers()
+	world.serverProfs[a.guid] = { ALCHEMY, 186 }
+	world.clubSecret = "list"
+	local cb = world:Login(b.guid)
+	world:Login(a.guid)
+	world:Run(60)
+	truthy(cb.ns.Roster.ready, "roster ready although the club list is secret")
+	eq(next(cb.ns.Roster.serverProfs), nil, "nothing known yet")
+	-- Readable once: kept while the list turns secret again.
+	world.clubSecret = nil
+	cb.ns.Roster.Refresh()
+	truthy(cb.ns.Roster.ServerProfessions(a.guid), "read")
+	world.clubSecret = "list"
+	cb.ns.Roster.Refresh()
+	truthy(cb.ns.Roster.ServerProfessions(a.guid), "kept")
+	-- Secret entries: left out (unknown), no error.
+	world.clubSecret = "fields"
+	cb.ns.Roster.Refresh()
+	falsy(cb.ns.Roster.ServerProfessions(a.guid), "secret entry is unknown")
+	falsy(cb.ns.Roster.IsProfessionContradicted(a.guid, TAILORING))
+end)
+
 test("rogue Poisons are a class skill: not shared; an older record that has them hides them", function()
 	math.randomseed(12)
 	local world = H.NewWorld()
