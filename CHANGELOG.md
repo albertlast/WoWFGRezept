@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 (2026-11-05)
+
+- Fix: Lua error "bad argument #1 to 'ipairs' (table expected, got secret)" in Roster.lua, on every guild roster update since the Forever launch. The game sometimes hides the guild's club member list from addons (a secret value). The error stopped the roster update, so the sync could not start. Now the addon keeps the last list it could read, and a hidden entry counts as unknown. If that check fails anyway, the roster update still finishes.
+
 ## 0.6.0 (2026-11-01)
 
 - Reagents by mail: at an open mailbox, right-click a crafter (Recipes tab, or a cooldown in the Members tab) → "Mail reagents". The addon puts the reagents for the number of crafts set in the reagent check into a mail to them: whole stacks where they fit, the rest split off a bigger stack into a free bag slot first; recipient, subject and text are filled in. You send it with the mailbox's Send button. All or nothing: if your bags are short of any reagent, nothing is attached and chat names what is missing (optional reagents stay home; more than 12 stacks do not fit one mail). Crafters you mailed show "reagents mailed 2h ago" for three days.

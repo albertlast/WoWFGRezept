@@ -86,18 +86,22 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.6.0)
+## File upload (0.7.0)
 
-Done by the release workflow (tag `v0.6.0`); for a manual upload:
+Done by the release workflow (tag `v0.7.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.6.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.7.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.6.0`
+- Display name: `0.7.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.7.0
+
+- Fix for the Forever launch: the Lua error "bad argument #1 to 'ipairs' (table expected, got secret)" in Roster.lua on every guild roster update. It stopped the guild sync from starting. **Please update.**
+
 ## 0.6.0
 
 - **Reagents by mail:** at a mailbox, right-click a crafter and choose "Mail reagents": the addon splits the stacks and fills in the mail, you click Send. Nothing is attached if a reagent is missing; chat names it.
@@ -187,6 +191,10 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.7.0
+
+- Korrektur zum Forever-Start: Lua-Fehler „bad argument #1 to 'ipairs' (table expected, got secret)“ in Roster.lua bei jeder Aktualisierung der Gildenliste. Dadurch startete der Abgleich mit der Gilde nicht. **Bitte aktualisieren.**
+
 ## 0.6.0
 
 - **Materialien per Post:** Am Briefkasten Rechtsklick auf einen Hersteller, „Reagenzien per Post“: Das Addon teilt die Stapel und füllt den Brief aus, du klickst auf Senden. Fehlt ein Material, wird nichts angehängt, und der Chat nennt es.
