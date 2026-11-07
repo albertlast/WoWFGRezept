@@ -86,18 +86,22 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.7.0)
+## File upload (0.8.0)
 
-Done by the release workflow (tag `v0.7.0`); for a manual upload:
+Done by the release workflow (tag `v0.8.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.7.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.8.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.7.0`
+- Display name: `0.8.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.8.0
+
+- Fix: a profession without a learned recipe (Fishing at skill 1) no longer stays "not scanned yet" after you open its window; it shows 0 recipes.
+
 ## 0.7.0
 
 - Fix for the Forever launch: the Lua error "bad argument #1 to 'ipairs' (table expected, got secret)" in Roster.lua on every guild roster update. It stopped the guild sync from starting. **Please update.**
@@ -191,6 +195,10 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.8.0
+
+- Korrektur: Ein Beruf ohne erlerntes Rezept (Angeln auf Stufe 1) bleibt nach dem Öffnen seines Fensters nicht mehr „noch nicht eingelesen“; er zeigt 0 Rezepte.
+
 ## 0.7.0
 
 - Korrektur zum Forever-Start: Lua-Fehler „bad argument #1 to 'ipairs' (table expected, got secret)“ in Roster.lua bei jeder Aktualisierung der Gildenliste. Dadurch startete der Abgleich mit der Gilde nicht. **Bitte aktualisieren.**

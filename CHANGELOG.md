@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 (2026-11-07)
+
+- Fix: a profession without a learned recipe (Fishing at skill 1: the game lists only recipes you learn later) stayed "not scanned yet" in the Members tab, also after opening its window. It now counts as scanned, with 0 recipes. Two reads a second apart in the same window must agree, and an empty read never replaces recipes already known.
+
 ## 0.7.0 (2026-11-05)
 
 - Fix: Lua error "bad argument #1 to 'ipairs' (table expected, got secret)" in Roster.lua, on every guild roster update since the Forever launch. The game sometimes hides the guild's club member list from addons (a secret value). The error stopped the roster update, so the sync could not start. Now the addon keeps the last list it could read, and a hidden entry counts as unknown. If that check fails anyway, the roster update still finishes.
