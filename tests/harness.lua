@@ -828,14 +828,22 @@ function H.NewClient(world, char)
 			end
 			local p = char.profs[skill]
 			for rid in pairs(p and p.recipes or {}) do ids[#ids + 1] = rid end
+			-- p.unlearned[rid] = true: listed by the window, not learned yet.
+			for rid in pairs(p and p.unlearned or {}) do ids[#ids + 1] = rid end
 			table.sort(ids)
 			return ids
 		end,
 		-- char.recipeCats[rid] = categoryID; the game names categories in the
 		-- client's language ("Category 10" / "Kategorie 10").
 		-- char.recipeTrivial[rid] = skill at which the recipe turns grey.
+		-- char.noRecipeInfo = true: recipe data not loaded yet (nil info).
 		GetRecipeInfo = function(rid)
-			return { recipeID = rid, learned = true, categoryID = (char.recipeCats or {})[rid],
+			if char.noRecipeInfo then return nil end
+			local learned = true
+			for _, p in pairs(char.profs) do
+				if p.unlearned and p.unlearned[rid] then learned = false end
+			end
+			return { recipeID = rid, learned = learned, categoryID = (char.recipeCats or {})[rid],
 				maxTrivialLevel = (char.recipeTrivial or {})[rid] or 0 }
 		end,
 		GetCategoryInfo = function(id)
@@ -925,6 +933,7 @@ function H.NewClient(world, char)
 
 	function client:CloseTradeSkill()
 		self.openSkill = nil
+		self:Fire("TRADE_SKILL_CLOSE")
 	end
 
 	function client:GuildData()

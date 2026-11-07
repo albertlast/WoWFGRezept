@@ -100,6 +100,62 @@ test("every profession with a crafting window is shared, gathering ones are not"
 	eq(r.profs[HERBALISM], nil, "herbalism has no crafting window")
 end)
 
+test("a profession with no learned recipe counts as scanned", function()
+	math.randomseed(14)
+	local world = H.NewWorld()
+	local FISHING, FIRST_AID = 356, 129
+	local a = world:AddChar({ guid = guid(1), name = "Anna", profs = {
+		[FISHING] = { rank = 1, maxRank = 75, name = "Fishing", secondary = true, unlearned = { [9001] = true, [9002] = true } },
+		[COOKING] = { rank = 1, maxRank = 75, name = "Cooking", secondary = true, unlearned = { [2538] = true } },
+		-- The game lists no recipe at all.
+		[FIRST_AID] = { rank = 1, maxRank = 75, name = "First Aid", secondary = true },
+	} })
+	local b = world:AddChar({ guid = guid(2), name = "Bert" })
+	world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	-- Recipe data not loaded yet: not a scan.
+	a.noRecipeInfo = true
+	ca:OpenTradeSkill(COOKING)
+	world:Run(5)
+	eq(ca:Record(a.guid).profs[COOKING].recipes, nil, "no recipe info is not an empty scan")
+	a.noRecipeInfo = nil
+	ca:OpenTradeSkill(FISHING)
+	world:Run(120)
+	local own = ca:Record(a.guid)
+	truthy(own.profs[FISHING].recipes and next(own.profs[FISHING].recipes) == nil, "fishing scanned, empty")
+	local r = world.online[b.guid]:Record(a.guid)
+	truthy(r.profs[FISHING].recipes and next(r.profs[FISHING].recipes) == nil, "empty list shared")
+	eq(r.profs[COOKING].recipes, nil, "cooking still not scanned")
+
+	-- An empty list needs a second read in the same window: one read while
+	-- the window loads (closed right after) is not a scan.
+	ca:OpenTradeSkill(FIRST_AID)
+	world:Run(0.5)
+	ca:CloseTradeSkill()
+	world:Run(5)
+	ca:OpenTradeSkill(FIRST_AID)
+	world:Run(0.5)
+	ca:CloseTradeSkill()
+	world:Run(5)
+	eq(ca:Record(a.guid).profs[FIRST_AID].recipes, nil, "single empty reads are not a scan")
+	ca:OpenTradeSkill(FIRST_AID)
+	world:Run(5)
+	own = ca:Record(a.guid)
+	truthy(own.profs[FIRST_AID].recipes and next(own.profs[FIRST_AID].recipes) == nil, "no recipes listed: scanned, empty")
+
+	-- An empty read later never wipes learned recipes.
+	a.profs[FISHING].unlearned[9001] = nil
+	a.profs[FISHING].recipes = { [9001] = 6533 }
+	ca:Fire("NEW_RECIPE_LEARNED", 9001)
+	world:Run(5)
+	a.profs[FISHING].recipes = nil
+	a.profs[FISHING].unlearned[9001] = true
+	ca:OpenTradeSkill(FISHING)
+	world:Run(5)
+	eq(ca:Record(a.guid).profs[FISHING].recipes[9001], 6533, "learned recipe kept")
+end)
+
 test("primary recipe changes go out fast, secondary ones are batched", function()
 	math.randomseed(13)
 	local world = H.NewWorld()

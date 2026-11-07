@@ -497,6 +497,37 @@ function Scanner.ScanCooldowns()
 	end
 end
 
+--[[
+Nothing learned yet: Fishing at skill 1 lists no recipe at all, or only
+ones that are not learned. That counts as scanned, with no recipes - but
+only from the complete list, when the game described every listed recipe
+(valid), when two reads at least EMPTY_CONFIRM_DELAY apart agree (the list
+can be empty while the window loads), and never over existing data.
+]]
+Scanner.EMPTY_CONFIRM_DELAY = 1
+local EMPTY_CONFIRM_MAX = 10
+local emptySince = {}
+
+local function applyEmpty(own, skillLine, valid)
+	local prof = own.profs[skillLine]
+	if not valid or prof.recipes ~= nil then
+		emptySince[skillLine] = nil
+		return
+	end
+	local now, since = GetTime(), emptySince[skillLine]
+	if not since or now - since > EMPTY_CONFIRM_MAX then
+		emptySince[skillLine] = now
+		ns.Debounce("scanEmpty", Scanner.EMPTY_CONFIRM_DELAY + 0.1, Scanner.ScanTradeSkill)
+		return
+	end
+	if now - since < Scanner.EMPTY_CONFIRM_DELAY then return end
+	emptySince[skillLine] = nil
+	ns.Debug("scanned", skillLine, "no learned recipes")
+	if Store.ApplyScan(own, skillLine, {}, true, ns.Now()) then
+		Scanner.Commit(own, Store.ChangeKind(prof))
+	end
+end
+
 -- Reads the open profession window, if it is the player's own.
 function Scanner.ScanTradeSkill()
 	if not C_TradeSkillUI.IsTradeSkillReady() then return end
@@ -514,7 +545,10 @@ function Scanner.ScanTradeSkill()
 	if not own then return end
 	if not own.profs[skillLine] then
 		Scanner.Reconcile(false)
-		if not own.profs[skillLine] then return end
+		if not own.profs[skillLine] then
+			ns.Debug("scan", skillLine, "is not a profession of the own record")
+			return
+		end
 	end
 
 	-- GetAllRecipeIDs is not in the generated API docs of the forever branch;
@@ -526,12 +560,13 @@ function Scanner.ScanTradeSkill()
 	else
 		ids, complete = C_TradeSkillUI.GetFilteredRecipeIDs(), false
 	end
-	if not ids or #ids == 0 then return end
+	if not ids then return end
 
 	local prof = own.profs[skillLine]
-	local recipes, cooldowns, cats, catIDs, trivial, count = {}, {}, {}, {}, {}, 0
+	local recipes, cooldowns, cats, catIDs, trivial, count, seen = {}, {}, {}, {}, {}, 0, 0
 	for _, recipeID in ipairs(ids) do
 		local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
+		if info then seen = seen + 1 end
 		if info and info.learned and not info.isDummyRecipe and not info.isGatheringRecipe
 			and not info.isSalvageRecipe and not info.isRecraft and not isForeign(own, skillLine, recipeID) then
 			local fact = Scanner.ResolveFact(recipeID, info)
@@ -545,7 +580,13 @@ function Scanner.ScanTradeSkill()
 			count = count + 1
 		end
 	end
-	if count == 0 then return end
+	if count == 0 then
+		ns.Debug("scan", skillLine, "no learned recipes:", #ids, "listed,", seen, "described,",
+			complete and "complete" or "partial", prof.recipes and "has data" or "not scanned")
+		applyEmpty(own, skillLine, complete and seen == #ids)
+		return
+	end
+	emptySince[skillLine] = nil
 	if Scanner.ResolveCategories(catIDs) then
 		ns.Emit("CategoriesChanged")
 	end
@@ -618,6 +659,8 @@ function Scanner.Start()
 	ns.RegisterEvent("TRADE_SKILL_SHOW", scanSoon)
 	ns.RegisterEvent("TRADE_SKILL_LIST_UPDATE", scanSoon)
 	ns.RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", scanSoon)
+	-- Both reads of an empty profession must come from one open window.
+	ns.RegisterEvent("TRADE_SKILL_CLOSE", function() emptySince = {} end)
 	ns.RegisterEvent("NEW_RECIPE_LEARNED", Scanner.OnRecipeLearned)
 	ns.RegisterEvent("SKILL_LINES_CHANGED", reconcileSoon)
 	ns.RegisterEvent("PLAYER_LEVEL_UP", reconcileSoon)
