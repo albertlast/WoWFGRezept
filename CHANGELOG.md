@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 (2026-11-09)
+
+- Fix: the tooltip of a recipe item (pattern, plans, schematic, ...) could say "Not known in your guild yet" although someone knows the recipe, because it compared names and the item and recipe names often differ, more so in German. A generated table (`Data/RecipeItems.lua`, `tools/recipe_items.py`) now names the exact recipe of each item. An item newer than the table still gets "Known in your guild by ..." through its name, and no claim otherwise.
+- Members tab: a profession not read yet appears as a line at the top. Click it to open the profession window and read it, without looking for the profession in your spellbook.
+- Members tab: transmutes share one cooldown, so they are one row now instead of one row per transmute. The mail menu still lists each of them.
+- The check for values the game hides from addons (secret values) can no longer raise an error itself, and uses the game's other check if the first one is not usable.
+
 ## 0.8.0 (2026-11-07)
 
 - Fix: a profession without a learned recipe (Fishing at skill 1: the game lists only recipes you learn later) stayed "not scanned yet" in the Members tab, also after opening its window. It now counts as scanned, with 0 recipes. Two reads a second apart in the same window must agree, and an empty read never replaces recipes already known.

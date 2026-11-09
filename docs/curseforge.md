@@ -86,18 +86,25 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.8.0)
+## File upload (0.9.0)
 
-Done by the release workflow (tag `v0.8.0`); for a manual upload:
+Done by the release workflow (tag `v0.9.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.8.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.9.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.8.0`
+- Display name: `0.9.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.9.0
+
+- Fix: recipe items (patterns, plans, ...) no longer claim "Not known in your guild yet" when someone does know the recipe.
+- Members tab: click the line of a profession not read yet to open and read it.
+- Members tab: transmutes share one cooldown and are one row now.
+- Safer handling of values the game hides from addons.
+
 ## 0.8.0
 
 - Fix: a profession without a learned recipe (Fishing at skill 1) no longer stays "not scanned yet" after you open its window; it shows 0 recipes.
@@ -195,6 +202,13 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.9.0
+
+- Korrektur: Rezeptgegenstände (Muster, Pläne, ...) behaupten nicht mehr „In deiner Gilde noch unbekannt“, wenn jemand das Rezept kennt.
+- Reiter Mitglieder: Ein Klick auf die Zeile eines noch nicht eingelesenen Berufs öffnet und liest ihn.
+- Reiter Mitglieder: Transmutationen teilen sich eine Abklingzeit und sind jetzt eine Zeile.
+- Sicherer Umgang mit Werten, die das Spiel vor Addons verbirgt.
+
 ## 0.8.0
 
 - Korrektur: Ein Beruf ohne erlerntes Rezept (Angeln auf Stufe 1) bleibt nach dem Öffnen seines Fensters nicht mehr „noch nicht eingelesen“; er zeigt 0 Rezepte.
