@@ -4,8 +4,11 @@ character in ns.charDB.members):
   players      one group per person: the online or highest character first,
                the other characters indented below
   professions  one collapsible group per profession, members by skill level
-  cooldowns    one collapsible group per cooldown recipe, ready and
-               reachable crafters first
+  cooldowns    one collapsible group per cooldown recipe (recipes sharing a
+               cooldown are one group), ready and reachable crafters first
+Every view starts with one row per profession of this character that has not
+been read yet; a click opens its window, which reads it. The game allows that
+only from the click itself (no timer, no event).
 "Only reachable now" hides characters nobody can ask right now (offline,
 and not online on another character), in every view. The search box
 (not remembered) matches character names and profession names:
@@ -23,6 +26,7 @@ ns.MembersView = MembersView
 
 MembersView.VIEWS = { "players", "professions", "cooldowns" }
 local VIEW_LABELS = { players = "VIEW_PLAYERS", professions = "VIEW_PROFESSIONS", cooldowns = "VIEW_COOLDOWNS" }
+local COOLDOWN_GROUP_LABELS = { transmute = "COOLDOWN_TRANSMUTES" }
 local MAX_READY_NAMES = 3
 local ICON_OPEN = "|TInterface\\Buttons\\UI-MinusButton-Up:14:14|t "
 local ICON_CLOSED = "|TInterface\\Buttons\\UI-PlusButton-Up:14:14|t "
@@ -57,6 +61,29 @@ local function matches(text, needle)
 	return needle == "" or (text ~= nil and text:lower():find(needle, 1, true) ~= nil)
 end
 
+--[[
+The cooldowns of one profession as shown: { key, group?, label, rids, readyAt }.
+Recipes sharing a cooldown become one entry with the latest time: a running
+cooldown holds them all, and a hidden time (far in the future) stays hidden.
+]]
+local function cooldownList(cds)
+	local list, groups = {}, {}
+	for _, rid in ipairs(Util.SortedKeys(cds)) do
+		local group = Store.COOLDOWN_GROUPS[rid]
+		local c = group and groups[group]
+		if c then
+			c.rids[#c.rids + 1] = rid
+			c.readyAt = math.max(c.readyAt, cds[rid])
+		else
+			c = { key = group or rid, group = group, rids = { rid }, readyAt = cds[rid],
+				label = group and L[COOLDOWN_GROUP_LABELS[group]] or Index.RecipeName(rid) or ("#" .. rid) }
+			list[#list + 1] = c
+			if group then groups[group] = c end
+		end
+	end
+	return list
+end
+
 -- Primary professions first; secondary ones (Cooking, First Aid, ...) dimmed.
 local function professionText(rec)
 	local parts = {}
@@ -79,12 +106,12 @@ local function professionText(rec)
 		end
 		if p.cds and next(p.cds) then
 			local now, cds = ns.Now(), {}
-			for _, rid in ipairs(Util.SortedKeys(p.cds)) do
-				local readyAt = p.cds[rid]
+			for _, c in ipairs(cooldownList(p.cds)) do
+				local readyAt = c.readyAt
 				local state = Store.IsHiddenCooldown(readyAt) and ("|cff808080" .. L.CD_NOT_SHARED .. "|r")
 					or readyAt <= now and ("|cff20ff20" .. L.CD_READY .. "|r")
 					or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
-				cds[#cds + 1] = (Index.RecipeName(rid) or ("#" .. rid)) .. " " .. state
+				cds[#cds + 1] = c.label .. " " .. state
 			end
 			text = text .. " [" .. table.concat(cds, ", ") .. "]"
 		end
@@ -249,7 +276,7 @@ local function flatten(groups, open, needle)
 	local rows = {}
 	for _, g in ipairs(groups) do
 		local entries, forced = g.entries, false
-		if needle ~= "" and not matches(g.header.label, needle) then
+		if needle ~= "" and not matches(g.header.label, needle) and not matches(g.header.searchText, needle) then
 			entries = {}
 			for _, e in ipairs(g.entries) do
 				if matches(e.name, needle) or (e.spec and matches(e.spec, needle)) then entries[#entries + 1] = e end
@@ -319,31 +346,47 @@ end
 
 local function cooldownRows(gd, reachableOnly, open, needle)
 	local now = ns.Now()
-	local byRecipe = {}
+	local byCooldown = {}
 	for guid, rec in pairs(gd.chars) do
 		if Store.IsShareable(rec, isMember) then
 			for sl, p in pairs(rec.profs) do
-				for rid, readyAt in pairs(not Store.IsClassSkill(sl) and p.cds or {}) do
+				for _, c in ipairs(cooldownList(not Store.IsClassSkill(sl) and p.cds or {})) do
 					local e = entry(guid, rec)
 					if e.reachable or not reachableOnly then
-						e.recipeID, e.readyAt, e.ready = rid, readyAt, readyAt <= now
+						local readyAt = c.readyAt
+						e.readyAt, e.ready = readyAt, readyAt <= now
 						e.hidden = Store.IsHiddenCooldown(readyAt)
-						local mailedAt = ns.Mail.SentAt(guid, rid)
-						if mailedAt then
+						if c.group then
+							-- No single recipe: a click shows the member's recipes of
+							-- this profession, the menu offers each transmute.
+							e.recipes, e.skillLine = c.rids, sl
+						else
+							e.recipeID = c.rids[1]
+						end
+						local mailedAt
+						for _, rid in ipairs(c.rids) do
+							mailedAt = math.max(mailedAt or 0, ns.Mail.SentAt(guid, rid) or 0)
+						end
+						if mailedAt > 0 then
 							e.extra = "|cff66ccff" .. L.MAILED_AGO:format(Util.FormatAge(now - mailedAt)) .. "|r"
 						end
 						e.right = e.hidden and ("|cff808080" .. L.CD_NOT_SHARED .. "|r")
 							or e.ready and ("|cff20ff20" .. L.CD_READY .. "|r")
 							or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
-						byRecipe[rid] = byRecipe[rid] or { entries = {} }
-						table.insert(byRecipe[rid].entries, e)
+						local g = byCooldown[c.key]
+						if not g then
+							g = { entries = {}, cooldown = c, recipes = {} }
+							byCooldown[c.key] = g
+						end
+						for _, rid in ipairs(c.rids) do g.recipes[rid] = true end
+						table.insert(g.entries, e)
 					end
 				end
 			end
 		end
 	end
 	local groups = {}
-	for rid, g in pairs(byRecipe) do
+	for key, g in pairs(byCooldown) do
 		table.sort(g.entries, function(a, b)
 			if a.ready ~= b.ready then return a.ready end
 			if a.ready then
@@ -379,9 +422,15 @@ local function cooldownRows(gd, reachableOnly, open, needle)
 		end
 		g.soonest = #ready > 0 and 0 or (nextUp and nextUp.readyAt) or math.huge
 		g.header = {
-			kind = "group", key = "c:" .. rid, label = Index.RecipeName(rid) or ("#" .. rid),
-			summary = summary, recipeID = rid,
+			kind = "group", key = "c:" .. key, label = g.cooldown.label, summary = summary,
+			recipeID = not g.cooldown.group and g.cooldown.rids[1] or nil,
 		}
+		if g.cooldown.group then
+			-- Searching "arcanite" finds the transmutes.
+			local names = {}
+			for rid in pairs(g.recipes) do names[#names + 1] = Index.RecipeName(rid) or "" end
+			g.header.searchText = table.concat(names, " ")
+		end
 		groups[#groups + 1] = g
 	end
 	table.sort(groups, function(a, b)
@@ -392,11 +441,34 @@ local function cooldownRows(gd, reachableOnly, open, needle)
 	return flatten(groups, open, needle)
 end
 
+-- One row per profession of this character that was never read.
+local function scanRows(gd)
+	local rec = gd.chars[UnitGUID("player")]
+	local rows = {}
+	for _, sl in ipairs(rec and Store.ProfessionSkillLines(rec) or {}) do
+		if not rec.profs[sl].recipes then
+			rows[#rows + 1] = { kind = "scan", skillLine = sl,
+				text = "|cffff8000" .. L.SCAN_ROW:format(Index.SkillLineName(sl)) .. "|r" }
+		end
+	end
+	return rows
+end
+
+-- Must run inside a click: the game blocks the call from anywhere else.
+function MembersView.OpenProfession(skillLine)
+	local ok, opened = pcall(C_TradeSkillUI.OpenTradeSkill, skillLine)
+	if not ok or opened == false then
+		ns.Print(L.REMIND_SCAN:format(Index.SkillLineName(skillLine)))
+	end
+end
+
 --[[
-Rows for one view: { kind = "member" | "group" | "entry" | "info", ... }
+Rows for one view: { kind = "member" | "group" | "entry" | "info" | "scan", ... }
   group:  key, label, summary, open, dim?
   entry:  guid, name, class, online, via, reachable, isSelf, isAlt, right, extra,
-          skillLine (professions) or recipeID (cooldowns)
+          skillLine (professions) or recipeID (cooldowns); a cooldown shared by
+          several recipes has recipes and skillLine instead of recipeID
+  scan:   skillLine, text
 text: optional search (character or profession name).
 Second value: the stats line (guild totals, not filtered).
 ]]
@@ -417,6 +489,10 @@ function MembersView.Rows(view, reachableOnly, open, text)
 	end
 	if #rows == 0 and needle ~= "" then
 		rows = { { kind = "info", text = L.MEMBERS_NO_MATCH } }
+	end
+	if needle == "" then
+		local scans = scanRows(gd)
+		for i = #scans, 1, -1 do table.insert(rows, 1, scans[i]) end
 	end
 	return rows, L.MEMBERS_STATS:format(stats(gd))
 end
@@ -483,8 +559,13 @@ local function build(content)
 		if inviteTarget then
 			items[#items + 1] = { L.MENU_INVITE, function() W.InviteToParty(inviteTarget) end }
 		end
-		if data.recipeID and Index.IsRecipe(data.recipeID) then
-			items[#items + 1] = ns.Mail.MenuItem(data, data.recipeID, 1)
+		for _, rid in ipairs(data.recipes or { data.recipeID }) do
+			local item = Index.IsRecipe(rid) and ns.Mail.MenuItem(data, rid, 1)
+			if item then
+				-- Several recipes in one row: say which one the mail is for.
+				if data.recipes then item[1] = (Index.RecipeName(rid) or ("#" .. rid)) .. ": " .. item[1] end
+				items[#items + 1] = item
+			end
 		end
 		if ns.Link.TargetOf(data.guid) then
 			if ns.Link.OfferPendingFor(data.guid) then
@@ -534,6 +615,8 @@ local function build(content)
 	local function openRow(data)
 		if data.kind == "group" then
 			MembersView.Toggle(data.key)
+		elseif data.kind == "scan" then
+			MembersView.OpenProfession(data.skillLine)
 		elseif data.kind == "entry" and data.recipeID then
 			-- An item cooldown (Salt Shaker) has no recipe to open.
 			if Index.IsRecipe(data.recipeID) then ns.UI.ShowRecipe(data.recipeID) end
@@ -562,6 +645,9 @@ local function build(content)
 			if data.kind == "group" then
 				MembersView.Toggle(data.key)
 				return
+			elseif data.kind == "scan" then
+				MembersView.OpenProfession(data.skillLine)
+				return
 			end
 			local target = data.guid and Index.ContactFor(data)
 			if target then
@@ -571,6 +657,7 @@ local function build(content)
 		hint(row.nameButton, function(self)
 			local data = self:GetParent().data
 			if data.kind == "group" then return L.CLICK_TOGGLE end
+			if data.kind == "scan" then return L.CLICK_SCAN end
 			if data.kind == "info" then return nil end
 			local target, reason = Index.ContactFor(data)
 			if not target then return reason end
@@ -594,6 +681,7 @@ local function build(content)
 		hint(row, function(self)
 			local data = self.data
 			if data.kind == "group" then return L.CLICK_TOGGLE end
+			if data.kind == "scan" then return L.CLICK_SCAN end
 			if data.kind == "info" then return nil end
 			if data.recipeID then return Index.IsRecipe(data.recipeID) and L.CLICK_OPEN_RECIPE or nil end
 			return data.ver > 0 and L.CLICK_SHOW_RECIPES or L.NO_ADDON_DATA
@@ -601,11 +689,11 @@ local function build(content)
 	end, function(row, data)
 		row.data = data
 		row.name:ClearAllPoints()
-		if data.kind == "group" or data.kind == "info" then
+		if data.kind == "group" or data.kind == "info" or data.kind == "scan" then
 			local label = data.kind == "group" and ((data.open and ICON_OPEN or ICON_CLOSED) .. data.label) or data.text
 			if data.dim then label = "|cffa0a0a0" .. label .. "|r" end
 			row.name:SetPoint("LEFT", 4, 0)
-			row.name:SetWidth(data.kind == "info" and 600 or 244)
+			row.name:SetWidth(data.kind == "group" and 244 or 600)
 			row.name:SetText(label)
 			row.age:SetText("")
 			row.profs:SetText(data.summary or "")

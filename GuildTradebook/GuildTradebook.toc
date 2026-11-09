@@ -19,6 +19,7 @@ Locales\deDE.lua
 Core\Init.lua
 Core\Util.lua
 Data\Store.lua
+Data\RecipeItems.lua
 Data\Roster.lua
 Scan\Scanner.lua
 Sync\Codec.lua

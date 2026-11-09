@@ -47,6 +47,46 @@ test("cooldowns reset with a relearned profession", function()
 	eq(o.profs[171].cds, nil)
 end)
 
+-- Secret values -------------------------------------------------------------------
+
+local function isSecretWith(globals)
+	return H.LoadPure(globals).Util.IsSecret
+end
+
+test("secret values: the game's check decides", function()
+	local isSecret = isSecretWith({ issecretvalue = function(v) return v == H.SECRET end })
+	truthy(isSecret(H.SECRET))
+	truthy(isSecret("text", nil, H.SECRET), "any argument counts")
+	falsy(isSecret("text", nil, 5))
+end)
+
+test("secret values: no check on this client", function()
+	falsy(isSecretWith({})(H.SECRET))
+end)
+
+test("secret values: a check that refuses our call falls back to the other", function()
+	local isSecret = isSecretWith({
+		issecretvalue = function() error("not allowed for tainted callers") end,
+		canaccessvalue = function(v) return v ~= H.SECRET end,
+	})
+	truthy(isSecret(H.SECRET))
+	falsy(isSecret("text"))
+end)
+
+test("secret values: no working check is no error and nothing is secret", function()
+	local refuse = function() error("not allowed for tainted callers") end
+	falsy(isSecretWith({ issecretvalue = refuse, canaccessvalue = refuse })(H.SECRET))
+end)
+
+test("secret values: a value the working check raises on counts as secret", function()
+	local isSecret = isSecretWith({ issecretvalue = function(v)
+		if v == H.SECRET then error("bad value") end
+		return false
+	end })
+	truthy(isSecret(H.SECRET))
+	falsy(isSecret("text"))
+end)
+
 -- Reagents ------------------------------------------------------------------------
 
 test("reagent check: have, need, missing, optional", function()

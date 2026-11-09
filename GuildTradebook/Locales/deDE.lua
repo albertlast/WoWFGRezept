@@ -97,7 +97,10 @@ L.CLICK_SHOW_RECIPES = "Klick: Rezepte dieses Mitglieds anzeigen"
 L.NO_ADDON_DATA = "keine Addon-Daten"
 L.TOOLTIP_MORE = "(+%d weitere)"
 
-L.REMIND_SCAN = "Öffne das Berufsfenster und klicke einmal auf den Reiter %s, damit deine Rezepte mit der Gilde geteilt werden."
+L.REMIND_SCAN = "Öffne das Berufsfenster und klicke einmal auf den Reiter %s, damit deine Rezepte mit der Gilde geteilt werden. Du kannst auch auf seine Zeile oben im Mitglieder-Reiter klicken."
+L.SCAN_ROW = "Deine Rezepte für %s sind noch nicht geteilt: zum Einlesen hier klicken"
+L.CLICK_SCAN = "Klick: öffnet das Berufsfenster, daraus werden deine Rezepte gelesen"
+L.COOLDOWN_TRANSMUTES = "Transmutationen (gemeinsame Abklingzeit)"
 
 L.SETTINGS_HIDE_BOP = "Beim Aufheben gebundene Gegenstände anderer ausblenden"
 L.SETTINGS_HIDE_BOP_DESC = "Rezeptliste: blendet Rezepte aus, deren Gegenstand beim Aufheben gebunden wird, wenn dieser Charakter ihn nicht selbst herstellen kann - solche Gegenstände kann dir niemand geben, auch nicht deine Twinks."

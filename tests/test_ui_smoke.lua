@@ -84,7 +84,8 @@ local function uiEnv(client)
 		GetItemInfo = function(id)
 			if type(id) ~= "number" then return nil end
 			-- Recipe items (class 9): known pattern, unknown pattern, class book.
-			local recipes = { [9001] = { "Pattern: Recipe 3914", 2 }, [9002] = { "Pattern: Unknown Robe", 2 }, [9003] = { "Book: Frostbolt", 0 } }
+			local recipes = { [9001] = { "Pattern: Recipe 3914", 2 }, [9002] = { "Pattern: Unknown Robe", 2 }, [9003] = { "Book: Frostbolt", 0 },
+				[9004] = { "Recipe: Worded Differently", 2 }, [9005] = { "Recipe: Recipe 3914", 2 } }
 			if recipes[id] then
 				return recipes[id][1], "|Hitem:" .. id .. "|h[x]|h", 2, 25, 20, "Recipe", "Tailoring", 1, "", 1, 0, 9, recipes[id][2], 1
 			end
@@ -213,7 +214,13 @@ test("tabs, rows and tooltip run against real pool data", function()
 	end
 	local known = linesFor(9001)
 	truthy(known[1] and known[1]:find("Known in your guild by 1:", 1, true) and known[1]:find("Anna"), "known pattern: " .. tostring(known[1]))
+	eq(#linesFor(9002), 0, "not in the table, name finds nothing: no claim either way")
+	cb.ns.RecipeItems[9002] = 99999
 	eq(linesFor(9002)[1], "Not known in your guild yet")
+	cb.ns.RecipeItems[9004] = 3914
+	truthy((linesFor(9004)[1] or ""):find("Known in your guild by 1:", 1, true), "the table, whatever the item is called")
+	cb.ns.RecipeItems[9005] = 99999
+	eq(linesFor(9005)[1], "Not known in your guild yet", "the table beats a recipe that has the same name")
 	eq(#linesFor(9003), 0, "class books are not profession recipes")
 	-- Bind on pickup: no "Craftable by guild" line (no crafter can hand it over).
 	local getInfo = cb.env.C_Item.GetItemInfo
@@ -544,6 +551,67 @@ test("tabs, rows and tooltip run against real pool data", function()
 	eq(hiddenGroup.key, "c:3915")
 	falsy(hiddenGroup.summary:find("next", 1, true), hiddenGroup.summary)
 	truthy(cdRows[#cdRows].right:find("not shared", 1, true), cdRows[#cdRows].right)
+
+	-- Transmutes share one cooldown: one group, one row per alchemist, the
+	-- latest time. Iron to Gold (11479) has its own cooldown.
+	gdB.chars[a.guid].profs[171] = { rank = 300, maxRank = 300, primary = true, recipes = {}, cds = {
+		[17187] = now + 7200, [17559] = now + 3600, [11479] = now + 60 } }
+	gdB.chars[b.guid].profs[171] = { rank = 300, maxRank = 300, primary = true, recipes = {}, cds = { [17559] = 0, [17560] = 0 } }
+	rows = MV.Rows("cooldowns", false, { ["c:transmute"] = true })
+	local transmute, annaEntry, bertEntry, ownGroups = nil, nil, nil, 0
+	for _, r in ipairs(rows) do
+		if r.key == "c:transmute" then transmute, ownGroups = r, ownGroups + 1 end
+		if r.key == "c:17187" or r.key == "c:17559" or r.key == "c:17560" then ownGroups = ownGroups + 1 end
+		if r.kind == "entry" and r.recipes then
+			if r.guid == a.guid then annaEntry = r else bertEntry = r end
+		end
+	end
+	eq(ownGroups, 1, "no group per transmute")
+	truthy(transmute.label:find("Transmutes", 1, true), transmute.label)
+	truthy(transmute.summary:find("Bert", 1, true), "Bert is ready")
+	truthy(annaEntry.readyAt == now + 7200 and not annaEntry.ready, "the latest of Anna's times")
+	eq(annaEntry.skillLine, 171)
+	eq(annaEntry.recipeID, nil)
+	eq(#annaEntry.recipes, 2)
+	truthy(bertEntry.ready, "both ready")
+	eq(MV.Rows("cooldowns", false, {}, "recipe 17560")[1].key, "c:transmute", "found by a transmute's name")
+	gdB.chars[a.guid].profs[171].cds[17559] = cb.ns.Store.CD_HIDDEN
+	rows = MV.Rows("cooldowns", false, { ["c:transmute"] = true })
+	for _, r in ipairs(rows) do
+		if r.kind == "entry" and r.guid == a.guid and r.recipes then
+			truthy(r.hidden, "one hidden time hides the shared cooldown")
+		end
+	end
+	local annaPlayer
+	for _, r in ipairs(MV.Rows("players", false, {})) do
+		if r.guid == a.guid then annaPlayer = r end
+	end
+	truthy(annaPlayer.profs:find("Transmutes", 1, true) and annaPlayer.profs:find("Recipe 11479", 1, true), annaPlayer.profs)
+	falsy(annaPlayer.profs:find("Recipe 17187", 1, true), annaPlayer.profs)
+	gdB.chars[a.guid].profs[171] = nil
+	gdB.chars[b.guid].profs[171] = nil
+
+	-- A profession of this character that was never read: a row on top of
+	-- every view; the click opens the window, the window reads it.
+	local ownRec = gdB.chars[b.guid]
+	b.profs[202] = { rank = 50, maxRank = 75, recipes = { [12584] = 4404 } }
+	ownRec.profs[202] = { rank = 50, maxRank = 75, primary = true }
+	rows = MV.Rows("cooldowns", false, {})
+	eq(rows[1].kind, "scan", "first row")
+	eq(rows[1].skillLine, 202)
+	eq(rows[2].kind, "group", "the view follows")
+	eq(MV.Rows("players", false, {})[1].kind, "scan")
+	eq(MV.Rows("players", false, {}, "bert")[1].kind, "member", "not while searching")
+	b.refuseOpen = true
+	MV.OpenProfession(202)
+	eq(ownRec.profs[202].recipes, nil, "the game refused: nothing read")
+	b.refuseOpen = nil
+	MV.OpenProfession(202)
+	world:Run(3)
+	truthy(ownRec.profs[202].recipes and ownRec.profs[202].recipes[12584], "read from the opened window")
+	truthy(MV.Rows("players", false, {})[1].kind ~= "scan", "the row is gone")
+	cb:CloseTradeSkill()
+	b.profs[202], ownRec.profs[202] = nil, nil
 
 	-- Search: names and profession names; stats stay guild totals.
 	local _, statsText = MV.Rows("players", false, {}, "anna")

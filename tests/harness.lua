@@ -22,6 +22,7 @@ H.FILES = {
 	"Core/Init.lua",
 	"Core/Util.lua",
 	"Data/Store.lua",
+	"Data/RecipeItems.lua",
 	"Data/Roster.lua",
 	"Scan/Scanner.lua",
 	"Sync/Codec.lua",
@@ -810,6 +811,11 @@ function H.NewClient(world, char)
 	env.Enum = {}
 	env.C_TradeSkillUI = {
 		IsTradeSkillReady = function() return client.openSkill ~= nil end,
+		OpenTradeSkill = function(skillLine)
+			if char.refuseOpen then return false end
+			client:OpenTradeSkill(skillLine)
+			return true
+		end,
 		CanTradeSkillShowCraftingUI = function(spellID)
 			local p = char.profs[spellID]
 			return p ~= nil and not p.noCraftingUI
@@ -987,7 +993,8 @@ function H.falsy(v, msg)
 end
 
 -- Loads only the pure modules into a fresh namespace (for unit tests).
-function H.LoadPure()
+-- globals: optional extra game functions for this load.
+function H.LoadPure(globals)
 	local ns = {}
 	local env = setmetatable({
 		CreateFrame = function() return { RegisterEvent = function() end, SetScript = function() end } end,
@@ -995,6 +1002,7 @@ function H.LoadPure()
 		GetTime = function() return 0 end,
 		GetNormalizedRealmName = function() return "Realm" end,
 	}, { __index = _G })
+	for k, v in pairs(globals or {}) do env[k] = v end
 	for _, file in ipairs({ "Locales/enUS.lua", "Core/Init.lua", "Core/Util.lua", "Data/Store.lua", "Search/Upgrades.lua",
 		"Features/Wishlist.lua", "Features/Reagents.lua", "Features/Mail.lua", "Features/ChatResponder.lua" }) do
 		loadInto(H.ADDON_DIR .. file, env)("GuildTradebook", ns)

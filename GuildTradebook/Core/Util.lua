@@ -22,11 +22,30 @@ end
 -- situations (seen: the player GUID of a world tooltip). They may be shown,
 -- but not used as table keys, compared or searched; every entry point that
 -- takes data from the game skips them. True if any argument is secret.
+--
+-- The game's own check runs protected, so that a check refusing our call can
+-- not break every event handler that asks. The first one that answers
+-- correctly for an ordinary value is used. If none does, nothing counts as
+-- secret; a value only the working check raises an error on counts as secret.
+local function askCheck(check, value)
+	return check(value) and true or false
+end
+
+local function checkWorks(check, ordinary)
+	if not check then return false end
+	local ok, answer = pcall(askCheck, check, "ordinary")
+	return ok and answer == ordinary
+end
+
 function Util.IsSecret(...)
-	local isSecret = issecretvalue
-	if not isSecret then return false end
+	local check, ordinary = issecretvalue, false
+	if not checkWorks(check, ordinary) then
+		check, ordinary = canaccessvalue, true
+		if not checkWorks(check, ordinary) then return false end
+	end
 	for i = 1, select("#", ...) do
-		if isSecret((select(i, ...))) then return true end
+		local ok, answer = pcall(askCheck, check, (select(i, ...)))
+		if not ok or answer ~= ordinary then return true end
 	end
 	return false
 end

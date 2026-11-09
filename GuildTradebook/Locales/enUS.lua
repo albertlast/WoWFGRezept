@@ -101,7 +101,10 @@ L.CLICK_SHOW_RECIPES = "Click: show this member's recipes"
 L.NO_ADDON_DATA = "no addon data"
 L.TOOLTIP_MORE = "(+%d more)"
 
-L.REMIND_SCAN = "Open the professions window and click the %s tab once so your recipes can be shared with the guild."
+L.REMIND_SCAN = "Open the professions window and click the %s tab once so your recipes can be shared with the guild. You can also click its line at the top of the Members tab."
+L.SCAN_ROW = "Your %s recipes are not shared yet: click here to read them"
+L.CLICK_SCAN = "Click: open the profession window, your recipes are read from it"
+L.COOLDOWN_TRANSMUTES = "Transmutes (shared cooldown)"
 
 L.SETTINGS_HIDE_BOP = "Hide bind-on-pickup items others craft"
 L.SETTINGS_HIDE_BOP_DESC = "Recipe list: hides recipes whose item binds on pickup when this character cannot craft it itself - such items can never be handed to you, not even from your alts."

@@ -39,6 +39,13 @@ Store.COOLDOWN_TOLERANCE = 120      -- seconds of drift ignored when re-reading 
 -- the crafter is listed, but never as ready. Far in the future, so 0.1.0
 -- clients (which accept up to 2^40) also never show it as ready.
 Store.CD_HIDDEN = 2 ^ 38
+-- Recipes that share one cooldown (the game's spell category 310): using one
+-- starts it for all, so the Members tab shows them as one.
+Store.COOLDOWN_GROUPS = {
+	[17187] = "transmute", [17559] = "transmute", [17560] = "transmute", [17561] = "transmute",
+	[17562] = "transmute", [17563] = "transmute", [17564] = "transmute", [17565] = "transmute",
+	[17566] = "transmute", [22430] = "transmute", [25146] = "transmute", [1317279] = "transmute",
+}
 -- Professions left out of item tooltips until the user marks them again
 -- (settings, "Tooltip filter"): everyone makes bandages and fish dishes.
 Store.TOOLTIP_HIDDEN_DEFAULT = {

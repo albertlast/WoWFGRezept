@@ -4,7 +4,7 @@ Tooltip lines:
                     "Craftable by guild: 23 members (online: Anna, Bert, Cleo +2)";
                     nothing for items that bind on pickup
   recipe items   -> "Known in your guild by 3: A, B, C" or "Not known in your guild yet"
-                    (matched by the name after "Pattern: ", "Recipe: ", ...)
+                    (Data/RecipeItems.lua says which recipe the item teaches)
   guild members  -> "Tailoring 225/300" / "Enchanting 180/300" (a line each;
                     option tooltipProfessions) and, dimmed, "Cooking 150/225,
                     First Aid 225/225" (option tooltipSecondary, default off)
@@ -112,16 +112,28 @@ local function recipesByName(name)
 	return nameMap[name:lower()]
 end
 
+-- The recipes a recipe item teaches, or nil if that can not be told. An item
+-- newer than the table is looked up by its name ("Pattern: <recipe>"), which
+-- finds only recipes that are worded like the item.
+local function taughtBy(itemID, name)
+	local taught = ns.RecipeItems[itemID]
+	if taught then
+		return type(taught) == "table" and taught or { taught }
+	end
+	local recipe = name:match("^[^:]+:%s*(.+)$")
+	return recipe and recipesByName(recipe) or nil
+end
+
 -- Recipe items: who in the guild already knows the recipe. "Not known" is
--- only claimed once the pool has data, so a fresh install stays quiet.
-local function onRecipeItem(tooltip, name, subclassID)
+-- only claimed when the item's recipe is certain and the pool has data, so
+-- neither an unknown item nor a fresh install gets a wrong answer.
+local function onRecipeItem(tooltip, itemID, name, subclassID)
 	if subclassID == RECIPE_SUBCLASS_BOOK then return end
-	local taught = name:match("^[^:]+:%s*(.+)$")
-	if not taught then return end
-	local known = recipesByName(taught)
-	known = known and ns.Categories.Visible(known)
-	if known and #known == 0 then return end -- hidden by the tooltip filter
-	local crafters = known and craftersOf(known) or {}
+	local known = taughtBy(itemID, name)
+	if not known then return end
+	known = ns.Categories.Visible(known)
+	if #known == 0 then return end -- hidden by the tooltip filter
+	local crafters = craftersOf(known)
 	if #crafters > 0 then
 		tooltip:AddLine(L.TOOLTIP_KNOWN_BY:format(#crafters) .. " " .. Tooltip.CrafterText(crafters), 0.4, 0.8, 1, true)
 	elseif next(Index.byRecipe) then
@@ -152,7 +164,7 @@ local function onItem(tooltip, itemID)
 	if options.tooltipRecipes then
 		local name, _, _, _, _, _, _, _, _, _, _, classID, subclassID = C_Item.GetItemInfo(itemID)
 		if classID == ITEM_CLASS_RECIPE and name then
-			onRecipeItem(tooltip, name, subclassID)
+			onRecipeItem(tooltip, itemID, name, subclassID)
 		end
 	end
 end
