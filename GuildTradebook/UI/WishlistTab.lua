@@ -32,6 +32,7 @@ local function rowButton(row, onClick, tooltip)
 	b:SetSize(BUTTON_WIDTH, BUTTON_HEIGHT)
 	b:SetNormalFontObject("GameFontNormalSmall")
 	b:SetHighlightFontObject("GameFontHighlightSmall")
+	ns.Skin.Button(b)
 	b:SetDisabledFontObject("GameFontDisableSmall")
 	b:SetScript("OnClick", function(self) onClick(self:GetParent().data) end)
 	b:SetScript("OnEnter", function(self)
@@ -45,7 +46,11 @@ end
 
 local function build(content)
 	local hint = W.Text(content, "GameFontDisableSmall")
+	-- Wraps instead of running out of the window (German is longer); the
+	-- list starts below it.
 	hint:SetPoint("TOPLEFT", 6, -2)
+	hint:SetPoint("RIGHT", -6, 0)
+	hint:SetWordWrap(true)
 	hint:SetText(L.WISH_HINT)
 
 	ui.list = W.CreateList(content, 22, function(row)
@@ -91,12 +96,10 @@ local function build(content)
 			row.crafters:SetText(crafterSummary(data.crafters))
 		end
 	end)
-	ui.list.box:SetPoint("TOPLEFT", 4, -22)
+	ui.list.box:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", -2, -8)
 	ui.list.box:SetPoint("BOTTOMRIGHT", -18, 4)
 
-	ui.empty = W.Text(content, "GameFontDisable")
-	ui.empty:SetPoint("TOP", ui.list.box, "TOP", 0, -20)
-	ui.empty:SetText(L.WISH_EMPTY)
+	ui.empty = W.EmptyText(content, ui.list.box, L.WISH_EMPTY)
 end
 
 ns.UI.RegisterTab("wishlist", L.TAB_WISHLIST, build, refresh)

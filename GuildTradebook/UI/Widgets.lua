@@ -14,6 +14,7 @@ function W.CreateList(parent, rowHeight, buildRow, initRow)
 	local bar = CreateFrame("EventFrame", nil, parent, "MinimalScrollBar")
 	bar:SetPoint("TOPLEFT", box, "TOPRIGHT", 4, 0)
 	bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 4, 0)
+	ns.Skin.ScrollBar(bar)
 
 	local view = CreateScrollBoxListLinearView()
 	view:SetElementExtent(rowHeight)
@@ -46,6 +47,7 @@ function W.CreateDropdown(parent, width, entries, getValue, setValue)
 			end)
 		end
 	end)
+	ns.Skin.Dropdown(dropdown)
 	return dropdown
 end
 
@@ -64,6 +66,7 @@ function W.CreateMultiDropdown(parent, width, entries, isChecked, toggle, summar
 		dropdown:SetDefaultText(summary())
 		dropdown.UpdateSummary = function(self) self:SetDefaultText(summary()) end
 	end
+	ns.Skin.Dropdown(dropdown)
 	return dropdown
 end
 
@@ -73,8 +76,11 @@ function W.CreateCheck(parent, label, getValue, setValue)
 	local text = check.Text or check.text
 	if not text then
 		text = check:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-		text:SetPoint("LEFT", check, "RIGHT", 2, 0)
 	end
+	-- Outside the box: the template puts its label 2px inside the frame,
+	-- which a skin's border around the whole frame (EllesmereUI) runs into.
+	text:ClearAllPoints()
+	text:SetPoint("LEFT", check, "RIGHT", 4, 0)
 	text:SetText(label)
 	text:SetFontObject("GameFontHighlightSmall")
 	-- Anchor the next control to check.label, not the box: label lengths
@@ -85,6 +91,7 @@ function W.CreateCheck(parent, label, getValue, setValue)
 	end)
 	check.Refresh = function(self) self:SetChecked(getValue()) end
 	check:Refresh()
+	ns.Skin.Checkbox(check)
 	return check
 end
 
@@ -92,6 +99,28 @@ function W.Text(parent, template, justify)
 	local fs = parent:CreateFontString(nil, "ARTWORK", template or "GameFontHighlightSmall")
 	fs:SetJustifyH(justify or "LEFT")
 	fs:SetWordWrap(false)
+	return fs
+end
+
+-- BasicFrameTemplate's close button is bigger than the title bar and sticks
+-- out of the window's corner with Forever's red button art; it is moved into
+-- the title bar. A skin (EllesmereUI) draws its own glyph centered on it.
+function W.FitCloseButton(frame)
+	local close = frame.CloseButton
+	if not close then return end
+	close:SetSize(20, 20)
+	close:ClearAllPoints()
+	close:SetPoint("TOPRIGHT", -2, -1)
+end
+
+-- Centered "nothing here" message over a list: it wraps within the list's
+-- width instead of running past the window edge.
+function W.EmptyText(parent, list, text)
+	local fs = W.Text(parent, "GameFontDisable", "CENTER")
+	fs:SetPoint("TOPLEFT", list, "TOPLEFT", 20, -20)
+	fs:SetPoint("TOPRIGHT", list, "TOPRIGHT", -20, -20)
+	fs:SetWordWrap(true)
+	fs:SetText(text)
 	return fs
 end
 
@@ -132,6 +161,10 @@ function W.ShowText(title, text)
 		scroll:SetScrollChild(edit)
 		f.edit = edit
 		table.insert(UISpecialFrames, "GuildTradebookTextFrame")
+		W.FitCloseButton(f)
+		ns.Skin.Shell(f)
+		ns.Skin.CloseButton(f.CloseButton)
+		ns.Skin.ScrollBar(scroll.ScrollBar)
 		W.textFrame = f
 	end
 	text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")

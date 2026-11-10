@@ -133,7 +133,7 @@ local function uiEnv(client)
 	}
 	env.ITEM_MOD_INTELLECT_SHORT = "Intellect"
 	env.CHESTSLOT = "Chest"
-	for _, file in ipairs({ "UI/Widgets.lua", "UI/Main.lua", "UI/SearchTab.lua", "UI/UpgradeTab.lua", "UI/WishlistTab.lua", "UI/MembersTab.lua", "UI/Tooltip.lua", "UI/FilterPage.lua", "UI/Settings.lua", "UI/MinimapButton.lua" }) do
+	for _, file in ipairs({ "UI/Skin.lua", "UI/Widgets.lua", "UI/Main.lua", "UI/SearchTab.lua", "UI/UpgradeTab.lua", "UI/WishlistTab.lua", "UI/MembersTab.lua", "UI/Tooltip.lua", "UI/FilterPage.lua", "UI/Settings.lua", "UI/MinimapButton.lua" }) do
 		local chunk = assert(loadfile(H.ADDON_DIR .. file, "t", env))
 		chunk("GuildTradebook", client.ns)
 	end
@@ -181,6 +181,8 @@ test("tabs, rows and tooltip run against real pool data", function()
 	UI.Show("members")
 	UI.Toggle()
 	UI.Toggle()
+	eq(#cb.ns.Skin.queue, 0, "no EllesmereUI: nothing queued")
+	falsy(cb.ns.Skin.Active())
 
 	local rendered = 0
 	for _, list in ipairs(ui.lists) do
@@ -769,4 +771,63 @@ test("tabs, rows and tooltip run against real pool data", function()
 	cb.ns.Widgets.SendTell("Otto-OtherRealm")
 	eq(told[1], "Anna")
 	eq(told[2], "Otto-OtherRealm")
+end)
+
+test("EllesmereUI skin: our frames are handed over, queued until the skin arrives", function()
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = "Player-1-00000001", name = "Anna" })
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	local registered = {}
+	ca.env.EllesmereUI = {
+		RegisterSkin = function(name, fn)
+			registered[name] = fn
+			return true
+		end,
+	}
+	uiEnv(ca)
+	truthy(registered.GuildTradebook, "registered under the folder name")
+
+	local painted, selection = {}, {}
+	local S = {}
+	for _, kind in ipairs({ "Shell", "CloseButton", "Tab", "Button", "EditBox", "Checkbox", "Dropdown", "ScrollBar" }) do
+		S[kind] = function() painted[kind] = (painted[kind] or 0) + 1 end
+	end
+	S.SetTabSelection = function(tab, selected) selection[tab] = selected end
+
+	local UI = ca.ns.UI
+	UI.Show("search") -- the window exists before EllesmereUI's login dispatch
+	eq(painted.Shell, nil, "nothing painted before the skin arrives")
+	truthy(#ca.ns.Skin.queue > 0, "frames wait in the queue")
+
+	registered.GuildTradebook(S)
+	truthy(ca.ns.Skin.Active())
+	eq(#ca.ns.Skin.queue, 0, "queue drained")
+	eq(painted.Shell, 1, "main window")
+	eq(painted.CloseButton, 1)
+	eq(painted.Tab, 4, "the four tabs")
+	eq(painted.EditBox, 2, "search boxes of the Recipes and Members tabs")
+	truthy((painted.Dropdown or 0) >= 3, "dropdowns")
+	truthy((painted.Checkbox or 0) >= 2, "checkboxes")
+	truthy((painted.ScrollBar or 0) >= 4, "list scroll bars")
+	truthy((painted.Button or 0) >= 3, "buttons")
+	eq(selection[UI.tabs.search.button], true, "selection set once the skin arrived")
+
+	UI.Select("members")
+	local selected = 0
+	for _, isSelected in pairs(selection) do
+		if isSelected then selected = selected + 1 end
+	end
+	eq(selected, 1, "one tab looks selected")
+	eq(selection[UI.tabs.members.button], true)
+
+	-- Made after the skin arrived: painted at once.
+	ca.ns.Widgets.ShowText("Log", "line")
+	eq(painted.Shell, 2, "text window")
+
+	-- A failing primitive (or an older EllesmereUI without one) never stops our UI.
+	S.Button = function() error("broken skin") end
+	S.EditBox = nil
+	ca.ns.Skin.Button({})
+	ca.ns.Skin.EditBox({})
 end)

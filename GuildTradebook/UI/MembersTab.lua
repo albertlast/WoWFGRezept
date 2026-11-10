@@ -520,6 +520,7 @@ local function build(content)
 	search:SetSize(180, 20)
 	search:SetPoint("TOPLEFT", 6, -2)
 	search.Instructions:SetText(L.MEMBERS_SEARCH_HINT)
+	ns.Skin.EditBox(search)
 	-- Every change counts, including the box's clear button (not user input).
 	search:HookScript("OnTextChanged", function(self)
 		if self:GetText() == searchText then return end
@@ -542,8 +543,12 @@ local function build(content)
 			MembersView.Settings().reachable = value
 			refresh()
 		end)
-	local labelWidth = tonumber(ui.reachable.label.GetStringWidth and ui.reachable.label:GetStringWidth()) or 120
-	ui.reachable:SetPoint("RIGHT", ui.view, "LEFT", -(labelWidth + 12), 0)
+	-- Laid out from the dropdown leftwards: label, then the box left of it,
+	-- so any label length (and font) fits without measuring it.
+	local reachableLabel = ui.reachable.label
+	reachableLabel:ClearAllPoints()
+	reachableLabel:SetPoint("RIGHT", ui.view, "LEFT", -12, 0)
+	ui.reachable:SetPoint("RIGHT", reachableLabel, "LEFT", -4, 0)
 	ui.stats = W.Text(content, "GameFontDisableSmall")
 	ui.stats:SetPoint("LEFT", search, "RIGHT", 12, 0)
 	ui.stats:SetPoint("RIGHT", ui.reachable, "LEFT", -8, 0)

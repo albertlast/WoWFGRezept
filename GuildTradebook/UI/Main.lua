@@ -28,6 +28,9 @@ local function createFrame()
 		title:SetPoint("TOP", 0, -5)
 	end
 	title:SetText(L.TITLE)
+	ns.Widgets.FitCloseButton(frame)
+	ns.Skin.Shell(frame)
+	ns.Skin.CloseButton(frame.CloseButton)
 
 	local previous
 	for _, key in ipairs(UI.order) do
@@ -41,6 +44,7 @@ local function createFrame()
 		end
 		button:SetText(tab.label)
 		button:SetScript("OnClick", function() UI.Select(key) end)
+		ns.Skin.Tab(button)
 		tab.button = button
 		previous = button
 
@@ -70,6 +74,7 @@ function UI.Select(key, arg)
 		else
 			tab.button:UnlockHighlight()
 		end
+		ns.Skin.SetTabSelected(tab.button, active)
 	end
 	UI.Refresh(arg)
 end

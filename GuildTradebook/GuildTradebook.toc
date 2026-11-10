@@ -10,6 +10,7 @@
 ## SavedVariablesPerCharacter: GuildTradebookCharDB
 ## IconTexture: Interface\Icons\INV_Scroll_03
 ## AddonCompartmentFunc: GuildTradebook_OnAddonCompartmentClick
+## OptionalDeps: EllesmereUI
 
 embeds.xml
 
@@ -35,6 +36,7 @@ Features\ChatResponder.lua
 Features\Link.lua
 Features\Export.lua
 
+UI\Skin.lua
 UI\Widgets.lua
 UI\Main.lua
 UI\SearchTab.lua
