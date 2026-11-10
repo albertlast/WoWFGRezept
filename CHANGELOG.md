@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 (2026-11-10)
+
+- EllesmereUI: with its Blizzard Skins+ module, the Guild Tradebook window takes your EllesmereUI theme (window, tabs, buttons, search boxes, dropdowns, checkboxes, scroll bars), through EllesmereUI's skinning API for other addons. It can be turned off there per addon (Blizzard Skins+ > Window Skins > Third-Party Addons). Without EllesmereUI nothing changes.
+- Fix: long texts ran out of the window, mostly in German: the wishlist hint now wraps, "nothing found" messages wrap within the list, and the Upgrades status line and the crafters header are cut at the window edge.
+- Fix: checkbox labels touched their box; the label of "Only reachable now" (Members tab) could run into the view dropdown.
+- The close button (X) fits into the title bar instead of sticking out of the window's corner.
+
 ## 0.9.0 (2026-11-09)
 
 - Fix: the tooltip of a recipe item (pattern, plans, schematic, ...) could say "Not known in your guild yet" although someone knows the recipe, because it compared names and the item and recipe names often differ, more so in German. A generated table (`Data/RecipeItems.lua`, `tools/recipe_items.py`) now names the exact recipe of each item. An item newer than the table still gets "Known in your guild by ..." through its name, and no claim otherwise.

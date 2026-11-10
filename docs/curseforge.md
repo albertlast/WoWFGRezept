@@ -79,6 +79,7 @@ See who shares what and how fresh it is. The **Professions** view shows who is c
 - It only talks to guild members through addon messages; nothing leaves the game. What is shared: your characters' professions, recipes, skill levels and (optionally) cooldowns.
 - A new member syncs with one online guildmate at login, not with everyone, so a big guild does not flood the chat.
 - Rogue Poisons are not shared (a class skill, everyone makes their own).
+- With **EllesmereUI** (Blizzard Skins+ module) the window takes your EllesmereUI theme.
 - Settings: Options > AddOns > Guild Tradebook (sub-pages: stat weights, tooltip filter). `/gtb` shows all commands.
 
 Source code and issues: https://github.com/albertlast/WoWFGRezept
@@ -86,18 +87,24 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.9.0)
+## File upload (0.10.0)
 
-Done by the release workflow (tag `v0.9.0`); for a manual upload:
+Done by the release workflow (tag `v0.10.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.9.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.10.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.9.0`
+- Display name: `0.10.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.10.0
+
+- **EllesmereUI:** the window takes your EllesmereUI theme (needs its Blizzard Skins+ module; can be turned off there per addon).
+- Fix: long (German) texts no longer run out of the window; checkbox labels no longer touch their box.
+- The close button fits into the title bar.
+
 ## 0.9.0
 
 - Fix: recipe items (patterns, plans, ...) no longer claim "Not known in your guild yet" when someone does know the recipe.
@@ -192,6 +199,7 @@ Wer teilt was, und wie aktuell sind die Daten? Die Ansicht **Berufe** zeigt, wer
 - Das Addon spricht nur über Addon-Nachrichten mit Gildenmitgliedern; nichts verlässt das Spiel. Geteilt werden Berufe, Rezepte, Skillstufen und (optional) Abklingzeiten deiner Charaktere.
 - Ein neues Mitglied gleicht sich beim Login mit einem Online-Gildenmitglied ab, nicht mit allen. Auch eine große Gilde wird nicht zugespammt.
 - Schurken-Gifte werden nicht geteilt (Klassenfertigkeit, jeder macht seine eigenen).
+- Mit **EllesmereUI** (Modul Blizzard Skins+) übernimmt das Fenster dein EllesmereUI-Theme.
 - Einstellungen: Optionen > AddOns > Guild Tradebook (Unterseiten: Wertegewichtung, Tooltip-Filter). `/gtb` zeigt alle Befehle.
 
 Quellcode und Fehlermeldungen: https://github.com/albertlast/WoWFGRezept
@@ -202,6 +210,12 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.10.0
+
+- **EllesmereUI:** Das Fenster übernimmt dein EllesmereUI-Theme (braucht dessen Modul Blizzard Skins+; dort pro Addon abschaltbar).
+- Korrektur: Lange (deutsche) Texte laufen nicht mehr aus dem Fenster; die Beschriftungen der Häkchen kleben nicht mehr am Kasten.
+- Der Schließen-Knopf sitzt in der Titelleiste.
+
 ## 0.9.0
 
 - Korrektur: Rezeptgegenstände (Muster, Pläne, ...) behaupten nicht mehr „In deiner Gilde noch unbekannt“, wenn jemand das Rezept kennt.
