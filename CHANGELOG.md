@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0 (2026-11-12)
+
+- Members tab, Players view: the professions are in fixed columns now, one below the other: skill level, then the profession's name, or its specialization in its place (so two specialized professions fit). The line no longer runs out of the window. Recipe counts, specialization, "unverified", the server's "no longer learned" and the cooldowns are in the row's tooltip. A profession not scanned yet has an orange level and a "!", an unverified one a "?".
+- Members tab, Players view: a button above the list switches the columns to the secondary professions (Cooking, First Aid, Fishing; one column each). The choice is remembered per character.
+- Members tab: the data age is short ("9h"); "confirmed 9h ago" is in the tooltip.
+- Combat: the Guild Tradebook windows close when a fight starts and come back when it ends. Opening them in a fight (minimap button, `/gtb`, the settings) waits for its end; pressing again cancels that. The game blocks some of their actions in combat.
+
 ## 0.10.0 (2026-11-10)
 
 - EllesmereUI: with its Blizzard Skins+ module, the Guild Tradebook window takes your EllesmereUI theme (window, tabs, buttons, search boxes, dropdowns, checkboxes, scroll bars), through EllesmereUI's skinning API for other addons. It can be turned off there per addon (Blizzard Skins+ > Window Skins > Third-Party Addons). Without EllesmereUI nothing changes.

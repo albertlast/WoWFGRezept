@@ -26,7 +26,7 @@ Every guild member running the addon shares their recipes automatically, and mem
 
 ![Members tab, Professions view: professions with member count and highest skill](docs/screenshots/members-professions.png)
 
-**Members, Players view:** each player with their characters, professions, skill levels and recipe counts, how fresh the data is (`confirmed 9d ago`) and crafting cooldowns that are ready. A profession that has not been opened yet shows `not scanned yet`. Guild members without the addon are listed greyed out with the professions the server reports for them.
+**Members, Players view:** each player with their characters, how fresh the data is (`9d`) and the professions in fixed columns: skill level and name, or the specialization in place of the name. A button above the list switches to the secondary professions. Recipe counts, cooldowns and `not scanned yet` are in the row's tooltip; a profession that has not been opened yet is marked with an orange `!`. Guild members without the addon are listed greyed out with the professions the server reports for them.
 
 ![Members tab, Players view: players with professions, skill levels and data age](docs/screenshots/members-players.png)
 

@@ -49,7 +49,7 @@ Mark the recipes you want. When a guild member who can craft one comes online, y
 
 ## Members
 
-See who shares what and how fresh it is. The **Professions** view shows who is close to the skill cap and which profession your guild still lacks; the **Players** view lists every player with their characters, skill levels, specializations (Dragonscale Leatherworking, Gnomish Engineering, ...) and crafting cooldowns (you can choose not to share yours). Cooldowns are kept up to date without opening the profession window, the Salt Shaker included. Alts are grouped under one player, and members without the addon show up with the professions the server reports.
+See who shares what and how fresh it is. The **Professions** view shows who is close to the skill cap and which profession your guild still lacks; the **Players** view lists every player with their characters and their professions in fixed columns, with skill levels, specializations (Dragonscale Leatherworking, Gnomish Engineering, ...) and crafting cooldowns (you can choose not to share yours). Cooldowns are kept up to date without opening the profession window, the Salt Shaker included. Alts are grouped under one player, and members without the addon show up with the professions the server reports.
 
 ![Members tab, Professions view](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/members-professions.png)
 
@@ -87,18 +87,23 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.10.0)
+## File upload (0.11.0)
 
-Done by the release workflow (tag `v0.10.0`); for a manual upload:
+Done by the release workflow (tag `v0.11.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.10.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.11.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.10.0`
+- Display name: `0.11.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.11.0
+
+- **Members tab:** professions in fixed columns (skill level, then the name or specialization); details in the tooltip; a button switches to the secondary professions.
+- The windows close in combat and come back after it.
+
 ## 0.10.0
 
 - **EllesmereUI:** the window takes your EllesmereUI theme (needs its Blizzard Skins+ module; can be turned off there per addon).
@@ -169,7 +174,7 @@ Markiere die Rezepte, die du haben willst. Sobald ein Gildenmitglied online komm
 
 ## Mitglieder
 
-Wer teilt was, und wie aktuell sind die Daten? Die Ansicht **Berufe** zeigt, wer kurz vor der Maximalstufe steht und welcher Beruf in der Gilde noch fehlt; die Ansicht **Spieler** listet jeden Spieler mit seinen Charakteren, Skillstufen, Spezialisierungen (etwa in Lederverarbeitung, Schmiedekunst oder Ingenieurskunst) und Abklingzeiten (deine eigenen kannst du für dich behalten). Die Abklingzeiten bleiben aktuell, ohne dass du das Berufsfenster öffnest, auch die des Salzstreuers. Twinks sind unter einem Spieler zusammengefasst, und Mitglieder ohne das Addon erscheinen mit den Berufen, die der Server meldet.
+Wer teilt was, und wie aktuell sind die Daten? Die Ansicht **Berufe** zeigt, wer kurz vor der Maximalstufe steht und welcher Beruf in der Gilde noch fehlt; die Ansicht **Spieler** listet jeden Spieler mit seinen Charakteren und den Berufen in festen Spalten, mit Skillstufen, Spezialisierungen (etwa in Lederverarbeitung, Schmiedekunst oder Ingenieurskunst) und Abklingzeiten (deine eigenen kannst du für dich behalten). Die Abklingzeiten bleiben aktuell, ohne dass du das Berufsfenster öffnest, auch die des Salzstreuers. Twinks sind unter einem Spieler zusammengefasst, und Mitglieder ohne das Addon erscheinen mit den Berufen, die der Server meldet.
 
 ![Reiter Mitglieder, Ansicht Berufe](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/members-professions.png)
 
@@ -210,6 +215,11 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.11.0
+
+- **Reiter Mitglieder:** Berufe in festen Spalten (Stufe, dann Name oder Spezialisierung); Details im Tooltip; ein Knopf schaltet auf die Nebenberufe um.
+- Die Fenster schließen sich im Kampf und kommen danach wieder.
+
 ## 0.10.0
 
 - **EllesmereUI:** Das Fenster übernimmt dein EllesmereUI-Theme (braucht dessen Modul Blizzard Skins+; dort pro Addon abschaltbar).
