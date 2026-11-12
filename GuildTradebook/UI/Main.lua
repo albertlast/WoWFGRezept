@@ -92,7 +92,18 @@ function UI.Refresh(arg)
 	end
 end
 
+-- Windows closed by a fight, shown again at its end (see below).
+local reopen = {}
+
+local function inCombat()
+	return InCombatLockdown ~= nil and InCombatLockdown()
+end
+
 function UI.Show(key, arg)
+	if inCombat() then
+		UI.Later(function() UI.Show(key, arg) end)
+		return
+	end
 	if not UI.frame then
 		UI.frame = createFrame()
 	end
@@ -103,10 +114,50 @@ end
 function UI.Toggle()
 	if UI.frame and UI.frame:IsShown() then
 		UI.frame:Hide()
+	elseif UI.pending or reopen.main or reopen.text then
+		-- Pressed again during the fight: stays closed.
+		UI.pending, reopen.main, reopen.text = nil, nil, nil
+		ns.Print(L.COMBAT_CANCELLED)
 	else
 		UI.Show()
 	end
 end
+
+--[[
+Combat: the windows close when a fight starts (the game blocks some calls in
+combat, e.g. opening the settings, and a window in the middle of the screen
+is in the way) and the ones that were open come back when it ends. Opening
+during a fight (minimap button, /gtb) waits for its end; the last request wins.
+]]
+function UI.Later(fn)
+	UI.pending = fn
+	ns.Print(L.COMBAT_LATER)
+end
+
+ns.RegisterEvent("PLAYER_REGEN_DISABLED", function()
+	if UI.frame and UI.frame:IsShown() then
+		reopen.main = true
+		UI.frame:Hide()
+	end
+	local text = ns.Widgets.textFrame
+	if text and text:IsShown() then
+		reopen.text = true
+		text:Hide()
+	end
+end)
+
+ns.RegisterEvent("PLAYER_REGEN_ENABLED", function()
+	local pending = UI.pending
+	UI.pending = nil
+	if reopen.text then
+		ns.Widgets.textFrame:Show()
+	end
+	if reopen.main then
+		UI.Show()
+	end
+	reopen.main, reopen.text = nil, nil
+	if pending then pending() end
+end)
 
 -- Refresh the open tab when data changes, at most a few times per second.
 local function refreshSoon()

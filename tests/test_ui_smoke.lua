@@ -241,7 +241,37 @@ test("tabs, rows and tooltip run against real pool data", function()
 	annaRec.profs[197].spec = 26797
 	local annaRow = cb.ns.MembersView.Rows("players", false, {}, "recipe 26797")
 	eq(#annaRow, 1, "found by the specialization's name")
-	truthy(annaRow[1].profs:find("Recipe 26797", 1, true), annaRow[1].profs)
+	-- The specialization replaces the profession's name in its column.
+	local annaCells = annaRow[1].cells
+	local specCell
+	for _, cell in ipairs(annaCells.primary) do
+		if cell.name:find("Recipe 26797", 1, true) then specCell = cell end
+	end
+	truthy(specCell and specCell.rank == "150/300", "specialization column")
+	truthy(table.concat(annaRow[1].details, "\n"):find("150/300 - |cff66ccffRecipe 26797", 1, true), "tooltip: profession and specialization")
+	-- Worst case: two specialized primary professions, both in their own column.
+	annaRec.profs[164] = { rank = 300, maxRank = 300, primary = true, spec = 9787, recipes = {} }
+	annaCells = cb.ns.MembersView.ProfessionCells(annaRec)
+	local specs = 0
+	for i = 1, 2 do
+		local name = annaCells.primary[i] and annaCells.primary[i].name or ""
+		if name:find("Recipe 26797", 1, true) or name:find("Recipe 9787", 1, true) then specs = specs + 1 end
+	end
+	eq(specs, 2, "both specializations shown")
+	-- Secondary professions: fixed columns by skill line; not scanned gets the marker.
+	annaRec.profs[185] = { rank = 288, maxRank = 300, primary = false }
+	annaCells = cb.ns.MembersView.ProfessionCells(annaRec)
+	truthy(annaCells.secondary[185] and annaCells.secondary[185].rank:find("288/300", 1, true), "cooking column")
+	truthy(annaCells.secondary[185].mark:find("!", 1, true), "not scanned: marker")
+	for _, cell in ipairs(annaCells.primary) do
+		falsy(cell.rank:find("288", 1, true), "cooking is not a primary column")
+	end
+	-- The switch renders the secondary columns.
+	local MS = cb.ns.MembersView.Settings()
+	MS.secondary = true
+	cb.ns.MembersView.Toggle("none")
+	MS.secondary, MS.open.none = false, nil
+	annaRec.profs[164], annaRec.profs[185] = nil, nil
 	lines = {}
 	for _, hook in ipairs(ui.unitHooks) do hook(tooltip, { guid = "Player-1-00000001" }) end
 	truthy(lines[1] and lines[1]:find("150/300 (Recipe 26797)", 1, true), "player tooltip: " .. tostring(lines[1]))
@@ -588,8 +618,9 @@ test("tabs, rows and tooltip run against real pool data", function()
 	for _, r in ipairs(MV.Rows("players", false, {})) do
 		if r.guid == a.guid then annaPlayer = r end
 	end
-	truthy(annaPlayer.profs:find("Transmutes", 1, true) and annaPlayer.profs:find("Recipe 11479", 1, true), annaPlayer.profs)
-	falsy(annaPlayer.profs:find("Recipe 17187", 1, true), annaPlayer.profs)
+	local annaDetails = table.concat(annaPlayer.details, "\n")
+	truthy(annaDetails:find("Transmutes", 1, true) and annaDetails:find("Recipe 11479", 1, true), annaDetails)
+	falsy(annaDetails:find("Recipe 17187", 1, true), annaDetails)
 	gdB.chars[a.guid].profs[171] = nil
 	gdB.chars[b.guid].profs[171] = nil
 
@@ -830,4 +861,71 @@ test("EllesmereUI skin: our frames are handed over, queued until the skin arrive
 	S.EditBox = nil
 	ca.ns.Skin.Button({})
 	ca.ns.Skin.EditBox({})
+end)
+
+test("combat: windows close when a fight starts and come back after it", function()
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = "Player-1-00000001", name = "Anna" })
+	local ca = world:Login(a.guid)
+	world:Run(30)
+	uiEnv(ca)
+	local UI, env = ca.ns.UI, ca.env
+	local combat = false
+	env.InCombatLockdown = function() return combat end
+	-- Mock frames say "shown" always; these two keep a real state.
+	local function stateful(f)
+		local shown = false
+		rawset(f, "Show", function() shown = true end)
+		rawset(f, "Hide", function() shown = false end)
+		rawset(f, "IsShown", function() return shown end)
+	end
+	local opened
+	env.C_SettingsUtil = { OpenSettingsPanel = function(id) opened = id end }
+	ca.ns.Settings.Register()
+
+	UI.Show("wishlist")
+	stateful(UI.frame)
+	UI.frame:Show()
+	ca.ns.Widgets.ShowText("Log", "line")
+	stateful(ca.ns.Widgets.textFrame)
+	ca.ns.Widgets.textFrame:Show()
+
+	combat = true
+	ca:Fire("PLAYER_REGEN_DISABLED")
+	falsy(UI.frame:IsShown(), "main window closed")
+	falsy(ca.ns.Widgets.textFrame:IsShown(), "text window closed")
+	-- Settings (protected in combat) and the window wait for the end.
+	ca.ns.Settings.Open()
+	eq(opened, nil, "settings not opened in combat")
+	UI.Show("members")
+	falsy(UI.frame:IsShown(), "not opened in combat")
+	combat = false
+	ca:Fire("PLAYER_REGEN_ENABLED")
+	truthy(UI.frame:IsShown(), "window back")
+	truthy(ca.ns.Widgets.textFrame:IsShown(), "text window back")
+	eq(UI.current, "members", "last request wins")
+	eq(UI.pending, nil)
+
+	-- Settings asked for in combat: opened after it.
+	combat = true
+	ca:Fire("PLAYER_REGEN_DISABLED")
+	ca.ns.Settings.Open()
+	combat = false
+	ca:Fire("PLAYER_REGEN_ENABLED")
+	eq(opened, 42, "settings opened after the fight")
+
+	-- Toggle during the fight: the window stays closed.
+	combat = true
+	ca:Fire("PLAYER_REGEN_DISABLED")
+	UI.Toggle()
+	combat = false
+	ca:Fire("PLAYER_REGEN_ENABLED")
+	falsy(UI.frame:IsShown(), "stays closed")
+	-- Not open at the start: a fight opens nothing.
+	combat = true
+	ca:Fire("PLAYER_REGEN_DISABLED")
+	combat = false
+	ca:Fire("PLAYER_REGEN_ENABLED")
+	falsy(UI.frame:IsShown())
+	env.C_SettingsUtil = nil
 end)

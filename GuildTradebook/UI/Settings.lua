@@ -81,8 +81,13 @@ end
 -- taints it: a protected action in it later (seen: choosing the voice chat
 -- service) is then blocked and blamed on this addon. The game's own
 -- C_SettingsUtil.OpenSettingsPanel opens it without that.
+-- The game blocks it in combat (ADDON_ACTION_BLOCKED): opens after the fight.
 function Settings_.Open()
 	if not Settings_.category then return end
+	if InCombatLockdown and InCombatLockdown() then
+		ns.UI.Later(Settings_.Open)
+		return
+	end
 	local id = Settings_.category:GetID()
 	if C_SettingsUtil and C_SettingsUtil.OpenSettingsPanel then
 		C_SettingsUtil.OpenSettingsPanel(id)

@@ -2,7 +2,9 @@
 Members tab, three views (dropdown at the top right, remembered per
 character in ns.charDB.members):
   players      one group per person: the online or highest character first,
-               the other characters indented below
+               the other characters indented below; fixed columns for the
+               primary professions, or (switch above the list) the secondary
+               ones; the details in the row's tooltip
   professions  one collapsible group per profession, members by skill level
   cooldowns    one collapsible group per cooldown recipe (recipes sharing a
                cooldown are one group), ready and reachable crafters first
@@ -31,7 +33,7 @@ local MAX_READY_NAMES = 3
 local ICON_OPEN = "|TInterface\\Buttons\\UI-MinusButton-Up:14:14|t "
 local ICON_CLOSED = "|TInterface\\Buttons\\UI-PlusButton-Up:14:14|t "
 
--- { view, reachable, open = { [group key] = true } }
+-- { view, reachable, secondary, open = { [group key] = true } }
 function MembersView.Settings()
 	local s = ns.charDB.members
 	if type(s) ~= "table" then
@@ -44,6 +46,7 @@ function MembersView.Settings()
 	end
 	if not known then s.view = "players" end
 	s.reachable = s.reachable == true
+	s.secondary = s.secondary == true
 	if type(s.open) ~= "table" then s.open = {} end
 	return s
 end
@@ -84,45 +87,84 @@ local function cooldownList(cds)
 	return list
 end
 
--- Primary professions first; secondary ones (Cooking, First Aid, ...) dimmed.
-local function professionText(rec)
-	local parts = {}
+local function grey(text)
+	return "|cff808080" .. text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") .. "|r"
+end
+
+-- The secondary professions' columns (players view), by name.
+function MembersView.SecondaryColumns()
+	local list = {}
+	for sl in pairs(Roster.SECONDARY_SKILLLINES) do list[#list + 1] = sl end
+	table.sort(list, function(a, b) return Index.SkillLineName(a) < Index.SkillLineName(b) end)
+	return list
+end
+
+--[[
+Pure: a character's professions for the players view:
+  primary    { cell, ... }  the columns, professions the server still confirms first
+  secondary  { [skillLine] = cell }  Cooking, First Aid, Fishing (fixed columns)
+  details    { line, ... }  everything for the row's tooltip
+cell = { rank = "205/300", name, mark }. A specialization replaces the profession's
+name (its name says the profession, the tooltip has both), so two specialized
+professions still fit. Markers: "!" not scanned yet, "?" unverified; grey: the
+server says the member no longer has it.
+]]
+function MembersView.ProfessionCells(rec)
+	local out = { primary = {}, secondary = {}, details = {} }
 	local skillLines = Store.ProfessionSkillLines(rec)
-	Index.SortSkillLines(skillLines, function(sl) return rec.profs[sl].primary end)
+	local contradicted = {}
+	for _, sl in ipairs(skillLines) do
+		contradicted[sl] = Roster.IsProfessionContradicted(rec.guid, sl)
+	end
+	table.sort(skillLines, function(a, b)
+		local sa, sb = Roster.SECONDARY_SKILLLINES[a] or false, Roster.SECONDARY_SKILLLINES[b] or false
+		if sa ~= sb then return sb end
+		if contradicted[a] ~= contradicted[b] then return contradicted[b] end
+		return Index.SkillLineName(a) < Index.SkillLineName(b)
+	end)
+	local now = ns.Now()
 	for _, sl in ipairs(skillLines) do
 		local p = rec.profs[sl]
-		local text = ("%s %d/%d"):format(Index.SkillLineName(sl), p.rank, p.maxRank)
+		local profName = Index.SkillLineName(sl)
 		local spec = Index.SpecName(p.spec)
-		if spec then
-			text = text .. " |cff66ccff" .. spec .. "|r"
-		end
+		local rank = ("%d/%d"):format(p.rank, p.maxRank)
+		local cell = { rank = rank, name = spec and ("|cff66ccff" .. spec .. "|r") or profName, mark = "" }
+		local notes = {}
 		if not p.recipes then
-			text = text .. " |cffff8000(" .. L.NOT_SCANNED .. ")|r"
+			cell.rank = "|cffff8000" .. rank .. "|r"
+			cell.mark = " |cffff8000!|r"
+			notes[#notes + 1] = "|cffff8000" .. L.NOT_SCANNED .. "|r"
 		else
-			text = text .. " |cff999999(" .. Util.Count(p.recipes) .. ")|r"
+			notes[#notes + 1] = "|cff999999" .. L.MEMBERS_RECIPES:format(Util.Count(p.recipes)) .. "|r"
 			if p.unverified then
-				text = text .. " |cffff8000" .. L.UNVERIFIED .. "|r"
+				cell.mark = " |cffff8000?|r"
+				notes[#notes + 1] = "|cffff8000" .. L.UNVERIFIED .. "|r"
 			end
 		end
-		if p.cds and next(p.cds) then
-			local now, cds = ns.Now(), {}
-			for _, c in ipairs(cooldownList(p.cds)) do
-				local readyAt = c.readyAt
-				local state = Store.IsHiddenCooldown(readyAt) and ("|cff808080" .. L.CD_NOT_SHARED .. "|r")
-					or readyAt <= now and ("|cff20ff20" .. L.CD_READY .. "|r")
-					or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
-				cds[#cds + 1] = c.label .. " " .. state
-			end
-			text = text .. " [" .. table.concat(cds, ", ") .. "]"
+		for _, c in ipairs(cooldownList(p.cds or {})) do
+			local readyAt = c.readyAt
+			local state = Store.IsHiddenCooldown(readyAt) and ("|cff808080" .. L.CD_NOT_SHARED .. "|r")
+				or readyAt <= now and ("|cff20ff20" .. L.CD_READY .. "|r")
+				or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
+			notes[#notes + 1] = c.label .. " " .. state
 		end
-		if Roster.IsProfessionContradicted(rec.guid, sl) then
-			text = "|cff808080" .. text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") .. " (server: -)|r"
-		elseif not p.primary then
-			text = "|cffa0a0a0" .. text:gsub("|r", "|cffa0a0a0") .. "|r"
+		local head = profName .. " " .. rank
+		if spec then head = head .. " - |cff66ccff" .. spec .. "|r" end
+		local lines = { head }
+		for _, note in ipairs(notes) do lines[#lines + 1] = "   " .. note end
+		if contradicted[sl] then
+			cell.rank, cell.name, cell.mark = grey(cell.rank), grey(cell.name), grey(cell.mark)
+			lines[#lines + 1] = "   " .. L.SERVER_DROPPED
+			for i, line in ipairs(lines) do lines[i] = grey(line) end
 		end
-		parts[#parts + 1] = text
+		if Roster.SECONDARY_SKILLLINES[sl] then
+			out.secondary[sl] = cell
+		else
+			out.primary[#out.primary + 1] = cell
+		end
+		for _, line in ipairs(lines) do out.details[#out.details + 1] = line end
 	end
-	return table.concat(parts, ", ")
+	return out
 end
 
 -- One group per person (characters with the same player ID). The group's
@@ -201,6 +243,7 @@ local function playerRows(gd, reachableOnly, needle)
 				profNames[#profNames + 1] = Index.SkillLineName(sl)
 				profNames[#profNames + 1] = Index.SpecName(rec.profs[sl].spec)
 			end
+			local cells = MembersView.ProfessionCells(rec)
 			rows[#rows + 1] = {
 				kind = "member",
 				guid = guid,
@@ -214,7 +257,8 @@ local function playerRows(gd, reachableOnly, needle)
 				isAlt = guid ~= UnitGUID("player") and (ns.db.account.chars[guid] ~= nil or ns.Link.IsPartner(guid)),
 				linked = ns.Link.IsPartner(guid),
 				ver = rec.ver,
-				profs = professionText(rec),
+				cells = cells,
+				details = cells.details,
 				searchText = table.concat(profNames, " "),
 			}
 		end
@@ -223,14 +267,16 @@ local function playerRows(gd, reachableOnly, needle)
 	for guid, member in pairs(Roster.members) do
 		local server = Roster.ServerProfessions(guid)
 		if not seen[guid] and server then
-			local names = {}
+			-- Names only: the server reports every rank as 1.
+			local names, primary = {}, {}
 			for sl in pairs(server) do names[#names + 1] = Index.SkillLineName(sl) end
 			table.sort(names)
+			for i, name in ipairs(names) do primary[i] = { rank = "", name = "|cff808080" .. name .. "|r", mark = "" } end
 			rows[#rows + 1] = {
 				kind = "member",
 				guid = guid, name = member.name, class = member.class, level = member.level or 0,
 				online = member.online or false, ver = 0,
-				profs = "|cff808080" .. table.concat(names, ", ") .. " (" .. L.NO_ADDON_DATA .. ")|r",
+				cells = { primary = primary, secondary = {} },
 				searchText = table.concat(names, " "),
 			}
 		end
@@ -499,11 +545,64 @@ end
 
 local searchText = ""
 
+--[[
+Players view layout (window 760 wide, list about 714): name and the age of
+the data in the name button, then the profession columns at fixed places, so
+they line up from row to row. Primary: two columns, rank then name (or
+specialization; too long is cut with "..."). Secondary: one column per
+profession, rank only, the profession named in the header above the list.
+]]
+local NAME_WIDTH, AGE_WIDTH = 150, 38
+local MEMBER_BUTTON_WIDTH = 4 + NAME_WIDTH + 4 + AGE_WIDTH
+local GROUP_BUTTON_WIDTH = 248
+local COLUMNS_X = MEMBER_BUTTON_WIDTH + 6
+local RANK_WIDTH = 50
+local PRIMARY_WIDTH, SECONDARY_WIDTH = 255, 120
+local HEADER_HEIGHT = 18
+local COLUMNS = 3 -- the most columns: one per secondary profession
+
+local function columnX(i, secondary)
+	return COLUMNS_X + (i - 1) * (secondary and SECONDARY_WIDTH or PRIMARY_WIDTH)
+end
+
 local function refresh()
 	local s = MembersView.Settings()
+	local players = s.view == "players"
+	ui.secondaryColumns = MembersView.SecondaryColumns()
+	-- The header (column titles, primary/secondary switch) only in the players view.
+	ui.header:SetShown(players)
+	ui.toggle:SetText(s.secondary and L.SHOW_PRIMARY or L.SHOW_SECONDARY)
+	for i, title in ipairs(ui.columnTitles) do
+		title:ClearAllPoints()
+		title:SetPoint("LEFT", columnX(i, s.secondary), 0)
+		local sl = ui.secondaryColumns[i]
+		title:SetText(s.secondary and (sl and Index.SkillLineName(sl) or "") or (i == 1 and L.PROFS_PRIMARY or ""))
+	end
+	ui.list.box:ClearAllPoints()
+	ui.list.box:SetPoint("TOPLEFT", 4, players and -(28 + HEADER_HEIGHT + 2) or -28)
+	ui.list.box:SetPoint("BOTTOMRIGHT", -18, 4)
 	local rows, statsText = MembersView.Rows(s.view, s.reachable, s.open, searchText)
 	ui.stats:SetText(statsText)
 	ui.list:SetData(rows)
+end
+
+-- A member row's profession columns; without data the columns are cleared.
+local function showColumns(row, data)
+	local secondary = data ~= nil and MembersView.Settings().secondary
+	local width = secondary and SECONDARY_WIDTH or PRIMARY_WIDTH
+	for i = 1, COLUMNS do
+		local col, cell = row.cols[i], nil
+		if data and secondary then
+			cell = data.cells.secondary[ui.secondaryColumns[i]]
+		elseif data and i <= 2 then
+			cell = data.cells.primary[i]
+		end
+		col.rank:ClearAllPoints()
+		col.rank:SetPoint("LEFT", row, "LEFT", columnX(i, secondary), 0)
+		col.name:SetWidth(width - RANK_WIDTH - 10)
+		col.rank:SetText(cell and cell.rank or "")
+		col.name:SetText(cell and (secondary and cell.mark or cell.name .. cell.mark) or "")
+	end
 end
 
 function MembersView.Toggle(key)
@@ -553,6 +652,32 @@ local function build(content)
 	ui.stats:SetPoint("LEFT", search, "RIGHT", 12, 0)
 	ui.stats:SetPoint("RIGHT", ui.reachable, "LEFT", -8, 0)
 
+	-- Players view: column titles above the list; the button switches the
+	-- columns between primary and secondary professions (remembered).
+	ui.header = CreateFrame("Frame", nil, content)
+	ui.header:SetPoint("TOPLEFT", 4, -28)
+	ui.header:SetPoint("TOPRIGHT", -18, -28)
+	ui.header:SetHeight(HEADER_HEIGHT)
+	local function title(x, width)
+		local fs = W.Text(ui.header, "GameFontNormalSmall")
+		fs:SetPoint("LEFT", x, 0)
+		if width then fs:SetWidth(width) end
+		return fs
+	end
+	title(4, NAME_WIDTH):SetText(L.COL_CHARACTER)
+	title(4 + NAME_WIDTH + 4, AGE_WIDTH + 4):SetText(L.COL_CONFIRMED)
+	ui.columnTitles = {}
+	for i = 1, COLUMNS do ui.columnTitles[i] = title(columnX(i, false)) end
+	ui.toggle = CreateFrame("Button", nil, ui.header, "UIPanelButtonTemplate")
+	ui.toggle:SetSize(150, HEADER_HEIGHT)
+	ui.toggle:SetPoint("RIGHT")
+	ns.Skin.Button(ui.toggle)
+	ui.toggle:SetScript("OnClick", function()
+		local s = MembersView.Settings()
+		s.secondary = not s.secondary
+		refresh()
+	end)
+
 	-- Right-click menu: invite, reagents by mail (cooldown rows), account
 	-- linking (Features/Link.lua). Returns the entries for a row:
 	-- { {label, fn, disabled}, ... }.
@@ -599,6 +724,14 @@ local function build(content)
 			if not tip then return end
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:SetText(tip, 1, 1, 1)
+			if data.kind == "member" then
+				if data.ver > 0 then
+					GameTooltip:AddLine(L.CONFIRMED_AGO:format(Util.FormatAge(ns.Now() - data.ver)), 0.6, 0.6, 0.6)
+				end
+				for _, line in ipairs(data.details or {}) do
+					GameTooltip:AddLine(line, 1, 1, 1)
+				end
+			end
 			if data.linked then
 				GameTooltip:AddLine(L.LINKED_LICENSE, 0.4, 0.8, 1)
 			end
@@ -638,7 +771,7 @@ local function build(content)
 		row.nameButton = CreateFrame("Button", nil, row)
 		row.nameButton:SetPoint("TOPLEFT")
 		row.nameButton:SetPoint("BOTTOMLEFT")
-		row.nameButton:SetWidth(248)
+		row.nameButton:SetWidth(GROUP_BUTTON_WIDTH)
 		row.nameButton:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
 		row.nameButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 		row.nameButton:SetScript("OnClick", function(self, button)
@@ -669,13 +802,21 @@ local function build(content)
 			return data.via and L.CLICK_WHISPER_VIA:format(Util.ShortName(data.via.name)) or L.CLICK_WHISPER
 		end)
 		row.name = W.Text(row.nameButton)
-		row.name:SetWidth(150)
+		row.name:SetWidth(NAME_WIDTH)
 		row.age = W.Text(row.nameButton, "GameFontDisableSmall")
 		row.age:SetPoint("LEFT", row.name, "RIGHT", 4, 0)
 		row.age:SetWidth(90)
 		row.profs = W.Text(row)
 		row.profs:SetPoint("LEFT", row.nameButton, "RIGHT", 4, 0)
 		row.profs:SetPoint("RIGHT", -4, 0)
+		-- Players view: the profession columns (see showColumns).
+		row.cols = {}
+		for i = 1, COLUMNS do
+			local col = { rank = W.Text(row), name = W.Text(row) }
+			col.rank:SetWidth(RANK_WIDTH)
+			col.name:SetPoint("LEFT", col.rank, "RIGHT", 4, 0)
+			row.cols[i] = col
+		end
 		row:SetScript("OnClick", function(self, button)
 			if button == "RightButton" then
 				openMenu(self, self.data)
@@ -694,6 +835,10 @@ local function build(content)
 	end, function(row, data)
 		row.data = data
 		row.name:ClearAllPoints()
+		local member = data.kind == "member"
+		row.nameButton:SetWidth(member and MEMBER_BUTTON_WIDTH or GROUP_BUTTON_WIDTH)
+		row.age:SetWidth(member and AGE_WIDTH or 90)
+		showColumns(row, member and data or nil)
 		if data.kind == "group" or data.kind == "info" or data.kind == "scan" then
 			local label = data.kind == "group" and ((data.open and ICON_OPEN or ICON_CLOSED) .. data.label) or data.text
 			if data.dim then label = "|cffa0a0a0" .. label .. "|r" end
@@ -716,14 +861,15 @@ local function build(content)
 		-- Other characters of the same person (players view) and the
 		-- characters of a group sit indented.
 		row.name:SetPoint("LEFT", data.alt and 18 or 4, 0)
-		row.name:SetWidth(data.alt and 136 or 150)
+		row.name:SetWidth(data.alt and NAME_WIDTH - 14 or NAME_WIDTH)
 		row.name:SetText(name)
 		if data.kind == "entry" then
 			row.age:SetText(data.right or "")
 			row.profs:SetText(data.extra or "")
 		else
-			row.age:SetText(data.ver > 0 and L.CONFIRMED_AGO:format(Util.FormatAge(ns.Now() - data.ver)) or "")
-			row.profs:SetText(data.profs)
+			-- Only the age here; "confirmed ... ago" is in the tooltip.
+			row.age:SetText(data.ver > 0 and Util.FormatAge(ns.Now() - data.ver) or "")
+			row.profs:SetText("")
 		end
 	end)
 	ui.list.box:SetPoint("TOPLEFT", 4, -28)
