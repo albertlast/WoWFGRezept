@@ -87,18 +87,22 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.11.0)
+## File upload (0.12.0)
 
-Done by the release workflow (tag `v0.11.0`); for a manual upload:
+Done by the release workflow (tag `v0.12.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.11.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.12.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.11.0`
+- Display name: `0.12.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.12.0
+
+- Fix: "No player named ... is currently playing." no longer shows up several times in the chat after a sync partner logged out.
+
 ## 0.11.0
 
 - **Members tab:** professions in fixed columns (skill level, then the name or specialization); details in the tooltip; a button switches to the secondary professions.

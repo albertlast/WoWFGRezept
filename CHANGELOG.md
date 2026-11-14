@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 (2026-11-14)
+
+- Fix: "No player named '...' is currently playing." no longer shows up several times in the chat when a sync partner has just logged out. Every such error from the addon's own whispers is hidden now, not only the first. Your own whispers to other players still show it.
+
 ## 0.11.0 (2026-11-12)
 
 - Members tab, Players view: the professions are in fixed columns now, one below the other: skill level, then the profession's name, or its specialization in its place (so two specialized professions fit). The line no longer runs out of the window. Recipe counts, specialization, "unverified", the server's "no longer learned" and the cooldowns are in the row's tooltip. A profession not scanned yet has an orange level and a "!", an unverified one a "?".
