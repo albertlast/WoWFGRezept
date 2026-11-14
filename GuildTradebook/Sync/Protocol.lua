@@ -156,6 +156,8 @@ P.RESEND_WINDOW = 10 -- seconds: whispers this recent are resent when they fail
 P.MAX_RESEND = 50
 P.HEARD_WINDOW = 60  -- seconds: a member heard from this recently is online
 P.failedAt = {}      -- ["Name-Realm"] = GetTime() of the first failure taken as "offline"
+P.hideNotFound = {}  -- [whisper target] = GetTime() until which its "No player named" errors are hidden
+P.HIDE_WINDOW = 30   -- seconds: queued whispers and message parts keep failing for a while
 
 function P.CanWhisper(name)
 	return name ~= nil and not P.unreachable[name]
@@ -249,14 +251,19 @@ end
 -- "No player named 'X' is currently playing." after one of our addon
 -- whispers: X is unreachable by whisper from now on, and our recent whispers
 -- to X are sent again through the guild channel. The error itself is hidden
--- (one would show up per lost message).
+-- (one would show up per lost message, and per part of a split message).
 local notFoundPattern
-local function whisperFailedName(text)
+local function notFoundName(text)
+	if type(text) ~= "string" then return nil end
 	if not notFoundPattern then
 		local template = ERR_CHAT_PLAYER_NOT_FOUND_S or "No player named '%s' is currently playing."
 		notFoundPattern = "^" .. template:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1"):gsub("%%s", "(.+)") .. "$"
 	end
-	local target = type(text) == "string" and text:match(notFoundPattern)
+	return text:match(notFoundPattern)
+end
+
+local function whisperFailedName(text)
+	local target = notFoundName(text)
 	local entry = target and P.whispered[target]
 	if entry and GetTime() - entry.at < P.RESEND_WINDOW then
 		return target, entry
@@ -267,6 +274,9 @@ function P.OnSystemMessage(_, text)
 	if Util.IsSecret(text) then return end
 	local target, entry = whisperFailedName(text)
 	if not target then return end
+	-- The first error ends the whisper entry; the errors for whispers and
+	-- message parts already on their way stay hidden for HIDE_WINDOW.
+	P.hideNotFound[target] = GetTime() + P.HIDE_WINDOW
 	P.whispered[target] = nil
 	local firstFailure = P.failedAt[entry.name]
 	local failedAgain = firstFailure and GetTime() - firstFailure >= Roster.OFFLINE_MEMORY
@@ -291,7 +301,13 @@ end
 
 local function hideFailedWhisper(_, _, text)
 	if Util.IsSecret(text) then return false end
-	return whisperFailedName(text) ~= nil
+	if whisperFailedName(text) then return true end
+	local target = notFoundName(text)
+	local hideUntil = target and P.hideNotFound[target]
+	if not hideUntil then return false end
+	if GetTime() < hideUntil then return true end
+	P.hideNotFound[target] = nil
+	return false
 end
 
 local function sendRecord(guid, channel, target, prio)

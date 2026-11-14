@@ -1053,6 +1053,33 @@ test("offline while the roster still shows online: one failed whisper, the sync 
 	eq(#cb.ns.Wishlist.ReadyNow(), 0)
 end)
 
+test("a burst of whispers to a member who just logged out: every \"No player named\" is hidden", function()
+	local world, a, b = threeMembers()
+	a.staleRoster, a.quietLogout = true, true
+	world:Login(b.guid)
+	world:Login(a.guid)
+	world:Run(120)
+	world:Logout(a.guid)
+	world:Run(5)
+	local cb = world.online[b.guid]
+	local P = cb.ns.Protocol
+	P.sync = nil
+	cb.chatShown = {}
+	-- Several messages leave before the first error comes back.
+	for _ = 1, 4 do
+		P.Send({ t = "N" }, "WHISPER", "Anna-Realm", "NORMAL", a.guid)
+	end
+	world:Run(5)
+	truthy(world.badWhispers >= 4, "four whispers failed")
+	eq(#cb.chatShown, 0, "no error shown")
+	-- Errors for other names, and later ones for Anna, are the player's own.
+	cb:Fire("CHAT_MSG_SYSTEM", "No player named 'Dora' is currently playing.")
+	eq(#cb.chatShown, 1, "a whisper of the player to someone else fails visibly")
+	world:Run(P.HIDE_WINDOW)
+	cb:Fire("CHAT_MSG_SYSTEM", "No player named 'Anna' is currently playing.")
+	eq(#cb.chatShown, 2, "after the window, errors for Anna show again")
+end)
+
 test("guild cleanup runs in a session: the current guild is stamped, an old one pruned", function()
 	local world = H.NewWorld()
 	local me = world:AddChar({ guid = guid(1), name = "Anna" })

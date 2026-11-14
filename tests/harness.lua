@@ -883,6 +883,15 @@ function H.NewClient(world, char)
 				frame.onEvent(frame, event, ...)
 			end
 		end
+		-- System messages the chat frame would show. The filter runs after the
+		-- addon's own handlers here (WoW does not promise an order).
+		if event == "CHAT_MSG_SYSTEM" then
+			local filter = self.chatFilters and self.chatFilters[event]
+			if not (filter and filter(nil, event, ...)) then
+				self.chatShown = self.chatShown or {}
+				table.insert(self.chatShown, (...))
+			end
+		end
 	end
 
 	function client:Boot()
