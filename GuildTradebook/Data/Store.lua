@@ -360,6 +360,23 @@ function Store.IsHiddenCooldown(readyAt)
 	return readyAt ~= nil and readyAt >= Store.CD_HIDDEN
 end
 
+--[[
+The game keeps cooldown starts in 32-bit milliseconds: a cooldown that began
+before the computer's clock base comes back 2^32 ms (49.7 days) too late
+(seen in game: a transmute 15 h away showed "50d"). No profession cooldown
+lasts MAX_COOLDOWN, so a readyAt further away is such a value - from 0.12.0
+and older, which stored it as read - and is moved back by whole wraps.
+]]
+Store.TIMER_WRAP = 2 ^ 32 / 1000
+Store.MAX_COOLDOWN = 20 * 86400
+
+function Store.UnwrapReadyAt(readyAt, now)
+	if not readyAt or readyAt == 0 or Store.IsHiddenCooldown(readyAt) then return readyAt end
+	local excess = readyAt - now - Store.MAX_COOLDOWN
+	if excess <= 0 then return readyAt end
+	return math.floor(readyAt - math.ceil(excess / Store.TIMER_WRAP) * Store.TIMER_WRAP)
+end
+
 -- hidden: the owner does not share the times; every observed cooldown is
 -- stored as CD_HIDDEN.
 function Store.ApplyCooldowns(own, skillLine, observed, now, hidden)

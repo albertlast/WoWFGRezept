@@ -137,7 +137,7 @@ local function professionsOf(rec, recipes)
 			for rid in pairs(p.recipes) do recipes[rid] = sl end
 		end
 		for _, rid in ipairs(Util.SortedKeys(p.cds or {})) do
-			local readyAt = p.cds[rid]
+			local readyAt = Store.UnwrapReadyAt(p.cds[rid], ns.Now())
 			table.insert(entry.cooldowns, { recipe = rid, readyAt = not Store.IsHiddenCooldown(readyAt) and readyAt or nil })
 		end
 		list[#list + 1] = entry

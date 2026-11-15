@@ -204,6 +204,46 @@ test("cooldowns: read without the profession window; ready never resets a runnin
 	truthy(math.abs(cds[17187] - (world.clock.t + 3600)) < 10, "read after combat")
 end)
 
+test("cooldowns: a start 2^32 ms too late is read right, and such stored values are repaired", function()
+	math.randomseed(34)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Mira Feld", profs = {
+		[ALCHEMY] = { rank = 300, maxRank = 300, name = "Alchemy", recipes = { [17187] = 12360 } },
+	}, cooldowns = { [17187] = 100 } })
+	local b = world:AddChar({ guid = guid(2), name = "Tom Berg" })
+	local cb = world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(ALCHEMY)
+	world:Run(5)
+	ca:CloseTradeSkill()
+	a.cooldowns = {}
+	local Store = ca.ns.Store
+
+	-- Seen in game: a transmute 15 h away read as 50 days.
+	a.spellCooldowns = { [17187] = { 57000, 86400, true } }
+	ca:Fire("SPELL_UPDATE_COOLDOWN")
+	world:Run(4)
+	local cds = ca:Record(a.guid).profs[ALCHEMY].cds
+	truthy(math.abs(cds[17187] - (world.clock.t + 57000)) < 10, "15.8 h, not 50 days")
+
+	-- 0.12.0 stored the value as read; it is moved back, here to "over".
+	cds[17187] = world.clock.t - 50 + Store.TIMER_WRAP
+	a.spellCooldowns = {}
+	ca:Fire("SPELL_UPDATE_COOLDOWN")
+	world:Run(4)
+	truthy(cds[17187] < world.clock.t, "repaired, ready")
+	world:Run(900)
+	truthy(cb:Record(a.guid).profs[ALCHEMY].cds[17187] < world.clock.t, "the guild gets the repaired value")
+
+	-- Shown right even when the record still comes from an older version.
+	local now = world.clock.t
+	truthy(math.abs(Store.UnwrapReadyAt(math.floor(now + 3600 + Store.TIMER_WRAP), now) - (now + 3600)) <= 1, "moved back")
+	eq(Store.UnwrapReadyAt(now + 3600, now), now + 3600, "a normal cooldown stays")
+	eq(Store.UnwrapReadyAt(0, now), 0)
+	eq(Store.UnwrapReadyAt(Store.CD_HIDDEN, now), Store.CD_HIDDEN, "not shared stays not shared")
+end)
+
 test("cooldowns: the Salt Shaker counts under its spell, only for its owner", function()
 	math.randomseed(33)
 	local world = H.NewWorld()

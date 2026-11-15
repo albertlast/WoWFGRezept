@@ -70,15 +70,16 @@ Recipes sharing a cooldown become one entry with the latest time: a running
 cooldown holds them all, and a hidden time (far in the future) stays hidden.
 ]]
 local function cooldownList(cds)
-	local list, groups = {}, {}
+	local list, groups, now = {}, {}, ns.Now()
 	for _, rid in ipairs(Util.SortedKeys(cds)) do
 		local group = Store.COOLDOWN_GROUPS[rid]
 		local c = group and groups[group]
+		local readyAt = Store.UnwrapReadyAt(cds[rid], now)
 		if c then
 			c.rids[#c.rids + 1] = rid
-			c.readyAt = math.max(c.readyAt, cds[rid])
+			c.readyAt = math.max(c.readyAt, readyAt)
 		else
-			c = { key = group or rid, group = group, rids = { rid }, readyAt = cds[rid],
+			c = { key = group or rid, group = group, rids = { rid }, readyAt = readyAt,
 				label = group and L[COOLDOWN_GROUP_LABELS[group]] or Index.RecipeName(rid) or ("#" .. rid) }
 			list[#list + 1] = c
 			if group then groups[group] = c end

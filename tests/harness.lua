@@ -723,12 +723,14 @@ function H.NewClient(world, char)
 		GetSpellName = function(id)
 			return ((char.locale or "enUS"):sub(1, 2) == "de" and "Rezept " or "Recipe ") .. id
 		end,
-		-- char.spellCooldowns[id] = { remaining, duration } (seconds); the
-		-- values are secret while char.inCombat (like the game in combat).
+		-- char.spellCooldowns[id] = { remaining, duration, wrapped } (seconds);
+		-- the values are secret while char.inCombat (like the game in combat).
+		-- wrapped: the start comes 2^32 ms too late, like a cooldown that
+		-- began before the computer's clock base.
 		GetSpellCooldown = function(id)
 			local cd = (char.spellCooldowns or {})[id]
 			local start, duration = 0, 0
-			if cd then start, duration = clock.t - (cd[2] - cd[1]), cd[2] end
+			if cd then start, duration = clock.t - (cd[2] - cd[1]) + (cd[3] and 2 ^ 32 / 1000 or 0), cd[2] end
 			if char.inCombat then start, duration = H.SECRET, H.SECRET end
 			return { startTime = start, duration = duration, isEnabled = true, isActive = duration ~= 0 }
 		end,

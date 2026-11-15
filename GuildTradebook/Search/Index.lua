@@ -107,7 +107,7 @@ local function cooldownOf(rec, recipeID)
 	if not rec or not recipeID then return nil end
 	for _, p in pairs(rec.profs) do
 		if p.cds and p.cds[recipeID] then
-			return p.cds[recipeID]
+			return Store.UnwrapReadyAt(p.cds[recipeID], ns.Now())
 		end
 	end
 end

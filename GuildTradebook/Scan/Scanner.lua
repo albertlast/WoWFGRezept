@@ -431,11 +431,15 @@ Scanner.ITEM_COOLDOWNS = {
 
 -- Seconds remaining (0 = ready) from a cooldown's start and duration, or nil
 -- when it can not be read. A duration below MIN_COOLDOWN is the global
--- cooldown: ready.
+-- cooldown: ready. A start that lies ahead of GetTime() is 2^32 ms too late
+-- (Store.TIMER_WRAP): no cooldown has more left than its duration.
 local function remainingOf(start, duration)
 	if Util.IsSecret(start, duration) or type(start) ~= "number" or type(duration) ~= "number" then return nil end
 	if start <= 0 or duration < Scanner.MIN_COOLDOWN then return 0 end
-	return math.max(0, start + duration - GetTime())
+	local remaining = start + duration - GetTime()
+	if remaining > duration + 1 then remaining = remaining % Store.TIMER_WRAP end
+	if remaining > duration + 1 then return nil end
+	return math.max(0, remaining)
 end
 
 function Scanner.ReadSpellCooldown(spellID)
@@ -467,6 +471,14 @@ function Scanner.ScanCooldowns()
 	if not own then return end
 	local now, changed = ns.Now(), false
 	for sl, p in pairs(own.profs) do
+		-- Cooldowns stored 49.7 days too late by 0.12.0 and older.
+		for rid, readyAt in pairs(p.cds or {}) do
+			local fixed = Store.UnwrapReadyAt(readyAt, now)
+			if fixed ~= readyAt then
+				p.cds[rid] = fixed
+				changed = true
+			end
+		end
 		local observed = {}
 		-- "Ready" never replaces a running cooldown: a cooldown does not end
 		-- early, and a reading that can not see it must not reset it.
