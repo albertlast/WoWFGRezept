@@ -4,7 +4,7 @@
 ## Notes-deDE: Teilt bekannte Rezepte automatisch in der Gilde und findet herstellbare Ausrüstungsverbesserungen.
 ## Author: albertlast
 ## X-Curse-Project-ID: 1752487
-## Version: 0.12.0
+## Version: 0.13.0
 ## X-Build: 0
 ## SavedVariables: GuildTradebookDB, GuildTradebookExport
 ## SavedVariablesPerCharacter: GuildTradebookCharDB

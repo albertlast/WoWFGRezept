@@ -87,18 +87,22 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.12.0)
+## File upload (0.13.0)
 
-Done by the release workflow (tag `v0.12.0`); for a manual upload:
+Done by the release workflow (tag `v0.13.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.12.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.13.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.12.0`
+- Display name: `0.13.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.13.0
+
+- Fix: crafting cooldowns no longer show about 50 days too long; values from 0.11.0 and 0.12.0 are corrected.
+
 ## 0.12.0
 
 - Fix: "No player named ... is currently playing." no longer shows up several times in the chat after a sync partner logged out.

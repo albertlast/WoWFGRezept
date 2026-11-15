@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 (2026-11-15)
+
+- Fix: crafting cooldowns no longer show about 50 days too long (a transmute 15 hours away showed "50d"). The game reports the start of a cooldown that began before your computer was last started 49.7 days too late; the addon takes that back out. Your own wrong values are repaired with the next cooldown read, and wrong values from members on 0.11.0 or 0.12.0 are shown right.
+
 ## 0.12.0 (2026-11-14)
 
 - Fix: "No player named '...' is currently playing." no longer shows up several times in the chat when a sync partner has just logged out. Every such error from the addon's own whispers is hidden now, not only the first. Your own whispers to other players still show it.
