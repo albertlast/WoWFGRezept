@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 (2026-11-16)
+
+- **Material cost with Auctionator:** if Auctionator is installed, the recipe detail shows what each reagent costs for the chosen number of crafts, the material cost in total and the auction house price of one crafted item. Reagents vendors sell (thread, dye, flux, vials, spices, ...) count with the full vendor price, without reputation discount; everything else with Auctionator's last scan. Reagents without a price are marked "?". Without Auctionator nothing changes.
+
 ## 0.13.0 (2026-11-15)
 
 - Fix: crafting cooldowns no longer show about 50 days too long (a transmute 15 hours away showed "50d"). The game reports the start of a cooldown that began before your computer was last started 49.7 days too late; the addon takes that back out. Your own wrong values are repaired with the next cooldown read, and wrong values from members on 0.11.0 or 0.12.0 are shown right.

@@ -29,7 +29,7 @@ Built for **World of Warcraft: Forever** (interface 16001). Available in English
 
 ## Recipes
 
-Every recipe the guild can craft, grouped like the profession window (profession > category). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, click to whisper) and the reagents with how many you have against how many you need. At a mailbox, **right-click a crafter to mail them the reagents**: the addon splits the stacks and fills in the mail, you click Send.
+Every recipe the guild can craft, grouped like the profession window (profession > category). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, click to whisper) and the reagents with how many you have against how many you need; with Auctionator installed also the material cost. At a mailbox, **right-click a crafter to mail them the reagents**: the addon splits the stacks and fills in the mail, you click Send.
 
 ![Recipes tab](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
 
@@ -87,18 +87,22 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.13.0)
+## File upload (0.14.0)
 
-Done by the release workflow (tag `v0.13.0`); for a manual upload:
+Done by the release workflow (tag `v0.14.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.13.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.14.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.13.0`
+- Display name: `0.14.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.14.0
+
+- **Material cost with Auctionator:** with Auctionator installed, the recipe detail shows the price of each reagent, the material cost and the auction house price of the crafted item. Vendor reagents count with the full vendor price.
+
 ## 0.13.0
 
 - Fix: crafting cooldowns no longer show about 50 days too long; values from 0.11.0 and 0.12.0 are corrected.
@@ -162,7 +166,7 @@ Gebaut für **World of Warcraft: Forever** (Interface 16001). Auf Englisch und D
 
 ## Rezepte
 
-Alle Rezepte, die die Gilde herstellen kann, gruppiert wie im Berufsfenster (Beruf > Kategorie). Suche nach Rezept- oder Gegenstandsnamen oder filtere nach Beruf. Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien mit dem, was du hast, und dem, was du brauchst. Am Briefkasten **schickt ein Rechtsklick auf einen Hersteller ihm die Materialien per Post**: Das Addon teilt die Stapel und füllt den Brief aus, du klickst auf Senden.
+Alle Rezepte, die die Gilde herstellen kann, gruppiert wie im Berufsfenster (Beruf > Kategorie). Suche nach Rezept- oder Gegenstandsnamen oder filtere nach Beruf. Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien mit dem, was du hast, und dem, was du brauchst; mit Auctionator auch die Materialkosten. Am Briefkasten **schickt ein Rechtsklick auf einen Hersteller ihm die Materialien per Post**: Das Addon teilt die Stapel und füllt den Brief aus, du klickst auf Senden.
 
 ![Reiter Rezepte](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
 
@@ -223,6 +227,10 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.14.0
+
+- **Materialkosten mit Auctionator:** Ist Auctionator installiert, zeigt das Rezept den Preis jedes Materials, die Materialkosten und den Auktionshauspreis des hergestellten Gegenstands. Händlerware zählt mit dem vollen Händlerpreis.
+
 ## 0.11.0
 
 - **Reiter Mitglieder:** Berufe in festen Spalten (Stufe, dann Name oder Spezialisierung); Details im Tooltip; ein Knopf schaltet auf die Nebenberufe um.
