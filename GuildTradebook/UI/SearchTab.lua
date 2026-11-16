@@ -9,6 +9,7 @@ local MAX_HISTORY = 20
 local MAX_CRAFTS = 50
 local MAX_REAGENT_ROWS = 8
 local REAGENT_ROW_HEIGHT = 14
+local PRICE_LINES = 2 -- cost and auction house value, with Auctionator
 local INDENT = 14
 local ICON_OPEN = "Interface\\Buttons\\UI-MinusButton-Up"
 local ICON_CLOSED = "Interface\\Buttons\\UI-PlusButton-Up"
@@ -151,7 +152,8 @@ end
 -- One hoverable row per reagent: have/need (green = enough, red = short)
 -- and the item, with the game's item tooltip and shift-click linking. If a
 -- guild member can craft the reagent, it is marked and a click opens that
--- recipe (Back returns).
+-- recipe (Back returns). With Auctionator the price of the needed amount
+-- stands on the right.
 local function reagentRow(index)
 	local d = ui.detail
 	local row = d.reagentRows[index]
@@ -160,12 +162,41 @@ local function reagentRow(index)
 		row:SetHeight(REAGENT_ROW_HEIGHT)
 		row:SetPoint("TOPLEFT", 0, -(index - 1) * REAGENT_ROW_HEIGHT)
 		row:SetPoint("RIGHT", 0, 0)
+		row.price = W.Text(row, nil, "RIGHT")
+		row.price:SetPoint("TOPRIGHT")
+		row.price:SetPoint("BOTTOMRIGHT")
 		row.fs = W.Text(row)
-		row.fs:SetAllPoints()
+		row.fs:SetPoint("TOPLEFT")
+		row.fs:SetPoint("BOTTOMRIGHT", row.price, "BOTTOMLEFT", -6, 0)
 		W.AttachItem(row, function(recipeID) ns.UI.ShowRecipe(recipeID, true) end)
 		d.reagentRows[index] = row
 	end
 	return row
+end
+
+-- Two lines under the reagents (only with Auctionator): the cost of the
+-- crafts and the auction house price of the crafted item.
+local function refreshCost(rid, reagents, shownRows)
+	local d = ui.detail
+	local priced = reagents ~= nil and ns.Prices.Available()
+	d.reagentArea:SetHeight((MAX_REAGENT_ROWS + (priced and PRICE_LINES or 0)) * REAGENT_ROW_HEIGHT)
+	d.cost:SetShown(priced)
+	d.value:SetShown(priced)
+	if not priced then return end
+	d.cost:SetPoint("TOPLEFT", d.reagentArea, "TOPLEFT", 0, -shownRows * REAGENT_ROW_HEIGHT - 2)
+	local cost, unpriced = ns.Prices.Cost(reagents, state.crafts, ns.Prices.Unit)
+	if unpriced > 0 and cost == 0 then
+		d.cost:SetText("|cff999999" .. L.PRICE_NONE .. "|r")
+	else
+		local text = L.PRICE_COST:format("|cffffffff" .. ns.Prices.Format(cost) .. "|r")
+		if unpriced > 0 then
+			text = text .. "  |cffff4040(" .. L.PRICE_UNPRICED:format(unpriced) .. ")|r"
+		end
+		d.cost:SetText(text)
+	end
+	local itemID = Index.OutputItem(rid)
+	local value = itemID > 0 and ns.Prices.Auction(itemID)
+	d.value:SetText(value and L.PRICE_AUCTION:format("|cffffffff" .. ns.Prices.Format(value) .. "|r") or "")
 end
 
 local function refreshReagents(rid)
@@ -180,10 +211,19 @@ local function refreshReagents(rid)
 		d.reagents:SetText(L.REAGENTS_FOR:format(state.crafts))
 		rows = ns.Reagents.Check(reagents, state.crafts, ns.Reagents.Count)
 	end
+	local priced = ns.Prices.Available()
+	refreshCost(rid, reagents, math.min(#rows, MAX_REAGENT_ROWS))
 	for i = 1, math.max(#rows, #d.reagentRows) do
 		local data = rows[i]
 		if data and i <= MAX_REAGENT_ROWS then
 			local row = reagentRow(i)
+			local unit = priced and ns.Prices.Unit(data.itemID)
+			if unit then
+				local price = ns.Prices.Format(unit * data.need)
+				row.price:SetText(data.optional and ("|cff999999" .. price .. "|r") or price)
+			else
+				row.price:SetText(priced and "|cff999999?|r" or "")
+			end
 			local color = data.optional and "|cff999999" or (data.have >= data.need and "|cff20ff20" or "|cffff4040")
 			local text = ("%s%d/%d|r  %s"):format(color, data.have, data.need, itemLabel(data.itemID, "#" .. data.itemID))
 			if data.optional then
@@ -413,10 +453,19 @@ local function build(content)
 	detail.reagents:SetPoint("TOPLEFT", item, "BOTTOMLEFT", 0, -10)
 	detail.reagents:SetPoint("RIGHT", -52, 0)
 	detail.reagentArea = CreateFrame("Frame", nil, detail)
-	detail.reagentArea:SetPoint("TOPLEFT", detail.reagents, "BOTTOMLEFT", 0, -4)
+	detail.reagentArea:SetPoint("TOPLEFT", detail.reagents, "BOTTOMLEFT", 0, -9) -- below the +/- buttons
 	detail.reagentArea:SetPoint("RIGHT", 0, 0)
 	detail.reagentArea:SetHeight(MAX_REAGENT_ROWS * REAGENT_ROW_HEIGHT)
 	detail.reagentRows = {}
+	-- Cost lines right under the last reagent (see refreshCost).
+	detail.cost = W.Text(detail.reagentArea)
+	detail.cost:SetPoint("TOPLEFT")
+	detail.cost:SetPoint("RIGHT")
+	detail.value = W.Text(detail.reagentArea)
+	detail.value:SetPoint("TOPLEFT", detail.cost, "BOTTOMLEFT", 0, -2)
+	detail.value:SetPoint("RIGHT")
+	detail.cost:Hide()
+	detail.value:Hide()
 
 	-- Number of crafts for the reagent check.
 	local function stepper(label, delta)

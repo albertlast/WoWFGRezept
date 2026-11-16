@@ -10,7 +10,7 @@
 ## SavedVariablesPerCharacter: GuildTradebookCharDB
 ## IconTexture: Interface\Icons\INV_Scroll_03
 ## AddonCompartmentFunc: GuildTradebook_OnAddonCompartmentClick
-## OptionalDeps: EllesmereUI
+## OptionalDeps: EllesmereUI, Auctionator
 
 embeds.xml
 
@@ -31,6 +31,7 @@ Search\Categories.lua
 Search\Upgrades.lua
 Features\Wishlist.lua
 Features\Reagents.lua
+Features\Prices.lua
 Features\Mail.lua
 Features\ChatResponder.lua
 Features\Link.lua

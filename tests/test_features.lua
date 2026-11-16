@@ -100,6 +100,54 @@ test("reagent check: have, need, missing, optional", function()
 	eq(missing[1].count, 3)
 end)
 
+-- Prices (Auctionator) -------------------------------------------------------------
+
+test("prices: cost of the required reagents, unpriced ones counted", function()
+	local reagents = { { 14047, 6, 0 }, { 14341, 1, 0 }, { 8170, 2, 1 }, { 7078, 1, 0 } }
+	local unit = { [14047] = 250, [14341] = 5000, [8170] = 999 }
+	local cost, unpriced = ns.Prices.Cost(reagents, 3, function(id) return unit[id] end)
+	eq(cost, 6 * 3 * 250 + 3 * 5000, "optional reagent not counted")
+	eq(unpriced, 1, "the reagent without a price")
+	eq(select(1, ns.Prices.Cost(reagents, 1, function() return 2.5 end)), 20, "vendor prices per item may be fractions (8 x 2.5)")
+end)
+
+test("prices: full vendor price, then Auctionator's vendor and auction prices, errors are no price", function()
+	falsy(ns.Prices.Available(), "no Auctionator here")
+	eq(ns.Prices.Unit(2589), nil)
+	local calls = {}
+	local priced = H.LoadPure({ Auctionator = { API = { v1 = {
+		GetVendorPriceByItemID = function(caller, id)
+			calls[#calls + 1] = caller
+			return ({ [2321] = 90, [99001] = 10 })[id]
+		end,
+		GetAuctionPriceByItemID = function(_, id)
+			if id == 666 then error("changed API") end
+			return ({ [2321] = 300, [99001] = 40, [2589] = 1500 })[id]
+		end,
+	} } } }).Prices
+	truthy(priced.Available())
+	local price, source = priced.Unit(2321)
+	eq(price, 100, "Fine Thread: the full vendor price, not Auctionator's 90 (10% reputation discount)")
+	eq(source, "vendor")
+	price, source = priced.Unit(99001)
+	eq(price, 10)
+	eq(source, "vendor", "a vendor Auctionator saw beats the auction house")
+	price, source = priced.Unit(2589)
+	eq(price, 1500)
+	eq(source, "auction")
+	eq(priced.Unit(666), nil, "an error in Auctionator is no price")
+	eq(priced.Unit(1), nil)
+	eq(priced.Auction(99001), 40, "the crafted item's value is always the auction price")
+	eq(calls[1], "Guild Tradebook", "Auctionator wants a caller name")
+end)
+
+test("prices: money text without the game's formatter", function()
+	eq(ns.Prices.Format(12345), "|cffffd7001g|r |cffc7c7cf23s|r |cffeda55f45c|r")
+	eq(ns.Prices.Format(20000), "|cffffd7002g|r")
+	eq(ns.Prices.Format(0), "|cffeda55f0c|r")
+	eq(ns.Prices.Format(99.6), "|cffc7c7cf1s|r", "rounded to whole copper")
+end)
+
 -- Wishlist ------------------------------------------------------------------------
 
 test("wishlist matches only members who just came online", function()

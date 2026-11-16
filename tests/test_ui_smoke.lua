@@ -172,6 +172,18 @@ test("tabs, rows and tooltip run against real pool data", function()
 	-- Reagents known (as after a FACT answer): rows render with tooltips.
 	cb.env.GuildTradebookDB.recipeFacts[3914].reagents = { { 2589, 2, 0 }, { 2320, 1, 1 } }
 	cb.ns.UI.ShowRecipe(3914)
+	-- With Auctionator: prices per reagent and the cost lines.
+	cb.env.Auctionator = { API = { v1 = {
+		GetVendorPriceByItemID = function(_, id) return id == 2320 and 10 or nil end,
+		GetAuctionPriceByItemID = function(_, id) return id == 2589 and 1500 or nil end,
+	} } }
+	truthy(cb.ns.Prices.Available())
+	cb.ns.UI.ShowRecipe(3914)
+	cb.env.Auctionator.API.v1.GetVendorPriceByItemID = function() return nil end
+	cb.env.Auctionator.API.v1.GetAuctionPriceByItemID = function() return nil end
+	cb.ns.UI.ShowRecipe(3914) -- no prices yet
+	cb.env.Auctionator = nil
+	cb.ns.UI.ShowRecipe(3914)
 	cb.ns.Wishlist.Toggle(3914)
 	UI.Show("wishlist")
 	cb.ns.Wishlist.SetPaused(3914, true) -- greyed row

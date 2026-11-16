@@ -33,6 +33,7 @@ H.FILES = {
 	"Search/Upgrades.lua",
 	"Features/Wishlist.lua",
 	"Features/Reagents.lua",
+	"Features/Prices.lua",
 	"Features/Mail.lua",
 	"Features/ChatResponder.lua",
 	"Features/Link.lua",
@@ -1015,7 +1016,7 @@ function H.LoadPure(globals)
 	}, { __index = _G })
 	for k, v in pairs(globals or {}) do env[k] = v end
 	for _, file in ipairs({ "Locales/enUS.lua", "Core/Init.lua", "Core/Util.lua", "Data/Store.lua", "Search/Upgrades.lua",
-		"Features/Wishlist.lua", "Features/Reagents.lua", "Features/Mail.lua", "Features/ChatResponder.lua" }) do
+		"Features/Wishlist.lua", "Features/Reagents.lua", "Features/Prices.lua", "Features/Mail.lua", "Features/ChatResponder.lua" }) do
 		loadInto(H.ADDON_DIR .. file, env)("GuildTradebook", ns)
 	end
 	return ns
