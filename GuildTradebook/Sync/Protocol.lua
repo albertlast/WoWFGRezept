@@ -92,7 +92,8 @@ P.SPLIT_MIN = 4              -- missing records in one bucket that start a split
 P.SPLIT_WAIT = 30            -- seconds: deferred buckets then go to the first partner after all
 P.SPLIT_WINDOW = 120         -- seconds: one split at a time
 
--- Tests set this to function(msg, channel, target, prio) to bypass AceComm.
+-- Tests set this to function(msg, channel, target, prio, addressee, onSent)
+-- to bypass AceComm; onSent(true) once the message has left.
 P.transport = nil
 
 local function isMember(guid)
@@ -129,10 +130,15 @@ local function sendResultName(result)
 	return tostring(result)
 end
 
--- AceComm reports each sent chunk; only failures are worth a log line.
-local function onSent(what, _, _, result)
+-- AceComm reports each chunk when it really leaves (ChatThrottleLib may hold
+-- it a long time): failures get a log line, and a whisper's chunk callback
+-- learns whether it was the last one.
+local function onSent(info, sentBytes, totalBytes, result)
 	if result ~= nil and result ~= 0 and result ~= true then
-		ns.Debug("send failed:", what, sendResultName(result))
+		ns.Debug("send failed:", info.what, sendResultName(result))
+	end
+	if info.chunk then
+		info.chunk(type(sentBytes) ~= "number" or type(totalBytes) ~= "number" or sentBytes >= totalBytes)
 	end
 end
 
@@ -149,6 +155,15 @@ named ... is currently playing", there are two cases:
     online: its name can not be whispered. It gets messages on the GUILD channel instead,
     addressed to its GUID: the text starts with "@<guid>@", and every other
     client skips it without decoding.
+
+Whispers wait in a queue per target, and only one message per target is
+handed to AceComm at a time (the next one when the last chunk of the
+previous one has left). All addon messages share one ChatThrottleLib queue,
+so a large transfer can take minutes; when the target logs out meanwhile,
+the first error drops what still waits for it, instead of every chunk of it
+going out and failing. The server answers each failed chunk a moment after
+it really left, so an error counts as ours while a chunk to that name left
+within RESEND_WINDOW (P.sentAt), however long it was queued.
 ]]
 P.unreachable = {}   -- ["Name-Realm"] = true: a whisper to this member failed
 P.whispered = {}     -- [whisper target] = { at = GetTime(), name, guid, sent = { {msg, prio}, ... } }
@@ -158,6 +173,9 @@ P.HEARD_WINDOW = 60  -- seconds: a member heard from this recently is online
 P.failedAt = {}      -- ["Name-Realm"] = GetTime() of the first failure taken as "offline"
 P.hideNotFound = {}  -- [whisper target] = GetTime() until which its "No player named" errors are hidden
 P.HIDE_WINDOW = 30   -- seconds: queued whispers and message parts keep failing for a while
+P.queues = {}        -- [whisper target] = { items = { {msg, prio, name, guid}, ... }, busy, since, token }
+P.sentAt = {}        -- [whisper target] = GetTime() a chunk to it last left
+P.STUCK = 120        -- seconds: a message whose last chunk is not reported by then frees its queue
 
 function P.CanWhisper(name)
 	return name ~= nil and not P.unreachable[name]
@@ -183,20 +201,96 @@ local function rememberWhisper(target, name, msg, prio, guid)
 	end
 end
 
-local function deliver(msg, channel, target, prio, addressee)
+-- Hands a message to AceComm (or the test transport). chunk(last), for
+-- whispers: called as each chunk leaves, last = true for the final one.
+local function transmit(msg, channel, target, prio, addressee, chunk)
 	ns.Debug("send", msg.t, channel, target or addressee or "")
 	if P.transport then
-		P.transport(msg, channel, target, prio, addressee)
+		P.transport(msg, channel, target, prio, addressee, chunk)
 		return
 	end
 	local text = ns.Codec.Encode(msg)
-	if text then
-		if addressee then
-			text = "@" .. addressee .. "@" .. text
-		end
-		P.comm:SendCommMessage(ns.PREFIX, text, channel, target, prio or "BULK", onSent,
-			msg.t .. " " .. channel .. " " .. (target or addressee or ""))
+	if not text then
+		if chunk then chunk(true) end
+		return
 	end
+	if addressee then
+		text = "@" .. addressee .. "@" .. text
+	end
+	P.comm:SendCommMessage(ns.PREFIX, text, channel, target, prio or "BULK", onSent,
+		{ what = msg.t .. " " .. channel .. " " .. (target or addressee or ""), chunk = chunk })
+end
+
+-- Like ChatThrottleLib: a small ALERT or NORMAL message does not wait
+-- behind a BULK transfer. First in, first out within a priority.
+local PRIO_RANK = { ALERT = 1, NORMAL = 2, BULK = 3 }
+
+local function takeNext(items)
+	local best, bestRank = 1, math.huge
+	for i, item in ipairs(items) do
+		local rank = PRIO_RANK[item.prio or "BULK"] or 3
+		if rank < bestRank then
+			best, bestRank = i, rank
+		end
+	end
+	return table.remove(items, best)
+end
+
+-- The next waiting whisper to target, once the previous one has left.
+-- Members known to be offline by now get nothing.
+local function pump(target)
+	local q = P.queues[target]
+	if not q or q.pumping or restricted() then return end
+	q.pumping = true
+	while not q.busy and q.items[1] do
+		local item = takeNext(q.items)
+		if Roster.KnownOffline(item.guid) then
+			ns.Debug("drop", item.msg.t, "to", target, "(offline)")
+		else
+			q.token = (q.token or 0) + 1
+			local token = q.token
+			q.busy, q.since = true, GetTime()
+			rememberWhisper(target, item.name, item.msg, item.prio, item.guid)
+			transmit(item.msg, "WHISPER", target, item.prio, nil, function(last)
+				P.sentAt[target] = GetTime()
+				if last and q.busy and q.token == token then
+					q.busy = false
+					pump(target)
+				end
+			end)
+		end
+	end
+	q.pumping = false
+	if not q.busy and not q.items[1] and P.queues[target] == q then
+		P.queues[target] = nil
+	end
+end
+
+-- Takes the whispers still waiting for target out of its queue.
+local function dropQueued(target)
+	local q = P.queues[target]
+	if not q then return {} end
+	local items = q.items
+	q.items = {}
+	return items
+end
+
+local function deliver(msg, channel, target, prio, addressee, name, guid)
+	if channel ~= "WHISPER" then
+		transmit(msg, channel, target, prio, addressee)
+		return
+	end
+	local q = P.queues[target]
+	if not q then
+		q = { items = {} }
+		P.queues[target] = q
+	end
+	if q.busy and GetTime() - q.since > P.STUCK then
+		ns.Debug("whisper queue to", target, "was stuck")
+		q.busy = false
+	end
+	table.insert(q.items, { msg = msg, prio = prio, name = name or target, guid = guid })
+	pump(target)
 end
 
 -- channel "WHISPER": target is a member's "Name-Realm"; targetGUID
@@ -209,7 +303,7 @@ function P.Send(msg, channel, target, prio, targetGUID)
 	msg.u = UnitGUID("player")
 	msg.av, msg.ab = ns.Versions.Mine()
 	msg.bt = 1
-	local addressee
+	local addressee, name, guid
 	if channel == "WHISPER" and Roster.KnownOffline(targetGUID or Roster.byName[target]) then
 		ns.Debug("skip", msg.t, "to", tostring(target), "(offline)")
 		return
@@ -222,28 +316,30 @@ function P.Send(msg, channel, target, prio, targetGUID)
 		end
 		channel, target = "GUILD", nil
 	elseif channel == "WHISPER" then
-		local whisperTo = P.WhisperTarget(target)
-		rememberWhisper(whisperTo, target, msg, prio, targetGUID or Roster.byName[target])
-		target = whisperTo
+		name, guid = target, targetGUID or Roster.byName[target]
+		target = P.WhisperTarget(target)
 	end
 	if restricted() then
 		ns.Debug("queued", msg.t, "(chat messaging lockdown)")
-		table.insert(P.outbox, { msg, channel, target, prio, addressee })
+		table.insert(P.outbox, { msg, channel, target, prio, addressee, name, guid })
 		if #P.outbox > P.MAX_OUTBOX then
 			table.remove(P.outbox, 1)
 		end
 		return
 	end
-	deliver(msg, channel, target, prio, addressee)
+	deliver(msg, channel, target, prio, addressee, name, guid)
 end
 
 function P.FlushOutbox()
-	if #P.outbox == 0 or restricted() then return end
+	if restricted() then return end
+	-- Whisper queues held back by the lockdown go on.
+	for target in pairs(P.queues) do pump(target) end
+	if #P.outbox == 0 then return end
 	local queued = P.outbox
 	P.outbox = {}
 	for _, item in ipairs(queued) do
 		if item[1].g == Roster.guildKey then
-			deliver(item[1], item[2], item[3], item[4], item[5])
+			deliver(item[1], item[2], item[3], item[4], item[5], item[6], item[7])
 		end
 	end
 end
@@ -262,10 +358,16 @@ local function notFoundName(text)
 	return text:match(notFoundPattern)
 end
 
+-- A chunk to target left a moment ago: its error is ours.
+local function sentRecently(target)
+	local at = target and P.sentAt[target]
+	return at ~= nil and GetTime() - at < P.RESEND_WINDOW
+end
+
 local function whisperFailedName(text)
 	local target = notFoundName(text)
 	local entry = target and P.whispered[target]
-	if entry and GetTime() - entry.at < P.RESEND_WINDOW then
+	if entry and sentRecently(target) then
 		return target, entry
 	end
 end
@@ -274,15 +376,16 @@ function P.OnSystemMessage(_, text)
 	if Util.IsSecret(text) then return end
 	local target, entry = whisperFailedName(text)
 	if not target then return end
-	-- The first error ends the whisper entry; the errors for whispers and
-	-- message parts already on their way stay hidden for HIDE_WINDOW.
+	-- The first error ends the whisper entry and drops what still waits for
+	-- target; the errors for message parts already on their way stay hidden.
 	P.hideNotFound[target] = GetTime() + P.HIDE_WINDOW
 	P.whispered[target] = nil
+	local queued = dropQueued(target)
 	local firstFailure = P.failedAt[entry.name]
 	local failedAgain = firstFailure and GetTime() - firstFailure >= Roster.OFFLINE_MEMORY
 	if entry.guid and not Roster.HeardWithin(entry.guid, P.HEARD_WINDOW) and not failedAgain then
 		P.failedAt[entry.name] = firstFailure or GetTime()
-		ns.Debug("whisper to", target, "failed: offline (the roster is behind)")
+		ns.Debug("whisper to", target, "failed: offline (the roster is behind) - dropped", #queued, "waiting")
 		Roster.Note(entry.guid, false, true)
 		local sync = P.sync
 		if sync and sync.partner == entry.guid and not sync.answered and sync.retry then
@@ -291,19 +394,25 @@ function P.OnSystemMessage(_, text)
 		end
 		return
 	end
-	if P.unreachable[entry.name] then return end
-	P.unreachable[entry.name] = true
-	ns.Debug("whisper to", target, "failed, using the guild channel - resending", #entry.sent)
-	for _, item in ipairs(entry.sent) do
-		P.Send(item[1], "WHISPER", entry.name, item[2], entry.guid)
+	if not P.unreachable[entry.name] then
+		P.unreachable[entry.name] = true
+		ns.Debug("whisper to", target, "failed, using the guild channel - resending", #entry.sent)
+		for _, item in ipairs(entry.sent) do
+			P.Send(item[1], "WHISPER", entry.name, item[2], entry.guid)
+		end
+	end
+	-- What was still waiting goes through the guild channel as well.
+	for _, item in ipairs(queued) do
+		P.Send(item.msg, "WHISPER", item.name, item.prio, item.guid)
 	end
 end
 
 local function hideFailedWhisper(_, _, text)
 	if Util.IsSecret(text) then return false end
-	if whisperFailedName(text) then return true end
 	local target = notFoundName(text)
-	local hideUntil = target and P.hideNotFound[target]
+	if not target then return false end
+	if sentRecently(target) then return true end
+	local hideUntil = P.hideNotFound[target]
 	if not hideUntil then return false end
 	if GetTime() < hideUntil then return true end
 	P.hideNotFound[target] = nil

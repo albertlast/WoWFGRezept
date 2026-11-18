@@ -1080,6 +1080,61 @@ test("a burst of whispers to a member who just logged out: every \"No player nam
 	eq(#cb.chatShown, 2, "after the window, errors for Anna show again")
 end)
 
+test("a long transfer to a member who logged out: what still waits is dropped, no error shows", function()
+	local world, a, b = threeMembers({ bandwidth = 800 })
+	a.staleRoster, a.quietLogout = true, true
+	world:Login(b.guid)
+	world:Login(a.guid)
+	world:Run(120)
+	world:Logout(a.guid)
+	world:Run(90) -- nothing heard from Anna lately: offline, not an unwhisperable name
+	local cb = world.online[b.guid]
+	local P = cb.ns.Protocol
+	P.sync = nil
+	cb.chatShown = {}
+	local bad = world.badWhispers
+	-- 30 messages of 2 KB: over a minute in the 800 bytes/s queue, far
+	-- longer than the error window after they were handed over.
+	local filler = string.rep("x", 2000)
+	for i = 1, 30 do
+		P.Send({ t = "N", x = filler .. i }, "WHISPER", "Anna-Realm", "BULK", a.guid)
+	end
+	world:Run(150)
+	eq(#cb.chatShown, 0, "no error shown")
+	truthy(world.badWhispers - bad <= 3, "the rest was dropped, failed: " .. (world.badWhispers - bad))
+	eq(P.queues.Anna, nil, "nothing waits for Anna")
+end)
+
+test("whispers to one member leave one after another, a small one before a bulk transfer", function()
+	local world, a, b = threeMembers({ bandwidth = 800 })
+	world:Login(b.guid)
+	world:Login(a.guid)
+	world:Run(120)
+	local cb = world.online[b.guid]
+	local P = cb.ns.Protocol
+	P.sync = nil
+	local got = {}
+	local ca = world.online[a.guid]
+	local handle = ca.ns.Protocol.Handle
+	ca.ns.Protocol.Handle = function(msg, channel, sender)
+		if msg.t == "N" and msg.x then got[#got + 1] = msg.x:sub(-2) end
+		return handle(msg, channel, sender)
+	end
+	local filler = string.rep("x", 2000)
+	for i = 1, 5 do
+		P.Send({ t = "N", x = filler .. "b" .. i }, "WHISPER", "Anna-Realm", "BULK", a.guid)
+	end
+	P.Send({ t = "N", x = "n1" }, "WHISPER", "Anna-Realm", "NORMAL", a.guid)
+	world:Run(60)
+	eq(#got, 6, "everything arrived")
+	-- b1 left at once, b2 was handed to the send queue (one at a time).
+	eq(got[1], "b1")
+	eq(got[2], "b2", "the one already handed over")
+	eq(got[3], "n1", "the small NORMAL message goes next, before the waiting bulk")
+	eq(got[6], "b5", "bulk in order")
+	eq(P.queues.Anna, nil, "the queue is gone when empty")
+end)
+
 test("guild cleanup runs in a session: the current guild is stamped, an old one pruned", function()
 	local world = H.NewWorld()
 	local me = world:AddChar({ guid = guid(1), name = "Anna" })

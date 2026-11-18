@@ -418,7 +418,9 @@ function H.NewWorld(opts)
 		self.clock:Add(0.1, function() self:Pump(from, s) end)
 	end
 
-	function world:Deliver(from, msg, channel, target, addressee, prio)
+	-- onSent(true): the message has left the sender's queue (like AceComm's
+	-- callback for the last chunk).
+	function world:Deliver(from, msg, channel, target, addressee, prio, onSent)
 		self.messages = self.messages + 1
 		self.byType[msg.t] = (self.byType[msg.t] or 0) + 1
 		self.sentBy[from.char.name] = (self.sentBy[from.char.name] or 0) + 1
@@ -432,11 +434,15 @@ function H.NewWorld(opts)
 				if waited > self.maxQueueDelay then self.maxQueueDelay = waited end
 				local byPrio = self.queueDelayByPrio
 				if waited > (byPrio[p] or 0) then byPrio[p] = waited end
-				if not from.env.dead then self:Fanout(from, msg, channel, target, addressee, wire) end
+				if not from.env.dead then
+					self:Fanout(from, msg, channel, target, addressee, wire)
+					if onSent then onSent(true) end
+				end
 			end)
 			return
 		end
 		self:Fanout(from, msg, channel, target, addressee, wire)
+		if onSent then onSent(true) end
 	end
 
 	function world:Fanout(from, msg, channel, target, addressee, wire)
@@ -910,14 +916,15 @@ function H.NewClient(world, char)
 		ns.MinimapButton = { Start = function() end, SetShown = function() end }
 		ns.UI = { Toggle = function() end, Show = function() end }
 		local transport
-		transport = function(msg, channel, target, prio, addressee)
+		transport = function(msg, channel, target, prio, addressee, onSent)
 			if char.v010 and msg.t == "B" then
 				-- 0.1.0 sends no batches: one REC per record.
-				for _, wire in ipairs(msg.l) do
+				for i, wire in ipairs(msg.l) do
 					local single = H.DeepCopy(msg)
 					single.t, single.l, single.r = "R", nil, wire
-					transport(single, channel, target, prio, addressee)
+					transport(single, channel, target, prio, addressee, i == #msg.l and onSent or nil)
 				end
+				if #msg.l == 0 and onSent then onSent(true) end
 				return
 			end
 			if char.v010 and msg.t == "R" and type(msg.r) == "table" then
@@ -932,10 +939,13 @@ function H.NewClient(world, char)
 			if char.legacy then
 				-- A build from before the sender GUID and version fields; it
 				-- knows nothing about version requests either.
-				if msg.t == "V" or msg.t == "N" then return end
+				if msg.t == "V" or msg.t == "N" then
+					if onSent then onSent(true) end
+					return
+				end
 				msg.u, msg.av, msg.ab = nil, nil, nil
 			end
-			world:Deliver(client, msg, channel, target, addressee, prio)
+			world:Deliver(client, msg, channel, target, addressee, prio, onSent)
 		end
 		ns.Protocol.transport = transport
 		self:Fire("ADDON_LOADED", "GuildTradebook")
