@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0 (2026-11-18)
+
+- Fix: "No player named '...' is currently playing." could still show up many times when a member logged out while a larger transfer to them was waiting to be sent. All addon messages share one send queue, so a transfer can take minutes; the error check now goes by when each part really left, not when it was queued.
+- Whispers to a member now leave one message at a time. When the first one fails because the member logged out, what still waits for them is dropped instead of being sent part by part into the void, which leaves more bandwidth for everyone else. Small messages still go before waiting bulk transfers.
+
 ## 0.14.0 (2026-11-16)
 
 - **Material cost with Auctionator:** if Auctionator is installed, the recipe detail shows what each reagent costs for the chosen number of crafts, the material cost in total and the auction house price of one crafted item. Reagents vendors sell (thread, dye, flux, vials, spices, ...) count with the full vendor price, without reputation discount; everything else with Auctionator's last scan. Reagents without a price are marked "?". Without Auctionator nothing changes.

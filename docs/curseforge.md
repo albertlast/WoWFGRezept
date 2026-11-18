@@ -87,18 +87,22 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.14.0)
+## File upload (0.15.0)
 
-Done by the release workflow (tag `v0.14.0`); for a manual upload:
+Done by the release workflow (tag `v0.15.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.14.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.15.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.14.0`
+- Display name: `0.15.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.15.0
+
+- Fix: no more "No player named ..." messages when a member logs out during a larger transfer; what still waits for them is dropped.
+
 ## 0.14.0
 
 - **Material cost with Auctionator:** with Auctionator installed, the recipe detail shows the price of each reagent, the material cost and the auction house price of the crafted item. Vendor reagents count with the full vendor price.
@@ -227,6 +231,10 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.15.0
+
+- Fix: keine „No player named ...“-Meldungen mehr, wenn sich ein Mitglied während einer größeren Übertragung ausloggt; was noch für es wartet, wird verworfen.
+
 ## 0.14.0
 
 - **Materialkosten mit Auctionator:** Ist Auctionator installiert, zeigt das Rezept den Preis jedes Materials, die Materialkosten und den Auktionshauspreis des hergestellten Gegenstands. Händlerware zählt mit dem vollen Händlerpreis.
