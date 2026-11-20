@@ -29,7 +29,7 @@ Built for **World of Warcraft: Forever** (interface 16001). Available in English
 
 ## Recipes
 
-Every recipe the guild can craft, grouped like the profession window (profession > category). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, click to whisper) and the reagents with how many you have against how many you need; with Auctionator installed also the material cost. At a mailbox, **right-click a crafter to mail them the reagents**: the addon splits the stacks and fills in the mail, you click Send.
+Every recipe the guild can craft, grouped like the profession window (profession > category). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, click to whisper) and the reagents with how many you have against how many you need; with Auctionator installed also the material cost, and at the auction house a button that searches the reagents. At a mailbox, **right-click a crafter to mail them the reagents**: the addon splits the stacks and fills in the mail, you click Send.
 
 ![Recipes tab](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
 
@@ -87,18 +87,22 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.15.0)
+## File upload (0.16.0)
 
-Done by the release workflow (tag `v0.15.0`); for a manual upload:
+Done by the release workflow (tag `v0.16.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.15.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.16.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.15.0`
+- Display name: `0.16.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.16.0
+
+- **Search the reagents in the auction house:** with Auctionator installed and the auction house open, the "Search AH" button lets Auctionator search the recipe's reagents, with the amount you are missing. Vendor goods are left out.
+
 ## 0.15.0
 
 - Fix: no more "No player named ..." messages when a member logs out during a larger transfer; what still waits for them is dropped.
@@ -170,7 +174,7 @@ Gebaut für **World of Warcraft: Forever** (Interface 16001). Auf Englisch und D
 
 ## Rezepte
 
-Alle Rezepte, die die Gilde herstellen kann, gruppiert wie im Berufsfenster (Beruf > Kategorie). Suche nach Rezept- oder Gegenstandsnamen oder filtere nach Beruf. Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien mit dem, was du hast, und dem, was du brauchst; mit Auctionator auch die Materialkosten. Am Briefkasten **schickt ein Rechtsklick auf einen Hersteller ihm die Materialien per Post**: Das Addon teilt die Stapel und füllt den Brief aus, du klickst auf Senden.
+Alle Rezepte, die die Gilde herstellen kann, gruppiert wie im Berufsfenster (Beruf > Kategorie). Suche nach Rezept- oder Gegenstandsnamen oder filtere nach Beruf. Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien mit dem, was du hast, und dem, was du brauchst; mit Auctionator auch die Materialkosten und im Auktionshaus einen Button, der die Materialien sucht. Am Briefkasten **schickt ein Rechtsklick auf einen Hersteller ihm die Materialien per Post**: Das Addon teilt die Stapel und füllt den Brief aus, du klickst auf Senden.
 
 ![Reiter Rezepte](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
 
@@ -231,6 +235,10 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.16.0
+
+- **Materialien im Auktionshaus suchen:** Mit Auctionator und offenem Auktionshaus sucht der Button „Im AH suchen“ die Materialien des Rezepts in Auctionator, mit der Menge, die dir fehlt. Händlerware wird ausgelassen.
+
 ## 0.15.0
 
 - Fix: keine „No player named ...“-Meldungen mehr, wenn sich ein Mitglied während einer größeren Übertragung ausloggt; was noch für es wartet, wird verworfen.

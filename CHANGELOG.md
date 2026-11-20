@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 (2026-11-20)
+
+- **Search the reagents in the auction house:** with Auctionator installed and the auction house open, a "Search AH" button next to the material cost lets Auctionator search the recipe's reagents in its Shopping tab: by exact name, with the amount you are missing. Reagents vendors sell and optional reagents are left out.
+
 ## 0.15.0 (2026-11-18)
 
 - Fix: "No player named '...' is currently playing." could still show up many times when a member logged out while a larger transfer to them was waiting to be sent. All addon messages share one send queue, so a transfer can take minutes; the error check now goes by when each part really left, not when it was queued.
