@@ -179,6 +179,20 @@ test("tabs, rows and tooltip run against real pool data", function()
 	} } }
 	truthy(cb.ns.Prices.Available())
 	cb.ns.UI.ShowRecipe(3914)
+	-- Auction house open: the search button with the reagent that is no
+	-- vendor good.
+	local searched
+	cb.env.Auctionator.API.v1.MultiSearchAdvanced = function(_, terms) searched = terms end
+	cb.env.AuctionFrame = { IsShown = function() return true end }
+	cb.ns.UI.ShowRecipe(3914)
+	local button = cb.ns.UI.RecipeSearchButton()
+	eq(#button.terms, 1)
+	eq(button.terms[1].searchString, "Item 2589")
+	truthy(cb.ns.Prices.Search(button.terms))
+	eq(searched[1].searchString, "Item 2589")
+	cb.env.AuctionFrame = nil
+	cb.ns.UI.ShowRecipe(3914)
+	eq(#button.terms, 0, "auction house closed: no button")
 	cb.env.Auctionator.API.v1.GetVendorPriceByItemID = function() return nil end
 	cb.env.Auctionator.API.v1.GetAuctionPriceByItemID = function() return nil end
 	cb.ns.UI.ShowRecipe(3914) -- no prices yet

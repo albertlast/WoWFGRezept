@@ -141,6 +141,50 @@ test("prices: full vendor price, then Auctionator's vendor and auction prices, e
 	eq(calls[1], "Guild Tradebook", "Auctionator wants a caller name")
 end)
 
+test("prices: auction house search terms leave out vendor goods, optional and unnamed reagents", function()
+	local rows = {
+		{ itemID = 2589, need = 6, have = 2 }, -- short by 4
+		{ itemID = 2321, need = 2, have = 0 }, -- Fine Thread: vendor
+		{ itemID = 2592, need = 3, have = 5 }, -- enough
+		{ itemID = 8170, need = 1, have = 0, optional = true },
+		{ itemID = 4306, need = 1, have = 0 }, -- name not loaded yet
+		{ itemID = 7777, need = 1, have = 0 }, -- name Auctionator refuses
+	}
+	local names = { [2589] = "Linen Cloth", [2321] = "Fine Thread", [2592] = "Wool Cloth", [8170] = "Rugged Leather",
+		[7777] = 'Bad "Name"' }
+	local terms = ns.Prices.SearchTerms(rows, ns.Prices.Unit, function(id) return names[id] end)
+	eq(#terms, 2)
+	eq(terms[1].searchString, "Linen Cloth")
+	truthy(terms[1].isExact)
+	eq(terms[1].quantity, 4, "the missing amount")
+	eq(terms[2].searchString, "Wool Cloth")
+	eq(terms[2].quantity, nil, "enough in the bags: no amount")
+end)
+
+test("prices: the search goes to Auctionator only while the auction house is open", function()
+	falsy(ns.Prices.CanSearch(), "no Auctionator")
+	falsy(ns.Prices.Search({ { searchString = "Linen Cloth" } }))
+	local got, open = {}, false
+	local env = { AuctionFrame = { IsShown = function() return open end }, Auctionator = { API = { v1 = {
+		GetAuctionPriceByItemID = function() return nil end,
+		MultiSearchAdvanced = function(caller, terms)
+			got.caller, got.terms = caller, terms
+			if terms[1].searchString == "boom" then error("Auction house is not open") end
+		end,
+	} } } }
+	local priced = H.LoadPure(env).Prices
+	falsy(priced.CanSearch(), "auction house closed")
+	open = true
+	truthy(priced.CanSearch(), "auction house open")
+	open = false
+	falsy(priced.CanSearch())
+	falsy(priced.Search({}), "nothing to search")
+	truthy(priced.Search({ { searchString = "Linen Cloth", isExact = true } }))
+	eq(got.caller, "Guild Tradebook")
+	eq(got.terms[1].searchString, "Linen Cloth")
+	falsy(priced.Search({ { searchString = "boom" } }), "an error in Auctionator is a failed search")
+end)
+
 test("prices: money text without the game's formatter", function()
 	eq(ns.Prices.Format(12345), "|cffffd7001g|r |cffc7c7cf23s|r |cffeda55f45c|r")
 	eq(ns.Prices.Format(20000), "|cffffd7002g|r")

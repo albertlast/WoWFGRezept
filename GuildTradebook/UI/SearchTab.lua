@@ -174,16 +174,35 @@ local function reagentRow(index)
 	return row
 end
 
+local function itemName(itemID)
+	local name = C_Item.GetItemInfo(itemID)
+	if not name then C_Item.RequestLoadItemDataByID(itemID) end
+	return name
+end
+
 -- Two lines under the reagents (only with Auctionator): the cost of the
--- crafts and the auction house price of the crafted item.
-local function refreshCost(rid, reagents, shownRows)
+-- crafts and the auction house price of the crafted item. While the auction
+-- house is open, a button on their right lets Auctionator search the
+-- reagents.
+local function refreshCost(rid, reagents, rows)
 	local d = ui.detail
 	local priced = reagents ~= nil and ns.Prices.Available()
 	d.reagentArea:SetHeight((MAX_REAGENT_ROWS + (priced and PRICE_LINES or 0)) * REAGENT_ROW_HEIGHT)
 	d.cost:SetShown(priced)
 	d.value:SetShown(priced)
+	local terms = priced and ns.Prices.CanSearch() and ns.Prices.SearchTerms(rows, ns.Prices.Unit, itemName) or {}
+	d.ahSearch.terms = terms
+	d.ahSearch:SetShown(#terms > 0)
 	if not priced then return end
-	d.cost:SetPoint("TOPLEFT", d.reagentArea, "TOPLEFT", 0, -shownRows * REAGENT_ROW_HEIGHT - 2)
+	local top = -math.min(#rows, MAX_REAGENT_ROWS) * REAGENT_ROW_HEIGHT - 2
+	d.ahSearch:SetPoint("TOPRIGHT", d.reagentArea, "TOPRIGHT", 0, top)
+	d.cost:ClearAllPoints()
+	d.cost:SetPoint("TOPLEFT", d.reagentArea, "TOPLEFT", 0, top)
+	if #terms > 0 then
+		d.cost:SetPoint("TOPRIGHT", d.ahSearch, "TOPLEFT", -6, 0)
+	else
+		d.cost:SetPoint("TOPRIGHT", d.reagentArea, "TOPRIGHT", 0, top)
+	end
 	local cost, unpriced = ns.Prices.Cost(reagents, state.crafts, ns.Prices.Unit)
 	if unpriced > 0 and cost == 0 then
 		d.cost:SetText("|cff999999" .. L.PRICE_NONE .. "|r")
@@ -212,7 +231,7 @@ local function refreshReagents(rid)
 		rows = ns.Reagents.Check(reagents, state.crafts, ns.Reagents.Count)
 	end
 	local priced = ns.Prices.Available()
-	refreshCost(rid, reagents, math.min(#rows, MAX_REAGENT_ROWS))
+	refreshCost(rid, reagents, rows)
 	for i = 1, math.max(#rows, #d.reagentRows) do
 		local data = rows[i]
 		if data and i <= MAX_REAGENT_ROWS then
@@ -460,12 +479,31 @@ local function build(content)
 	-- Cost lines right under the last reagent (see refreshCost).
 	detail.cost = W.Text(detail.reagentArea)
 	detail.cost:SetPoint("TOPLEFT")
-	detail.cost:SetPoint("RIGHT")
+	detail.cost:SetPoint("TOPRIGHT")
 	detail.value = W.Text(detail.reagentArea)
 	detail.value:SetPoint("TOPLEFT", detail.cost, "BOTTOMLEFT", 0, -2)
-	detail.value:SetPoint("RIGHT")
+	detail.value:SetPoint("TOPRIGHT", detail.cost, "BOTTOMRIGHT", 0, -2)
 	detail.cost:Hide()
 	detail.value:Hide()
+	-- Auction house search with Auctionator (see refreshCost).
+	local ahSearch = CreateFrame("Button", nil, detail.reagentArea, "UIPanelButtonTemplate")
+	ahSearch:SetSize(110, 22)
+	ahSearch:SetText(L.AH_SEARCH)
+	ns.Skin.Button(ahSearch)
+	ahSearch:SetScript("OnClick", function(self)
+		if not ns.Prices.Search(self.terms or {}) then
+			ns.Print(L.AH_SEARCH_FAILED)
+		end
+	end)
+	ahSearch:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(L.AH_SEARCH)
+		GameTooltip:AddLine(L.AH_SEARCH_HINT, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	ahSearch:SetScript("OnLeave", GameTooltip_Hide)
+	ahSearch:Hide()
+	detail.ahSearch = ahSearch
 
 	-- Number of crafts for the reagent check.
 	local function stepper(label, delta)
@@ -540,6 +578,9 @@ ns.RegisterEvent("GET_ITEM_INFO_RECEIVED", function()
 	end
 end)
 ns.RegisterEvent("BAG_UPDATE_DELAYED", refreshDetailIfVisible)
+-- The auction house search button.
+ns.RegisterEvent("AUCTION_HOUSE_SHOW", refreshDetailIfVisible)
+ns.RegisterEvent("AUCTION_HOUSE_CLOSED", refreshDetailIfVisible)
 
 -- Opens a recipe. fromCurrent: opened from the current recipe (reagent
 -- click), so Back can return to it. keepHistory: used by Back itself. Any
@@ -579,6 +620,11 @@ function ns.UI.ShowCrafter(guid, skillLine)
 	state.history = {}
 	if ui.search then ui.search:SetText("") end
 	ns.UI.Show("search")
+end
+
+-- For tests: the auction house search button of the recipe detail.
+function ns.UI.RecipeSearchButton()
+	return ui.detail.ahSearch
 end
 
 -- For tests: how many recipes Back can return through.

@@ -12,6 +12,9 @@ A reagent's unit price:
      price (Auctionator remembers the merchant windows it saw)
   3. the price of Auctionator's last auction house scan
 Optional reagents do not count toward the cost.
+
+While the auction house is open, Auctionator can search the reagents that
+are not vendor goods (see Prices.SearchTerms).
 ]]
 local _, ns = ...
 
@@ -101,6 +104,53 @@ function Prices.Cost(reagents, crafts, unitFn)
 		end
 	end
 	return math.floor(total + 0.5), unpriced
+end
+
+--[[
+Auction house search: Auctionator searches the reagents in its shopping tab
+(MultiSearchAdvanced), only while the auction house is open.
+]]
+local function shown(frame)
+	return type(frame) == "table" and type(frame.IsShown) == "function" and frame:IsShown() == true
+end
+
+function Prices.CanSearch()
+	local v1 = api()
+	if type(v1) ~= "table" or type(v1.MultiSearchAdvanced) ~= "function" then return false end
+	return shown(AuctionHouseFrame) or shown(AuctionFrame)
+end
+
+--[[
+Pure core.
+  rows   = Reagents.Check rows ({itemID, need, have, optional}, ...)
+  unitFn = Prices.Unit
+  nameFn(itemID) -> item name or nil (not loaded yet)
+Returns the search terms for the required reagents bought at the auction
+house: the exact name and, when short, the missing amount. Vendor goods
+and items without a name yet are left out.
+]]
+function Prices.SearchTerms(rows, unitFn, nameFn)
+	local terms = {}
+	for _, r in ipairs(rows) do
+		local _, source = unitFn(r.itemID)
+		local name = not r.optional and source ~= "vendor" and nameFn(r.itemID)
+		-- Auctionator refuses terms with ; ^ or quotes.
+		if type(name) == "string" and name ~= "" and not name:find('[;^"]') then
+			local term = { searchString = name, isExact = true }
+			if r.need > r.have then term.quantity = r.need - r.have end
+			terms[#terms + 1] = term
+		end
+	end
+	return terms
+end
+
+-- Starts the search; false if there is nothing to search or it failed.
+function Prices.Search(terms)
+	local v1 = api()
+	if #terms == 0 or type(v1) ~= "table" or type(v1.MultiSearchAdvanced) ~= "function" then return false end
+	local ok, err = pcall(v1.MultiSearchAdvanced, Prices.CALLER, terms)
+	if not ok then ns.Debug("Auctionator search failed: " .. tostring(err)) end
+	return ok
 end
 
 -- "1g 20s 5c" (with the game's coin icons where it has them).
