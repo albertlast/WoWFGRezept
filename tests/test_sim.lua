@@ -1768,8 +1768,8 @@ test("idle guild: periodic sync stays cheap", function()
 	world:ResetCounters()
 	world:Run(3 * 1200)
 	local perRound = world.messages / 3
-	print(("       idle: %.0f messages per 20 min for 30 clients"):format(perRound))
-	truthy(perRound <= 30 * 2 + 10, "about one hello + ack per client and round")
+	print(("       idle: %.0f messages per 20 min for 30 clients (%s)"):format(perRound, H.Describe(world.byType)))
+	truthy(perRound <= 30 * 3 + 10, "about one hello + ack + \"still here\" per client and round")
 end)
 
 test("secret values from the game (chat, system and addon messages) are skipped, not an error", function()

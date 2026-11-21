@@ -27,6 +27,7 @@ L.AH_SEARCH_FAILED = "Auctionator konnte die Suche nicht starten."
 
 L.CD_READY = "bereit"
 L.CD_NOT_SHARED = "nicht geteilt"
+L.CD_ADDON_OFF = "unbekannt (Addon aus)"
 L.CD_REMAINING = "Abklingzeit %s"
 
 L.WISH_ADD = "Auf die Wunschliste"

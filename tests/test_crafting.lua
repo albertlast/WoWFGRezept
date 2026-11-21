@@ -253,13 +253,26 @@ test("cooldowns: the Salt Shaker counts under its spell, only for its owner", fu
 	local c = world:AddChar({ guid = guid(3), name = "Lena Stein", profs = {
 		[LEATHERWORKING] = { rank = 300, maxRank = 300, name = "Leatherworking", recipes = { [19048] = 15095 } },
 	}, itemSpells = { [SALT_SHAKER] = SALT_SHAKER_SPELL } })
+	local d = world:AddChar({ guid = guid(4), name = "Jonas Wald", profs = {
+		[LEATHERWORKING] = { rank = 240, maxRank = 300, name = "Leatherworking", recipes = { [19048] = 15095 } },
+	}, itemSpells = { [SALT_SHAKER] = SALT_SHAKER_SPELL }, bags = { [SALT_SHAKER] = 1 } })
 	local b = world:AddChar({ guid = guid(2), name = "Tom Berg" })
 	local cb = world:Login(b.guid)
 	local ca = world:Login(a.guid)
 	local cc = world:Login(c.guid)
+	local cd = world:Login(d.guid)
 	world:Run(60)
 	eq(ca:Record(a.guid).profs[LEATHERWORKING].cds[SALT_SHAKER_SPELL], 0, "owned, ready, without opening anything")
 	eq(cc:Record(c.guid).profs[LEATHERWORKING].cds, nil, "no Salt Shaker, no entry")
+	eq(cd:Record(d.guid).profs[LEATHERWORKING].cds, nil, "in the bags below Leatherworking 250: not usable, no entry")
+	-- An entry an older version stored goes.
+	cd:Record(d.guid).profs[LEATHERWORKING].cds = { [SALT_SHAKER_SPELL] = 0 }
+	cd:Fire("BAG_UPDATE_COOLDOWN")
+	world:Run(4)
+	eq(cd:Record(d.guid).profs[LEATHERWORKING].cds, nil, "removed")
+	truthy(cb.ns.Store.CooldownUsable(SALT_SHAKER_SPELL, 250))
+	falsy(cb.ns.Store.CooldownUsable(SALT_SHAKER_SPELL, 249))
+	truthy(cb.ns.Store.CooldownUsable(17187, 1), "recipes have no rank limit")
 
 	a.itemCooldowns = { [SALT_SHAKER] = { 259200, 259200 } }
 	ca:Fire("BAG_UPDATE_COOLDOWN")
@@ -270,6 +283,55 @@ test("cooldowns: the Salt Shaker counts under its spell, only for its owner", fu
 	world:Run(900)
 	truthy(cb:Record(a.guid).profs[LEATHERWORKING].cds[SALT_SHAKER_SPELL] > world.clock.t + 249000, "the guild knows")
 	falsy(cb.ns.Index.IsRecipe(SALT_SHAKER_SPELL), "no recipe to open")
+end)
+
+test("cooldowns: online with the addon turned off, a ready cooldown is unknown", function()
+	math.randomseed(34)
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = guid(1), name = "Mira Feld", profs = {
+		[LEATHERWORKING] = { rank = 300, maxRank = 300, name = "Leatherworking", recipes = { [19048] = 15095 } },
+	}, itemSpells = { [SALT_SHAKER] = SALT_SHAKER_SPELL }, bags = { [SALT_SHAKER] = 1 } })
+	local b = world:AddChar({ guid = guid(2), name = "Tom Berg" })
+	local cb = world:Login(b.guid)
+	world:Login(a.guid)
+	world:Run(60)
+	world:ResetCounters()
+	world:Run(3600)
+	eq(cb:Record(a.guid).profs[LEATHERWORKING].cds[SALT_SHAKER_SPELL], 0, "ready")
+	local V = cb.ns.Versions
+	eq(V.AddonRunning(a.guid), true, "\"still here\" on GUILD")
+	falsy(V.CooldownUnknown(a.guid, 0))
+	local n = world.byType.N or 0
+	truthy(n >= 2 and n <= 10, "at most one \"still here\" per client every 15 minutes: " .. n)
+	eq(world.byType.V or 0, 0, "nobody is asked")
+
+	-- Turned off with a reload: nobody sees it, the silence tells.
+	world:TurnAddonOff(a.guid)
+	world:ResetCounters()
+	-- The release that sends "still here" (the TOC may still name the last one).
+	local name = cb.ns.Roster.NameOf(a.guid)
+	V.byName[name].version = "0.18.0"
+	world:Run(V.ALIVE_WINDOW + 60)
+	truthy(cb.ns.Roster.Get(a.guid).online, "still online")
+	eq(V.AddonRunning(a.guid), false, "silent: addon off")
+	truthy(V.CooldownUnknown(a.guid, 0), "ready can not be trusted")
+	falsy(V.CooldownUnknown(a.guid, cb.ns.Now() + 3600), "a running cooldown stays true")
+	eq(world.badWhispers, 0)
+	eq(world.byType.V or 0, 0, "no whispers to ask")
+
+	-- A version from before the "still here" message: silence proves nothing.
+	V.byName[name].version = "0.17.0"
+	eq(V.AddonRunning(a.guid), nil)
+	V.byName[name].version = "0.18.0"
+
+	-- Logs in again with the addon: unknown until it speaks, then running.
+	world:Login(a.guid)
+	world:Run(2)
+	eq(V.AddonRunning(a.guid), nil, "the login makes the old silence stale")
+	world:Run(90)
+	V.byName[name].version = "0.18.0"
+	eq(V.AddonRunning(a.guid), true)
+	falsy(V.CooldownUnknown(a.guid, 0))
 end)
 
 -- Mail ----------------------------------------------------------------------------

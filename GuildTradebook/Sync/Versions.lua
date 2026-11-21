@@ -92,9 +92,77 @@ end
 function Versions.Seen(name, version, build)
 	if not Util.IsString(version, 40) then version = nil end
 	if not Util.IsInt(build, 0, 2 ^ 40) then build = 0 end
-	Versions.byName[name] = { version = version, build = build, seen = GetTime() }
+	local before = Versions.byName[name]
+	local now = GetTime()
+	Versions.byName[name] = { version = version, build = build, seen = now }
 	Versions.NoteRelease(version)
+	if not before or now - before.seen >= Versions.ALIVE_WINDOW then
+		ns.Emit("AddonStateChanged")
+	end
 end
+
+--[[
+Does the addon run for an online member? A cooldown is only known while the
+member's addon watches it: with the addon turned off they can use the Salt
+Shaker or transmute without the guild learning it, and "ready" stays.
+
+Every running addon says "still here" on GUILD (an empty N, which every
+version reads: the envelope carries the version) at least every ALIVE_EVERY
+seconds; any other guild message counts as well. Turning the addon off
+takes a reload, which nobody else sees, so silence decides:
+  true   a message from them within ALIVE_WINDOW (and since their login)
+  false  online, but silent for ALIVE_WINDOW while we listened
+  nil    offline, not listened long enough, or a version from before the
+         "still here" message (silence proves nothing there)
+]]
+-- Not urgent: a few minutes late is fine, and every guild message reaches
+-- every online addon user. The window leaves room for a busy send queue.
+Versions.ALIVE_EVERY = 900
+Versions.ALIVE_WINDOW = 1260
+Versions.lastGuildSend = nil -- GetTime() of our last GUILD message
+Versions.listeningSince = nil
+
+function Versions.NoteGuildSend()
+	Versions.lastGuildSend = GetTime()
+end
+
+function Versions.Alive()
+	local now = GetTime()
+	if Roster.guildKey and (not Versions.lastGuildSend or now - Versions.lastGuildSend >= Versions.ALIVE_EVERY - 30) then
+		ns.Protocol.Send({ t = "N" }, "GUILD", nil, "NORMAL")
+	end
+	-- Silence turns into "addon off" with time: show it.
+	ns.Emit("AddonStateChanged")
+	ns.Debounce("alive", ns.RandomDelay(Versions.ALIVE_EVERY - 30, Versions.ALIVE_EVERY), Versions.Alive)
+end
+
+function Versions.AddonRunning(guid)
+	if guid == UnitGUID("player") then return true end
+	local m = Roster.Get(guid)
+	local name = Roster.NameOf(guid)
+	if not (m and m.online and name and Versions.listeningSince) then return nil end
+	local now, login = GetTime(), Roster.loginAt[guid] or 0
+	local entry = Versions.byName[name]
+	if entry and entry.seen >= login and now - entry.seen < Versions.ALIVE_WINDOW then return true end
+	if entry and (entry.incompatible or not Versions.AtLeast(name, 0, 18)) then return nil end
+	if now - math.max(Versions.listeningSince, login) < Versions.ALIVE_WINDOW then return nil end
+	return false
+end
+
+-- True if a cooldown shown as ready (readyAt <= now, shared) can not be
+-- trusted: the member is online with the addon turned off.
+function Versions.CooldownUnknown(guid, readyAt)
+	if not readyAt or readyAt > ns.Now() or ns.Store.IsHiddenCooldown(readyAt) then return false end
+	return Versions.AddonRunning(guid) == false
+end
+
+ns.On("RosterReady", function()
+	Versions.listeningSince = Versions.listeningSince or GetTime()
+	ns.Debounce("alive", ns.RandomDelay(20, 60), Versions.Alive)
+end)
+ns.On("GuildChanged", function()
+	Versions.listeningSince = nil
+end)
 
 -- A message this build can not read. theirProtocol: the sender's protocol
 -- number, if it sent one.

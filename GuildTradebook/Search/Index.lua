@@ -217,6 +217,9 @@ function Index.Crafters(recipeID)
 		c.ready = c.readyAt == nil or c.readyAt <= now
 		-- The owner does not share the time: listed, never ready.
 		c.cooldownHidden = Store.IsHiddenCooldown(c.readyAt)
+		-- Online with the addon off: "ready" may be stale.
+		c.cooldownUnknown = ns.Versions.CooldownUnknown(guid, c.readyAt)
+		if c.cooldownUnknown then c.ready = false end
 		out[#out + 1] = c
 	end
 	table.sort(out, function(a, b)

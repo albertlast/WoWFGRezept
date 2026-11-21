@@ -30,6 +30,7 @@ L.AH_SEARCH_FAILED = "Auctionator could not start the search."
 
 L.CD_READY = "ready"
 L.CD_NOT_SHARED = "not shared"
+L.CD_ADDON_OFF = "unknown (addon off)"
 L.CD_REMAINING = "cooldown %s"
 
 L.WISH_ADD = "Add to wishlist"

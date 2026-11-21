@@ -282,6 +282,8 @@ function W.CrafterLabel(c)
 	if c.readyAt then
 		if ns.Store.IsHiddenCooldown(c.readyAt) then
 			tags[#tags + 1] = "|cff808080" .. L.CD_NOT_SHARED .. "|r"
+		elseif c.cooldownUnknown then
+			tags[#tags + 1] = "|cff808080" .. L.CD_ADDON_OFF .. "|r"
 		elseif c.ready then
 			tags[#tags + 1] = "|cff20ff20" .. L.CD_READY .. "|r"
 		else

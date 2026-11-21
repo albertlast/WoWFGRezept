@@ -69,20 +69,23 @@ The cooldowns of one profession as shown: { key, group?, label, rids, readyAt }.
 Recipes sharing a cooldown become one entry with the latest time: a running
 cooldown holds them all, and a hidden time (far in the future) stays hidden.
 ]]
-local function cooldownList(cds)
+local function cooldownList(cds, rank)
 	local list, groups, now = {}, {}, ns.Now()
 	for _, rid in ipairs(Util.SortedKeys(cds)) do
-		local group = Store.COOLDOWN_GROUPS[rid]
-		local c = group and groups[group]
-		local readyAt = Store.UnwrapReadyAt(cds[rid], now)
-		if c then
-			c.rids[#c.rids + 1] = rid
-			c.readyAt = math.max(c.readyAt, readyAt)
-		else
-			c = { key = group or rid, group = group, rids = { rid }, readyAt = readyAt,
-				label = group and L[COOLDOWN_GROUP_LABELS[group]] or Index.RecipeName(rid) or ("#" .. rid) }
-			list[#list + 1] = c
-			if group then groups[group] = c end
+		-- Records from older versions may list an item the rank can not use yet.
+		if Store.CooldownUsable(rid, rank) then
+			local group = Store.COOLDOWN_GROUPS[rid]
+			local c = group and groups[group]
+			local readyAt = Store.UnwrapReadyAt(cds[rid], now)
+			if c then
+				c.rids[#c.rids + 1] = rid
+				c.readyAt = math.max(c.readyAt, readyAt)
+			else
+				c = { key = group or rid, group = group, rids = { rid }, readyAt = readyAt,
+					label = group and L[COOLDOWN_GROUP_LABELS[group]] or Index.RecipeName(rid) or ("#" .. rid) }
+				list[#list + 1] = c
+				if group then groups[group] = c end
+			end
 		end
 	end
 	return list
@@ -142,9 +145,10 @@ function MembersView.ProfessionCells(rec)
 				notes[#notes + 1] = "|cffff8000" .. L.UNVERIFIED .. "|r"
 			end
 		end
-		for _, c in ipairs(cooldownList(p.cds or {})) do
+		for _, c in ipairs(cooldownList(p.cds or {}, p.rank)) do
 			local readyAt = c.readyAt
 			local state = Store.IsHiddenCooldown(readyAt) and ("|cff808080" .. L.CD_NOT_SHARED .. "|r")
+				or ns.Versions.CooldownUnknown(rec.guid, readyAt) and ("|cff808080" .. L.CD_ADDON_OFF .. "|r")
 				or readyAt <= now and ("|cff20ff20" .. L.CD_READY .. "|r")
 				or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
 			notes[#notes + 1] = c.label .. " " .. state
@@ -397,12 +401,14 @@ local function cooldownRows(gd, reachableOnly, open, needle)
 	for guid, rec in pairs(gd.chars) do
 		if Store.IsShareable(rec, isMember) then
 			for sl, p in pairs(rec.profs) do
-				for _, c in ipairs(cooldownList(not Store.IsClassSkill(sl) and p.cds or {})) do
+				for _, c in ipairs(cooldownList(not Store.IsClassSkill(sl) and p.cds or {}, p.rank)) do
 					local e = entry(guid, rec)
 					if e.reachable or not reachableOnly then
 						local readyAt = c.readyAt
 						e.readyAt, e.ready = readyAt, readyAt <= now
 						e.hidden = Store.IsHiddenCooldown(readyAt)
+						e.unknown = ns.Versions.CooldownUnknown(guid, readyAt)
+						if e.unknown then e.ready = false end
 						if c.group then
 							-- No single recipe: a click shows the member's recipes of
 							-- this profession, the menu offers each transmute.
@@ -418,6 +424,7 @@ local function cooldownRows(gd, reachableOnly, open, needle)
 							e.extra = "|cff66ccff" .. L.MAILED_AGO:format(Util.FormatAge(now - mailedAt)) .. "|r"
 						end
 						e.right = e.hidden and ("|cff808080" .. L.CD_NOT_SHARED .. "|r")
+							or e.unknown and ("|cff808080" .. L.CD_ADDON_OFF .. "|r")
 							or e.ready and ("|cff20ff20" .. L.CD_READY .. "|r")
 							or ("|cffff8000" .. Util.FormatAge(readyAt - now) .. "|r")
 						local g = byCooldown[c.key]

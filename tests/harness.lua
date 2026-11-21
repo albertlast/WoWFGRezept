@@ -455,6 +455,9 @@ function H.NewWorld(opts)
 					found = true
 				end
 			end
+			for _, c in pairs(self.chars) do
+				if c.addonOff and c.name == full then found = true end
+			end
 			if not found then
 				self.badWhispers = self.badWhispers + 1
 				local key = from.char.name .. ">" .. target
@@ -538,6 +541,7 @@ function H.NewWorld(opts)
 
 	function world:Login(guid)
 		local char = self.chars[guid]
+		char.addonOff = nil
 		local client = H.NewClient(self, char)
 		self.online[guid] = client
 		client:Boot()
@@ -564,6 +568,15 @@ function H.NewWorld(opts)
 				other:Fire("CHAT_MSG_SYSTEM", client.char.name .. " has gone offline.")
 			end
 		end
+	end
+
+	-- The member turns the addon off and reloads: still online and
+	-- whisperable, but nothing answers addon messages.
+	function world:TurnAddonOff(guid)
+		local char = self.chars[guid]
+		char.addonOff, char.quietLogout = true, true
+		self:Logout(guid)
+		char.quietLogout = nil
 	end
 
 	function world:ResetCounters()
@@ -658,7 +671,7 @@ function H.NewClient(world, char)
 		-- puts on the character's messages (robustness against formats).
 		-- staleRoster: the roster keeps showing the character online after
 		-- a logout (the server's roster is behind).
-		local online = world.online[c.guid] ~= nil or (c.staleRoster and c.wasOnline) or false
+		local online = world.online[c.guid] ~= nil or c.addonOff or (c.staleRoster and c.wasOnline) or false
 		return c.rosterName or c.name, "Member", 1, c.level, c.class, "", "", "", online, 0, c.class,
 			0, 0, false, false, 0, c.guid
 	end

@@ -34,6 +34,7 @@ Roster.ONLINE_PROOF = 150
 Roster.OFFLINE_MEMORY = 600
 Roster.announced = {}
 Roster.evidence = {}
+Roster.loginAt = {} -- [guid] = GetTime() of the member's last login message
 
 local function valid(entry, now)
 	return entry ~= nil and now - entry.at < (entry.online and Roster.ONLINE_PROOF or Roster.OFFLINE_MEMORY)
@@ -66,7 +67,7 @@ end
 
 function Roster.Reset()
 	Roster.members, Roster.byName, Roster.realNames = {}, {}, {}
-	Roster.announced, Roster.evidence = {}, {}
+	Roster.announced, Roster.evidence, Roster.loginAt = {}, {}, {}
 	Roster.ready = false
 	Roster.lastCount = 0
 end
@@ -122,6 +123,8 @@ function Roster.Note(guid, online, private)
 		Roster.evidence[guid] = entry
 	else
 		Roster.announced[guid] = entry
+		-- A login message: what was known about the member's addon is old.
+		if online then Roster.loginAt[guid] = entry.at end
 	end
 	if applyOnline(guid, m) then
 		ns.Emit("RosterUpdated")

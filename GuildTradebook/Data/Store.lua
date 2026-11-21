@@ -39,6 +39,16 @@ Store.COOLDOWN_TOLERANCE = 120      -- seconds of drift ignored when re-reading 
 -- the crafter is listed, but never as ready. Far in the future, so 0.1.0
 -- clients (which accept up to 2^40) also never show it as ready.
 Store.CD_HIDDEN = 2 ^ 38
+-- Item cooldowns whose item needs a profession rank, by the spell they are
+-- stored under: the Salt Shaker can be in the bags long before Leatherworking
+-- 250, but not used.
+Store.COOLDOWN_MIN_RANK = { [19566] = 250 }
+
+function Store.CooldownUsable(rid, rank)
+	local min = Store.COOLDOWN_MIN_RANK[rid]
+	return not min or (tonumber(rank) or 0) >= min
+end
+
 -- Recipes that share one cooldown (the game's spell category 310): using one
 -- starts it for all, so the Members tab shows them as one.
 Store.COOLDOWN_GROUPS = {

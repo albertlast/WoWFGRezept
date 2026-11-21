@@ -319,6 +319,7 @@ function P.Send(msg, channel, target, prio, targetGUID)
 		name, guid = target, targetGUID or Roster.byName[target]
 		target = P.WhisperTarget(target)
 	end
+	if channel == "GUILD" then ns.Versions.NoteGuildSend() end
 	if restricted() then
 		ns.Debug("queued", msg.t, "(chat messaging lockdown)")
 		table.insert(P.outbox, { msg, channel, target, prio, addressee, name, guid })

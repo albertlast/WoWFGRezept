@@ -497,8 +497,12 @@ function Scanner.ScanCooldowns()
 		for _, ic in ipairs(Scanner.ITEM_COOLDOWNS) do
 			if ic.skillLine == sl then
 				local spellID, remaining = Scanner.ReadItemCooldown(ic.item)
-				if spellID then observe(spellID, remaining) end
+				if spellID and Store.CooldownUsable(spellID, p.rank) then observe(spellID, remaining) end
 			end
+		end
+		-- An item the rank does not allow to use yet (stored by older versions).
+		if Store.RemoveCooldowns(own, sl, function(id) return not Store.CooldownUsable(id, p.rank) end) then
+			changed = true
 		end
 		if next(observed) and Store.ApplyCooldowns(own, sl, observed, now, not ns.db.options.shareCooldowns) then
 			changed = true
