@@ -223,6 +223,10 @@ end
 function Roster.Refresh()
 	local key = Roster.ComputeGuildKey()
 	if key ~= Roster.guildKey then
+		if key and ns.db then
+			local moved = ns.Store.MergeRealmGuilds(ns.db, key, ns.Now(), ns.db.account.chars)
+			if moved > 0 then ns.Debug("took over", moved, "records saved under the guild's old realm key") end
+		end
 		Roster.Reset()
 		Roster.guildKey = key
 		ns.Emit("GuildChanged", key)

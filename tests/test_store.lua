@@ -205,6 +205,46 @@ test("data of guilds you left goes after the retention time, own characters stay
 	truthy(db.guilds["Legacy-R"], "still counting")
 end)
 
+test("realms gone (WoW update): the guild's data under the old realm key moves to the new key", function()
+	local C = "Player-1-0000000C"
+	local OLD_ID, NEW_ID = "9a83bb7390a6", "0000aaaa1111"
+	local oldA, oldB, oldC = rec(A, 1000, 0), rec(B, 1000, 0), rec(C, 1000, 0)
+	oldA.name, oldB.name, oldC.name = "Anna Hill-RealmOne", "Bert Stone-RealmTwo", "Carl Moor-RealmOne"
+	oldA.player, oldC.player = OLD_ID, OLD_ID
+	Store.Rehash(oldA)
+	Store.Rehash(oldC)
+	local newB, newC = rec(B, 2000, 0), rec(C, 1500, 0)
+	newB.name, newC.name, newC.player = "Bert Stone", "Carl Moor", NEW_ID
+	Store.Rehash(newB)
+	Store.Rehash(newC)
+	local db = { guilds = {
+		["Some Guild-RealmOne"] = { chars = { [A] = oldA, [B] = oldB, [C] = oldC }, playerId = OLD_ID, seenAt = 900,
+			link = { partners = { [A] = true }, declined = { ["00000000beef"] = true }, offerTo = "00000000cafe" } },
+		["Some Guild-"] = { chars = { [B] = newB, [C] = newC }, playerId = NEW_ID, seenAt = 1600,
+			link = { partners = {}, declined = {} } },
+		["Other Guild-RealmOne"] = { chars = { [A] = rec(A, 1, 0) } },
+	} }
+	local account = { [A] = { guildKey = "Some Guild-RealmOne" }, [C] = { guildKey = "Some Guild-" } }
+	eq(Store.MergeRealmGuilds(db, "Some Guild-RealmOne", 3000, account), 0, "a key with a realm: nothing to do")
+	eq(Store.MergeRealmGuilds(db, "Some Guild-", 3000, account), 1, "only the record the new key does not have")
+	falsy(db.guilds["Some Guild-RealmOne"], "the old entry is gone")
+	truthy(db.guilds["Other Guild-RealmOne"], "another guild is not touched")
+	local gd = db.guilds["Some Guild-"]
+	eq(gd.chars[A].name, "Anna Hill", "the realm left the name")
+	eq(gd.chars[A].h, Store.Hash(gd.chars[A]), "rehashed")
+	eq(gd.chars[B], newB, "the newer version stays")
+	eq(gd.playerId, OLD_ID, "the account keeps its player ID")
+	eq(gd.chars[C].player, OLD_ID, "an own record with the new ID is stamped back")
+	eq(gd.chars[C].ver, 3000, "with a new version, so the guild learns it")
+	eq(gd.chars[C].h, Store.Hash(gd.chars[C]))
+	truthy(gd.link.partners[A], "the link stays")
+	truthy(gd.link.declined["00000000beef"])
+	eq(gd.link.offerTo, "00000000cafe")
+	eq(gd.seenAt, 1600)
+	eq(account[A].guildKey, "Some Guild-", "account characters point at the new key")
+	eq(Store.MergeRealmGuilds(db, "Some Guild-", 3001, account), 0, "only once")
+end)
+
 test("record link offer: travels in slot 10, not hashed, validated", function()
 	local r = rec(A, 1000, 0)
 	r.offer = "00ab12cd34ef"

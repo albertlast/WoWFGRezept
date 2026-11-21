@@ -676,6 +676,74 @@ function Store.PruneGuilds(db, currentKey, now, accountChars)
 	return removed
 end
 
+--[[
+Since the WoW Forever update of 2026-11-20 the client knows no realms: names
+come without "-Realm" and the guild key lost its realm ("Guild-" instead of
+"Guild-Realm"). The data saved under the old key moves into the new one,
+once:
+  records    the newer version wins; names lose the realm
+  player ID  the old one stays: the guild knows the account by it and linked
+             licenses share it. The account's records that got a new ID
+             since are stamped back with a new version, so the guild
+             learns it.
+  link       partners, declined offers and a pending offer are kept
+Account characters that point at the old key point at the new one. Returns
+the number of records taken over.
+]]
+function Store.MergeRealmGuilds(db, key, now, accountChars)
+	local guildName = type(key) == "string" and key:match("^(.+)%-$")
+	if not guildName then return 0 end
+	local prefix = guildName .. "-"
+	local to = Store.GetGuild(db, key)
+	local moved = 0
+	for oldKey, old in pairs(db.guilds) do
+		local realm = oldKey ~= key and oldKey:sub(1, #prefix) == prefix and oldKey:sub(#prefix + 1)
+		if realm and realm ~= "" and not realm:find("-", 1, true) then
+			for guid, rec in pairs(old.chars or {}) do
+				local base = type(rec.name) == "string" and rec.name:match("^(.-)%-[^%-]+$")
+				if base and base ~= "" then
+					rec.name = base
+					Store.Rehash(rec)
+				end
+				local cur = to.chars[guid]
+				if not cur or Store.CompareVersion(cur, rec) < 0 then
+					to.chars[guid] = rec
+					moved = moved + 1
+				end
+			end
+			local id = old.playerId
+			if Store.IsValidPlayerId(id) and to.playerId ~= id then
+				to.playerId = id
+				for guid in pairs(accountChars) do
+					local rec = to.chars[guid]
+					if rec and rec.player ~= id then
+						rec.player = id
+						if (rec.ver or 0) > 0 then Store.Bump(rec, now) else Store.Rehash(rec) end
+					end
+				end
+			end
+			if type(old.link) == "table" then
+				to.link = to.link or {}
+				for _, field in ipairs({ "partners", "declined" }) do
+					if type(old.link[field]) == "table" then
+						to.link[field] = to.link[field] or {}
+						for k, v in pairs(old.link[field]) do to.link[field][k] = v end
+					end
+				end
+				if old.link.offerTo and not to.link.offerTo then
+					to.link.offerTo, to.link.offerName = old.link.offerTo, old.link.offerName
+				end
+			end
+			to.seenAt = math.max(to.seenAt or 0, old.seenAt or 0)
+			for _, acc in pairs(accountChars) do
+				if acc.guildKey == oldKey then acc.guildKey = key end
+			end
+			db.guilds[oldKey] = nil
+		end
+	end
+	return moved
+end
+
 -- Visible to search and relayed to others. Version 0 is an own record still in
 -- its adoption window (see Scanner); it has nothing authoritative to share yet.
 function Store.IsShareable(rec, isMember)
