@@ -87,18 +87,23 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.18.0)
+## File upload (0.19.0)
 
-Done by the release workflow (tag `v0.18.0`); for a manual upload:
+Done by the release workflow (tag `v0.19.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.18.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.19.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.18.0`
+- Display name: `0.19.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.19.0
+
+- Much less memory churn in big guilds: in a guild of about 1000 members the addon peaked at 110 MB, now at about 24 MB. The roster is read less often and the recipe search no longer rebuilds itself on every login or logout.
+- Debug command `/gtb mem`: what the addon allocates and where.
+
 ## 0.18.0
 
 - Fix: the Salt Shaker cooldown shows only from Leatherworking 250 on.
@@ -244,6 +249,11 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.19.0
+
+- Deutlich weniger Speicherverbrauch in großen Gilden: In einer Gilde mit etwa 1000 Mitgliedern lag das Addon in der Spitze bei 110 MB, jetzt bei etwa 24 MB. Das Roster wird seltener gelesen, und die Rezeptsuche baut sich nicht mehr bei jedem Ein- und Ausloggen neu auf.
+- Debug-Befehl `/gtb mem`: zeigt, was das Addon wo an Speicher anlegt.
+
 ## 0.18.0
 
 - Fix: Die Abklingzeit des Salzstreuers erscheint erst ab Lederverarbeitung 250.

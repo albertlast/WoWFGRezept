@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.0 (2026-11-21)
+
+- Much less memory churn in big guilds: the addon's memory no longer climbs to 100 MB and more between garbage collections. Measured in a guild of about 1000 members: from 42 MB to 2.3 MB of garbage per minute, peak from 110 MB to 24 MB. The roster is read at most every 30 seconds (logins and logouts still show at once), the server's profession data every 10 minutes, and the recipe search no longer rebuilds itself when someone comes online or goes offline. A member who left the guild disappears within 10 minutes.
+- New debug command `/gtb mem`: measures what the addon allocates and where; the report also goes to the SavedVariables.
+
 ## 0.18.0 (2026-11-21)
 
 - Fix: a Leatherworker below skill 250 who carries a Salt Shaker no longer shows a "ready" Salt Shaker cooldown; the item can only be used from 250 on.
