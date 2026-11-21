@@ -87,18 +87,22 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.16.0)
+## File upload (0.17.0)
 
-Done by the release workflow (tag `v0.16.0`); for a manual upload:
+Done by the release workflow (tag `v0.17.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.16.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.17.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.16.0`
+- Display name: `0.17.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.17.0
+
+- Fix: after the WoW update the guild's data seemed gone (the game no longer has realms). The data saved before is taken over; records, player ID and account links stay.
+
 ## 0.16.0
 
 - **Search the reagents in the auction house:** with Auctionator installed and the auction house open, the "Search AH" button lets Auctionator search the recipe's reagents, with the amount you are missing. Vendor goods are left out.
@@ -235,6 +239,10 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.17.0
+
+- Fix: Nach dem WoW-Update schienen die Gildendaten weg (das Spiel kennt keine Realms mehr). Die zuvor gespeicherten Daten werden übernommen; Datensätze, Spieler-ID und Account-Verknüpfungen bleiben.
+
 ## 0.16.0
 
 - **Materialien im Auktionshaus suchen:** Mit Auctionator und offenem Auktionshaus sucht der Button „Im AH suchen“ die Materialien des Rezepts in Auctionator, mit der Menge, die dir fehlt. Händlerware wird ausgelassen.

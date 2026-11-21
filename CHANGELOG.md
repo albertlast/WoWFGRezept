@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.0 (2026-11-21)
+
+- Fix: after the WoW update of 2026-11-20 most of the guild's data seemed gone. The game no longer has realms, so the addon saw a new guild and started from scratch. The data saved before moves over once: records, your player ID and account links stay. One updated member is enough to bring the old records back to everyone through the normal sync.
+
 ## 0.16.0 (2026-11-20)
 
 - **Search the reagents in the auction house:** with Auctionator installed and the auction house open, a "Search AH" button next to the material cost lets Auctionator search the recipe's reagents in its Shopping tab: by exact name, with the amount you are missing. Reagents vendors sell and optional reagents are left out.
