@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.0 (2026-11-21)
+
+- Fix: a Leatherworker below skill 250 who carries a Salt Shaker no longer shows a "ready" Salt Shaker cooldown; the item can only be used from 250 on.
+- Cooldowns of a member who is online with the addon turned off show "unknown (addon off)" instead of "ready": without the addon, using the Salt Shaker or a transmute goes unnoticed. For this every addon sends a small "still here" message to the guild channel every 15 minutes (skipped when it sent something to the guild anyway); a member silent for 21 minutes counts as addon off. Nobody is whispered for it.
+
 ## 0.17.0 (2026-11-21)
 
 - Fix: after the WoW update of 2026-11-20 most of the guild's data seemed gone. The game no longer has realms, so the addon saw a new guild and started from scratch. The data saved before moves over once: records, your player ID and account links stay. One updated member is enough to bring the old records back to everyone through the normal sync.

@@ -87,18 +87,23 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.17.0)
+## File upload (0.18.0)
 
-Done by the release workflow (tag `v0.17.0`); for a manual upload:
+Done by the release workflow (tag `v0.18.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.17.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.18.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.17.0`
+- Display name: `0.18.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.18.0
+
+- Fix: the Salt Shaker cooldown shows only from Leatherworking 250 on.
+- Cooldowns of a member online with the addon turned off show "unknown (addon off)" instead of "ready". Every addon sends a small "still here" message to the guild channel every 15 minutes for this.
+
 ## 0.17.0
 
 - Fix: after the WoW update the guild's data seemed gone (the game no longer has realms). The data saved before is taken over; records, player ID and account links stay.
@@ -239,6 +244,11 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.18.0
+
+- Fix: Die Abklingzeit des Salzstreuers erscheint erst ab Lederverarbeitung 250.
+- Abklingzeiten eines Mitglieds, das online ist, aber das Addon ausgeschaltet hat, zeigen „unbekannt (Addon aus)“ statt „bereit“. Dafür schickt jedes Addon alle 15 Minuten eine kleine „noch da“-Nachricht in den Gildenkanal.
+
 ## 0.17.0
 
 - Fix: Nach dem WoW-Update schienen die Gildendaten weg (das Spiel kennt keine Realms mehr). Die zuvor gespeicherten Daten werden übernommen; Datensätze, Spieler-ID und Account-Verknüpfungen bleiben.
