@@ -14,7 +14,7 @@ function ns.On(name, fn)
 	table.insert(listeners[name], fn)
 end
 
-function ns.Emit(name, ...)
+local function emit(name, ...)
 	local list = listeners[name]
 	if not list then return end
 	for i = 1, #list do
@@ -22,17 +22,29 @@ function ns.Emit(name, ...)
 	end
 end
 
+-- ns.memTrack(kind, name, fn, ...): memory tracking ("/gtb mem", Core/Boot.lua)
+-- runs every internal callback and game event through it while it is on.
+function ns.Emit(name, ...)
+	if ns.memTrack then return ns.memTrack("emit", name, emit, name, ...) end
+	return emit(name, ...)
+end
+
 -- Game events ------------------------------------------------------------------
 
 local eventFrame = CreateFrame("Frame")
 local eventHandlers = {}
 
-eventFrame:SetScript("OnEvent", function(_, event, ...)
+local function dispatch(event, ...)
 	local list = eventHandlers[event]
 	if not list then return end
 	for i = 1, #list do
 		list[i](event, ...)
 	end
+end
+
+eventFrame:SetScript("OnEvent", function(_, event, ...)
+	if ns.memTrack then return ns.memTrack("event", event, dispatch, event, ...) end
+	return dispatch(event, ...)
 end)
 
 function ns.RegisterEvent(event, fn)
@@ -68,6 +80,7 @@ local function startKeyed(key, seconds, fn)
 	entry.timer = ns.After(seconds, function()
 		if keyed[key] ~= entry then return end
 		keyed[key] = nil
+		if ns.memTrack then return ns.memTrack("timer", key, entry.fn) end
 		entry.fn()
 	end)
 	keyed[key] = entry

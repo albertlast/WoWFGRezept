@@ -232,4 +232,5 @@ L.SLASH_HELP = [[/gtb - Fenster öffnen
 /gtb dump <Name> - zeigt, was über einen Charakter bekannt ist
 /gtb export [Name] - Gildendaten als JSON (Kopierfenster und GuildTradebookExport in den SavedVariables nach /reload)
 /gtb export zip [Name] - dasselbe, komprimiert fürs Kopierfenster (GTB1:...)
-/gtb stats - Statistik des Rezept-Pools]]
+/gtb stats - Statistik des Rezept-Pools
+/gtb mem - Speichermessung ein / Bericht (auch in den SavedVariables), /gtb mem off - aus]]

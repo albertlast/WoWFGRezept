@@ -47,6 +47,154 @@ local function stats()
 		Roster.guildKey, tostring(Roster.ready), chars, hidden, recipes, Util.Count(ns.db.recipeFacts), #ns.Protocol.outbox))
 end
 
+--[[
+Memory tracking ("/gtb mem"), a debug aid. While on:
+  - every SAMPLE_EVERY seconds the game's figure for this addon
+    (GetAddOnMemoryUsage): now, lowest, highest, and the sum of the rises
+    between samples (what was allocated; a fall is the garbage collector,
+    so this is a lower bound)
+  - every game event, internal callback (emit), keyed timer and module
+    function (ns.Roster.Refresh, ...) runs through a wrapper that reads
+    collectgarbage("count") before and after: calls and KB allocated.
+    Inclusive (a function counts what it calls), and a garbage collector
+    step inside a call makes it look smaller. The wrappers cost time
+    themselves; it is off by default and after every reload.
+The report goes to chat ("/gtb mem") and to GuildTradebookDB.memReport,
+written with every sample, so a reload or logout keeps the latest.
+]]
+local Mem = { stats = {}, wrapped = {}, names = {}, depth = 0, topKB = 0 }
+Mem.SAMPLE_EVERY = 10
+Mem.REPORT_LINES = 30
+
+local function memUpdate()
+	local update = UpdateAddOnMemoryUsage or (C_AddOns and C_AddOns.UpdateAddOnMemoryUsage)
+	local get = GetAddOnMemoryUsage or (C_AddOns and C_AddOns.GetAddOnMemoryUsage)
+	if not (update and get) then return nil end
+	update()
+	return get(ADDON)
+end
+
+local function memRecord(name, before, ...)
+	Mem.depth = Mem.depth - 1
+	local kb = collectgarbage("count") - before
+	if kb < 0 then kb = 0 end
+	local s = Mem.stats[name]
+	if not s then
+		s = { kb = 0, calls = 0 }
+		Mem.stats[name] = s
+	end
+	s.kb, s.calls = s.kb + kb, s.calls + 1
+	if Mem.depth == 0 then Mem.topKB = Mem.topKB + kb end
+	return ...
+end
+
+-- ns.memTrack: see Core/Init.lua.
+local function memTrack(kind, key, fn, ...)
+	local byKind = Mem.names[kind]
+	if not byKind then
+		byKind = {}
+		Mem.names[kind] = byKind
+	end
+	local name = byKind[key]
+	if not name then
+		name = kind .. " " .. tostring(key)
+		byKind[key] = name
+	end
+	Mem.depth = Mem.depth + 1
+	return memRecord(name, collectgarbage("count"), fn(...))
+end
+
+local function memWrapModules()
+	for modName, mod in pairs(ns) do
+		if type(mod) == "table" and modName ~= "L" and modName ~= "db" and modName ~= "charDB" then
+			for k, f in pairs(mod) do
+				if type(f) == "function" and type(k) == "string" then
+					local name = "  " .. modName .. "." .. k
+					Mem.wrapped[#Mem.wrapped + 1] = { mod, k, f }
+					mod[k] = function(...)
+						Mem.depth = Mem.depth + 1
+						return memRecord(name, collectgarbage("count"), f(...))
+					end
+				end
+			end
+		end
+	end
+end
+
+local function memUnwrap()
+	for _, w in ipairs(Mem.wrapped) do
+		w[1][w[2]] = w[3]
+	end
+	Mem.wrapped = {}
+end
+
+function Mem.Report()
+	local lines = {}
+	local minutes = (GetTime() - Mem.started) / 60
+	local s = Mem.sample
+	lines[1] = ("%s %s, %.1f min tracked"):format(L.TITLE, (ns.Versions.Mine()), minutes)
+	if s.now then
+		lines[2] = ("addon memory: now %.1f MB, lowest %.1f MB, highest %.1f MB; allocated at least %.1f MB (%.2f MB/min)")
+			:format(s.now / 1024, s.min / 1024, s.max / 1024, s.rises / 1024, s.rises / 1024 / math.max(minutes, 0.01))
+	end
+	lines[#lines + 1] = ("tracked calls allocated %.1f MB (%.2f MB/min)"):format(Mem.topKB / 1024,
+		Mem.topKB / 1024 / math.max(minutes, 0.01))
+	local list = {}
+	for name, st in pairs(Mem.stats) do list[#list + 1] = { name = name, kb = st.kb, calls = st.calls } end
+	table.sort(list, function(a, b) return a.kb > b.kb end)
+	for i = 1, math.min(Mem.REPORT_LINES, #list) do
+		local e = list[i]
+		lines[#lines + 1] = ("%9.0f KB %7d calls %7.1f KB/call %s"):format(e.kb, e.calls, e.kb / e.calls, e.name)
+	end
+	return lines
+end
+
+local function memSave()
+	ns.db.memReport = { at = date and date("%Y-%m-%d %H:%M:%S") or "", lines = Mem.Report() }
+end
+
+local function memSample()
+	Mem.depth = 0 -- an error inside a wrapped call left it raised
+	local kb = memUpdate()
+	if kb then
+		local s = Mem.sample
+		if s.now and kb > s.now then s.rises = s.rises + (kb - s.now) end
+		s.now = kb
+		s.min = math.min(s.min or kb, kb)
+		s.max = math.max(s.max or kb, kb)
+	end
+	memSave()
+end
+
+local function mem(rest)
+	if rest == "off" then
+		if Mem.ticker then
+			memSample()
+			Mem.ticker:Cancel()
+			Mem.ticker = nil
+			ns.memTrack = nil
+			memUnwrap()
+		end
+		ns.Print("mem: off")
+		return
+	end
+	if not Mem.ticker then
+		Mem.stats, Mem.names, Mem.depth, Mem.topKB = {}, {}, 0, 0
+		Mem.started = GetTime()
+		Mem.sample = { rises = 0 }
+		memWrapModules()
+		ns.memTrack = memTrack
+		Mem.ticker = C_Timer.NewTicker(Mem.SAMPLE_EVERY, memSample)
+		memSample()
+		ns.Print("mem: on - \"/gtb mem\" shows the report, \"/gtb mem off\" stops")
+		return
+	end
+	memSample()
+	for _, line in ipairs(Mem.Report()) do
+		print(line)
+	end
+end
+
 local function slash(input)
 	local cmd, rest = (input or ""):match("^%s*(%S*)%s*(.-)%s*$")
 	cmd = cmd:lower()
@@ -99,6 +247,8 @@ local function slash(input)
 		ns.Export.Command(rest)
 	elseif cmd == "stats" then
 		stats()
+	elseif cmd == "mem" then
+		mem(rest)
 	else
 		for line in L.SLASH_HELP:gmatch("[^\n]+") do
 			print(line)

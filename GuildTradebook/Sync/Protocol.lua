@@ -1211,7 +1211,7 @@ end
 function P.Prune()
 	local gd = ns.GetGuildData()
 	if not gd or not Roster.ready then return end
-	local removed = Store.Prune(gd, function(guid) return Roster.IsMember(guid) end, ns.Now())
+	local removed, flipped = Store.Prune(gd, function(guid) return Roster.IsMember(guid) end, ns.Now())
 	if removed > 0 then
 		ns.Debug("pruned", removed, "records of former members")
 	end
@@ -1220,7 +1220,10 @@ function P.Prune()
 	if old > 0 then
 		ns.Debug("pruned", old, "records of guilds you left")
 	end
-	ns.Emit("RecordsChanged")
+	-- Only on a change: everything that shows records listens.
+	if removed > 0 or flipped > 0 then
+		ns.Emit("RecordsChanged")
+	end
 end
 
 function P.OnRosterReady()
@@ -1276,8 +1279,12 @@ function P.Start()
 		addFilter("CHAT_MSG_SYSTEM", hideFailedWhisper)
 	end
 	ns.On("RosterReady", P.OnRosterReady)
-	ns.On("RosterUpdated", function()
+	-- Membership decides; it is also reported at least every
+	-- Roster.SERVER_PROFS_EVERY, so the grace period of a leaver runs out.
+	ns.On("MembershipChanged", function()
 		ns.Debounce("prune", 5, P.Prune)
+	end)
+	ns.On("RosterUpdated", function()
 		-- A real logout on the roster: the failure was "offline", not the name.
 		for name in pairs(P.failedAt) do
 			local m = Roster.members[Roster.byName[name] or ""]

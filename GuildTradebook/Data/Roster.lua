@@ -12,6 +12,18 @@ local Roster = {
 ns.Roster = Roster
 
 local REFRESH_INTERVAL = 120
+--[[
+Reading the roster of a big guild allocates (measured in game, 1000
+members: 1.9 MB per refresh, 1.5 MB of it the club API's professions), and
+GUILD_ROSTER_UPDATE comes every few seconds (other addons ask for the roster
+too). Logins and logouts come right away by system message, so once the
+roster is ready it is read at most every REFRESH_MIN_GAP seconds, the
+server's professions (they hardly change) every SERVER_PROFS_EVERY.
+]]
+Roster.REFRESH_MIN_GAP = 30
+Roster.SERVER_PROFS_EVERY = 600
+Roster.refreshedAt = nil
+Roster.serverProfsAt = nil
 
 --[[
 Online state. The roster's online flags lag behind: a logout shows up only
@@ -69,6 +81,7 @@ function Roster.Reset()
 	Roster.members, Roster.byName, Roster.realNames = {}, {}, {}
 	Roster.announced, Roster.evidence, Roster.loginAt = {}, {}, {}
 	Roster.ready = false
+	Roster.refreshedAt, Roster.serverProfsAt = nil, nil
 	Roster.lastCount = 0
 end
 
@@ -239,23 +252,41 @@ function Roster.Refresh()
 	local count = GetNumGuildMembers()
 	if count == 0 then return end
 
+	Roster.refreshedAt = GetTime()
+	-- Member entries are reused: a refresh of a big guild must not allocate
+	-- a new table per member.
+	local previousMembers = Roster.members
 	local members, byName = {}, {}
+	local changed = false -- membership: someone joined or left
 	for i = 1, count do
 		local name, _, _, level, _, _, _, _, online, _, classFile, _, _, _, _, _, guid = GetGuildRosterInfo(i)
 		if name and guid then
 			name = Util.NormalizeName(name)
 			online = online and true or false
-			local previous = Roster.members[guid]
-			if previous and previous.rosterOnline ~= nil and previous.rosterOnline ~= online then
-				-- The roster itself changed: newer than what we knew before.
-				for _, known in ipairs({ Roster.announced, Roster.evidence }) do
-					if known[guid] and known[guid].online ~= online then known[guid] = nil end
+			local m = previousMembers[guid]
+			if m then
+				if m.rosterOnline ~= nil and m.rosterOnline ~= online then
+					-- The roster itself changed: newer than what we knew before.
+					local a, e = Roster.announced[guid], Roster.evidence[guid]
+					if a and a.online ~= online then Roster.announced[guid] = nil end
+					if e and e.online ~= online then Roster.evidence[guid] = nil end
 				end
+				m.name, m.rosterOnline, m.level, m.class, m.index = name, online, level, classFile, i
+			else
+				m = { name = name, rosterOnline = online, level = level, class = classFile, index = i }
+				changed = true
 			end
-			local m = { name = name, rosterOnline = online, level = level, class = classFile, index = i }
 			applyOnline(guid, m)
 			members[guid] = m
 			byName[name] = guid
+		end
+	end
+	if not changed then
+		for guid in pairs(previousMembers) do
+			if not members[guid] then
+				changed = true
+				break
+			end
 		end
 	end
 	for guid, name in pairs(Roster.realNames) do
@@ -264,8 +295,13 @@ function Roster.Refresh()
 	Roster.members, Roster.byName = members, byName
 	-- Optional data: a failure here must never stop the roster update below
 	-- (readiness, RosterUpdated), which the sync waits for.
-	local ok, err = pcall(Roster.RefreshServerProfessions)
-	if not ok then ns.Debug("server professions not read:", tostring(err)) end
+	local now = GetTime()
+	if not Roster.serverProfsAt or now - Roster.serverProfsAt >= Roster.SERVER_PROFS_EVERY then
+		Roster.serverProfsAt = now
+		local ok, err = pcall(Roster.RefreshServerProfessions)
+		if not ok then ns.Debug("server professions not read:", tostring(err)) end
+		changed = true
+	end
 
 	-- The first update after login can be partial, so membership is only
 	-- trusted from the second non-empty update on. Until then IsMember returns
@@ -276,6 +312,11 @@ function Roster.Refresh()
 	end
 	Roster.lastCount = count
 
+	-- What depends on membership (the search index) listens to this, not
+	-- to every online change.
+	if changed or (Roster.ready and not wasReady) then
+		ns.Emit("MembershipChanged")
+	end
 	ns.Emit("RosterUpdated")
 	if Roster.ready and not wasReady then
 		ns.Emit("RosterReady", key)
@@ -327,7 +368,11 @@ end
 
 function Roster.Start()
 	ns.RegisterEvent("GUILD_ROSTER_UPDATE", function()
-		ns.Debounce("roster", 1, Roster.Refresh)
+		local wait = 1
+		if Roster.ready and Roster.refreshedAt then
+			wait = math.max(1, Roster.refreshedAt + Roster.REFRESH_MIN_GAP - GetTime())
+		end
+		ns.ScheduleEarliest("roster", wait, Roster.Refresh)
 	end)
 	ns.RegisterEvent("PLAYER_GUILD_UPDATE", function()
 		ns.Debounce("roster", 1, Roster.Refresh)

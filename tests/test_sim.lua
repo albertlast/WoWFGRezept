@@ -1146,7 +1146,9 @@ test("guild cleanup runs in a session: the current guild is stamped, an old one 
 	local gd = c.ns.GetGuildData()
 	truthy(gd.seenAt, "current guild stamped")
 	c:Fire("GUILD_ROSTER_UPDATE")
-	world:Run(10)
+	-- Membership is reported again at least every SERVER_PROFS_EVERY (the roster
+	-- is asked for every 2 minutes): the cleanup runs then.
+	world:Run(c.ns.Roster.SERVER_PROFS_EVERY + 130)
 	falsy(db.guilds["Old Guild-Realm"], "old guild pruned")
 	truthy(db.guilds[c.ns.Roster.guildKey], "current guild kept")
 end)
@@ -1528,12 +1530,14 @@ test("server profession data hides stale primary professions", function()
 	-- Server now says A has Alchemy + Mining; the pool copy still says Tailoring.
 	world.serverProfs[a.guid] = { ALCHEMY, 186 }
 	local cb = world.online[b.guid]
+	cb.ns.Roster.serverProfsAt = nil -- read the club data now (normally every 10 min)
 	cb.ns.Roster.Refresh()
 	cb.ns.Index.dirty = true
 	eq(#cb.ns.Index.Crafters(3914), 0, "hidden from search")
 	truthy(cb:Record(a.guid).profs[TAILORING], "record itself untouched")
 	-- Only one slot known: no conclusion.
 	world.serverProfs[a.guid] = { ALCHEMY, nil }
+	cb.ns.Roster.serverProfsAt = nil -- read the club data now (normally every 10 min)
 	cb.ns.Roster.Refresh()
 	cb.ns.Index.dirty = true
 	eq(#cb.ns.Index.Crafters(3914), 1, "partial server data is not evidence")
@@ -1550,13 +1554,16 @@ test("secret club data never breaks the roster update", function()
 	eq(next(cb.ns.Roster.serverProfs), nil, "nothing known yet")
 	-- Readable once: kept while the list turns secret again.
 	world.clubSecret = nil
+	cb.ns.Roster.serverProfsAt = nil -- read the club data now (normally every 10 min)
 	cb.ns.Roster.Refresh()
 	truthy(cb.ns.Roster.ServerProfessions(a.guid), "read")
 	world.clubSecret = "list"
+	cb.ns.Roster.serverProfsAt = nil -- read the club data now (normally every 10 min)
 	cb.ns.Roster.Refresh()
 	truthy(cb.ns.Roster.ServerProfessions(a.guid), "kept")
 	-- Secret entries: left out (unknown), no error.
 	world.clubSecret = "fields"
+	cb.ns.Roster.serverProfsAt = nil -- read the club data now (normally every 10 min)
 	cb.ns.Roster.Refresh()
 	falsy(cb.ns.Roster.ServerProfessions(a.guid), "secret entry is unknown")
 	falsy(cb.ns.Roster.IsProfessionContradicted(a.guid, TAILORING))
@@ -1761,6 +1768,32 @@ test("30 online see a member leave at once: no messages, every copy hidden", fun
 	-- client sends records about the leaver.
 	world:Run(1300)
 	falsy(world.byType.D or world.byType.W or world.byType.R, "only hello + ack: " .. H.Describe(world.byType))
+end)
+
+test("/gtb mem: memory tracking counts calls, reports, saves and unwraps", function()
+	local world = bigGuild(3, 25)
+	local client = world.online[guid(1)]
+	local env, ns = client.env, client.ns
+	local addonKB = 1000
+	env.UpdateAddOnMemoryUsage = function() addonKB = addonKB + 50 end
+	env.GetAddOnMemoryUsage = function() return addonKB end
+	local refresh = ns.Roster.Refresh
+	env.SlashCmdList.GUILDTRADEBOOK("mem")
+	truthy(ns.memTrack, "on")
+	truthy(ns.Roster.Refresh ~= refresh, "module functions wrapped")
+	client:Fire("GUILD_ROSTER_UPDATE")
+	world:Run(30)
+	env.SlashCmdList.GUILDTRADEBOOK("mem")
+	local lines = env.GuildTradebookDB.memReport.lines
+	truthy(lines[2]:find("addon memory", 1, true), lines[2])
+	local text = table.concat(lines, " | ")
+	truthy(text:find("Roster.Refresh", 1, true), "the roster refresh is listed")
+	truthy(text:find("event GUILD_ROSTER_UPDATE", 1, true), "events are listed")
+	truthy(text:find("timer roster", 1, true), "keyed timers are listed")
+	env.SlashCmdList.GUILDTRADEBOOK("mem off")
+	falsy(ns.memTrack, "off")
+	eq(ns.Roster.Refresh, refresh, "unwrapped")
+	world:Run(60)
 end)
 
 test("idle guild: periodic sync stays cheap", function()

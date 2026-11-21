@@ -15,7 +15,9 @@ local Index = { dirty = true, byRecipe = {}, byItem = {}, recipeSkill = {}, prim
 ns.Index = Index
 
 ns.On("RecordsChanged", function() Index.dirty = true end)
-ns.On("RosterUpdated", function() Index.dirty = true end)
+-- Membership and the server's professions decide what is shown; online
+-- changes do not (charInfo reads them live).
+ns.On("MembershipChanged", function() Index.dirty = true end)
 ns.On("GuildChanged", function() Index.dirty = true end)
 
 local function isMember(guid)

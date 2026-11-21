@@ -236,4 +236,5 @@ L.SLASH_HELP = [[/gtb - open window
 /gtb dump <name> - print what is known about a character
 /gtb export [name] - guild data as JSON (copy window, and GuildTradebookExport in the SavedVariables after /reload)
 /gtb export zip [name] - the same, compressed for the copy window (GTB1:...)
-/gtb stats - print pool statistics]]
+/gtb stats - print pool statistics
+/gtb mem - memory tracking on / report (also in the SavedVariables), /gtb mem off - off]]

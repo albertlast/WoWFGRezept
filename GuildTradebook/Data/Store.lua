@@ -637,21 +637,28 @@ end
 -- Membership -------------------------------------------------------------------
 
 -- Hides records of characters that left the guild and deletes them after the
--- grace period. Must only run with a fully loaded roster.
+-- grace period. Must only run with a fully loaded roster. Returns the number
+-- of records removed and the number hidden or shown again.
 function Store.Prune(gd, isMember, now)
-	local removed = 0
+	local removed, flipped = 0, 0
 	for guid, rec in pairs(gd.chars) do
 		if isMember(guid) then
-			rec.goneSince = nil
+			if rec.goneSince then
+				rec.goneSince = nil
+				flipped = flipped + 1
+			end
 		else
-			rec.goneSince = rec.goneSince or now
+			if not rec.goneSince then
+				rec.goneSince = now
+				flipped = flipped + 1
+			end
 			if now - rec.goneSince > Store.GONE_GRACE then
 				gd.chars[guid] = nil
 				removed = removed + 1
 			end
 		end
 	end
-	return removed
+	return removed, flipped
 end
 
 --[[
