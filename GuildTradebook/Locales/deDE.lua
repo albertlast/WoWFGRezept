@@ -159,6 +159,7 @@ L.VERSION_INCOMPATIBLE = "%s nutzt ein veraltetes Guild Tradebook: kein Datenaus
 L.VERSION_UPDATE_NEEDED = "%s nutzt ein neueres, inkompatibles Guild Tradebook: bitte aktualisieren, um Daten auszutauschen."
 L.VERSION_TOOLTIP = "Addon-Version: %s"
 L.MENU_INVITE = "In Gruppe einladen"
+L.MENU_OFFLINE = "%s (offline)"
 L.CRAFTERS_HINT = "Klick: flüstern, Rechtsklick: mehr"
 L.MAILED_AGO = "Reagenzien vor %s geschickt"
 L.MAIL_MENU = "Reagenzien per Post (%d Herstellung(en))"

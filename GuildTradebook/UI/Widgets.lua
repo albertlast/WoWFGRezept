@@ -235,6 +235,23 @@ function W.InviteToParty(name)
 	end
 end
 
+-- Menu entries to reach a character (entry with name, online, via, isSelf,
+-- isAlt): whisper and invite its online character (Index.ContactFor). For
+-- someone offline both stay in the menu, greyed out with "(offline)", so the
+-- menu says why; none for your own characters.
+function W.ContactItems(c)
+	if c.isSelf or c.isAlt then return {} end
+	local L = ns.L
+	local target = ns.Index.ContactFor(c)
+	if not target then
+		return { { L.MENU_OFFLINE:format(L.WHISPER), nil, true }, { L.MENU_OFFLINE:format(L.MENU_INVITE), nil, true } }
+	end
+	return {
+		{ L.WHISPER, function() W.SendTell(target) end },
+		{ L.MENU_INVITE, function() W.InviteToParty(target) end },
+	}
+end
+
 -- Right-click menu: items = { {label, fn, disabled}, ... }. Nothing without
 -- items (or without the game's menu API).
 function W.OpenMenu(owner, title, items)

@@ -686,17 +686,14 @@ local function build(content)
 		refresh()
 	end)
 
-	-- Right-click menu: invite, reagents by mail (cooldown rows), account
-	-- linking (Features/Link.lua). Returns the entries for a row:
+	-- Right-click menu: whisper, invite, reagents by mail (cooldown rows),
+	-- account linking (Features/Link.lua). Returns the entries for a row:
 	-- { {label, fn, disabled}, ... }.
 	local function menuItems(data)
-		local items = {}
-		if not data.guid then return items end
-		-- The online character (or the same player's online one); never yourself or your alts.
-		local inviteTarget = Index.ContactFor(data)
-		if inviteTarget then
-			items[#items + 1] = { L.MENU_INVITE, function() W.InviteToParty(inviteTarget) end }
-		end
+		if not data.guid then return {} end
+		-- The online character (or the same player's online one); greyed out
+		-- while offline, none for yourself or your alts.
+		local items = W.ContactItems(data)
 		for _, rid in ipairs(data.recipes or { data.recipeID }) do
 			local item = Index.IsRecipe(rid) and ns.Mail.MenuItem(data, rid, 1)
 			if item then

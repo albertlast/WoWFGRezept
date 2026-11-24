@@ -163,6 +163,7 @@ L.VERSION_INCOMPATIBLE = "%s uses an outdated Guild Tradebook: you can not excha
 L.VERSION_UPDATE_NEEDED = "%s uses a newer, incompatible Guild Tradebook: please update to exchange data."
 L.VERSION_TOOLTIP = "Addon version: %s"
 L.MENU_INVITE = "Invite to party"
+L.MENU_OFFLINE = "%s (offline)"
 L.CRAFTERS_HINT = "click: whisper, right-click: more"
 L.MAILED_AGO = "reagents mailed %s ago"
 L.MAIL_MENU = "Mail reagents (%d craft(s))"

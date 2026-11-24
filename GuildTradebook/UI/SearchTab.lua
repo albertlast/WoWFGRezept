@@ -531,12 +531,7 @@ local function build(content)
 	-- Right-click on a crafter: whisper, invite, reagents by mail (for the
 	-- number of crafts set above).
 	local function crafterMenu(owner, c)
-		local items = {}
-		local target = Index.ContactFor(c)
-		if target then
-			items[#items + 1] = { L.WHISPER, function() W.SendTell(target) end }
-			items[#items + 1] = { L.MENU_INVITE, function() W.InviteToParty(target) end }
-		end
+		local items = W.ContactItems(c)
 		items[#items + 1] = ns.Mail.MenuItem(c, state.selected, state.crafts)
 		W.OpenMenu(owner, Util.ShortName(c.name), items)
 	end
