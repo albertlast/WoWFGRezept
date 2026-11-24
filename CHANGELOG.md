@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.0 (2026-11-24)
+
+- Fix: material costs with Auctionator now take the cheaper of the vendor price Auctionator saw and the auction house price. Before, any merchant Auctionator had seen won, even one asking 50 gold for a reagent that sells for 28 silver in the auction house. Vendor goods like thread, vials or dye still count with the full vendor price.
+- Right-click menus: the member list offers whisper too, and for an offline member whisper and invite show greyed out with "(offline)" instead of missing.
+
 ## 0.19.0 (2026-11-21)
 
 - Much less memory churn in big guilds: the addon's memory no longer climbs to 100 MB and more between garbage collections. Measured in a guild of about 1000 members: from 42 MB to 2.3 MB of garbage per minute, peak from 110 MB to 24 MB. The roster is read at most every 30 seconds (logins and logouts still show at once), the server's profession data every 10 minutes, and the recipe search no longer rebuilds itself when someone comes online or goes offline. A member who left the guild disappears within 10 minutes.

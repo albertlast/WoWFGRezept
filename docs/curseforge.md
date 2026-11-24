@@ -87,18 +87,23 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.19.0)
+## File upload (0.20.0)
 
-Done by the release workflow (tag `v0.19.0`); for a manual upload:
+Done by the release workflow (tag `v0.20.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.19.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.20.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.19.0`
+- Display name: `0.20.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.20.0
+
+- Fix: material costs use the cheaper of the vendor price Auctionator saw and the auction house price; an expensive merchant no longer inflates the cost.
+- Right-click menus: whisper in the member list too; for offline members whisper and invite are greyed out.
+
 ## 0.19.0
 
 - Much less memory churn in big guilds: in a guild of about 1000 members the addon peaked at 110 MB, now at about 24 MB. The roster is read less often and the recipe search no longer rebuilds itself on every login or logout.
@@ -249,6 +254,11 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.20.0
+
+- Fix: Die Materialkosten nehmen den günstigeren Preis aus dem von Auctionator gesehenen Händlerpreis und dem Auktionshauspreis; ein teurer Händler treibt die Kosten nicht mehr hoch.
+- Rechtsklick-Menüs: Flüstern jetzt auch in der Mitgliederliste; bei Mitgliedern, die offline sind, sind Flüstern und Einladen ausgegraut.
+
 ## 0.19.0
 
 - Deutlich weniger Speicherverbrauch in großen Gilden: In einer Gilde mit etwa 1000 Mitgliedern lag das Addon in der Spitze bei 110 MB, jetzt bei etwa 24 MB. Das Roster wird seltener gelesen, und die Rezeptsuche baut sich nicht mehr bei jedem Ein- und Ausloggen neu auf.
