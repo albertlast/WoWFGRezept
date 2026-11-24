@@ -8,9 +8,9 @@ A reagent's unit price:
   1. reagents vendors sell (thread, dye, flux, vials, spices, ...): the full
      vendor price from the table below, without reputation discount, so
      everyone sees the same cost
-  2. other items Auctionator saw at a vendor without a stock limit: that
-     price (Auctionator remembers the merchant windows it saw)
-  3. the price of Auctionator's last auction house scan
+  2. other items: the cheaper of the vendor price Auctionator saw (it
+     remembers merchant windows with unlimited stock) and the price of its
+     last auction house scan
 Optional reagents do not count toward the cost.
 
 While the auction house is open, Auctionator can search the reagents that
@@ -72,8 +72,10 @@ function Prices.Unit(itemID)
 	local full = Prices.VENDOR[itemID]
 	if full then return full, "vendor" end
 	local vendor = lookup("GetVendorPriceByItemID", itemID)
-	if vendor then return vendor, "vendor" end
 	local auction = lookup("GetAuctionPriceByItemID", itemID)
+	-- The cheaper one: a special or overpriced merchant Auctionator happened
+	-- to see is not where anyone buys it.
+	if vendor and not (auction and auction < vendor) then return vendor, "vendor" end
 	if auction then return auction, "auction" end
 	return nil
 end

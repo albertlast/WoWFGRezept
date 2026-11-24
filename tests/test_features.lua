@@ -118,11 +118,11 @@ test("prices: full vendor price, then Auctionator's vendor and auction prices, e
 	local priced = H.LoadPure({ Auctionator = { API = { v1 = {
 		GetVendorPriceByItemID = function(caller, id)
 			calls[#calls + 1] = caller
-			return ({ [2321] = 90, [99001] = 10 })[id]
+			return ({ [2321] = 90, [99001] = 10, [99002] = 500000, [99003] = 500000, [99004] = 100 })[id]
 		end,
 		GetAuctionPriceByItemID = function(_, id)
 			if id == 666 then error("changed API") end
-			return ({ [2321] = 300, [99001] = 40, [2589] = 1500 })[id]
+			return ({ [2321] = 300, [99001] = 40, [2589] = 1500, [99002] = 2858, [99004] = 60 })[id]
 		end,
 	} } } }).Prices
 	truthy(priced.Available())
@@ -131,9 +131,18 @@ test("prices: full vendor price, then Auctionator's vendor and auction prices, e
 	eq(source, "vendor")
 	price, source = priced.Unit(99001)
 	eq(price, 10)
-	eq(source, "vendor", "a vendor Auctionator saw beats the auction house")
+	eq(source, "vendor", "a vendor Auctionator saw, cheaper than the auction house")
 	price, source = priced.Unit(2589)
 	eq(price, 1500)
+	eq(source, "auction")
+	price, source = priced.Unit(99002)
+	eq(price, 2858, "a merchant asking 50g for a 28s scale is not where anyone buys it")
+	eq(source, "auction")
+	price, source = priced.Unit(99003)
+	eq(price, 500000, "without an auction price the vendor price stays")
+	eq(source, "vendor")
+	price, source = priced.Unit(99004)
+	eq(price, 60, "the auction house is cheaper even when the vendor is less than twice the price")
 	eq(source, "auction")
 	eq(priced.Unit(666), nil, "an error in Auctionator is no price")
 	eq(priced.Unit(1), nil)
