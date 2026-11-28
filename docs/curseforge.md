@@ -29,7 +29,7 @@ Built for **World of Warcraft: Forever** (interface 16001). Available in English
 
 ## Recipes
 
-Every recipe the guild can craft, grouped like the profession window (profession > category). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, click to whisper) and the reagents with how many you have against how many you need; with Auctionator installed also the material cost, and at the auction house a button that searches the reagents. At a mailbox, **right-click a crafter to mail them the reagents**: the addon splits the stacks and fills in the mail, you click Send.
+Every recipe the guild can craft, grouped like the profession window (profession > category). Search by recipe or item name, or filter by profession. Select a recipe to see who can craft it (online first, click to whisper) and the reagents with how many you have against how many you need; with Auctionator installed also the material cost, and at the auction house a button that searches the reagents. At a mailbox, **right-click a crafter to mail them the reagents**: the addon splits the stacks and fills in the mail, you click Send. The switch **Unknown in guild** shows the recipes nobody in the guild knows yet.
 
 ![Recipes tab](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
 
@@ -87,18 +87,22 @@ Source code and issues: https://github.com/albertlast/WoWFGRezept
 Questions or bugs? Use the comments, the GitHub issues or message the author.
 ```
 
-## File upload (0.20.0)
+## File upload (0.21.0)
 
-Done by the release workflow (tag `v0.20.0`); for a manual upload:
+Done by the release workflow (tag `v0.21.0`); for a manual upload:
 
-- File: `dist/GuildTradebook-0.20.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
+- File: `dist/GuildTradebook-0.21.0.zip` (one root folder `GuildTradebook`, matching `GuildTradebook.toc`)
 - Release type: Release
-- Display name: `0.20.0`
+- Display name: `0.21.0`
 - Game version: World of Warcraft: Forever; the TOC says `## Interface: 16001`
 
 ### Changelog (Markdown)
 
 ```markdown
+## 0.21.0
+
+- **Unknown in guild:** a new switch in the Recipes tab lists the recipes nobody in the guild knows yet. Open each of your professions once in the profession window; lists of other professions come from guild members running 0.21.0 or later.
+
 ## 0.20.0
 
 - Fix: material costs use the cheaper of the vendor price Auctionator saw and the auction house price; an expensive merchant no longer inflates the cost.
@@ -193,7 +197,7 @@ Gebaut für **World of Warcraft: Forever** (Interface 16001). Auf Englisch und D
 
 ## Rezepte
 
-Alle Rezepte, die die Gilde herstellen kann, gruppiert wie im Berufsfenster (Beruf > Kategorie). Suche nach Rezept- oder Gegenstandsnamen oder filtere nach Beruf. Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien mit dem, was du hast, und dem, was du brauchst; mit Auctionator auch die Materialkosten und im Auktionshaus einen Button, der die Materialien sucht. Am Briefkasten **schickt ein Rechtsklick auf einen Hersteller ihm die Materialien per Post**: Das Addon teilt die Stapel und füllt den Brief aus, du klickst auf Senden.
+Alle Rezepte, die die Gilde herstellen kann, gruppiert wie im Berufsfenster (Beruf > Kategorie). Suche nach Rezept- oder Gegenstandsnamen oder filtere nach Beruf. Ein Klick auf ein Rezept zeigt, wer es herstellt (online zuerst, Klick zum Anflüstern) und die Materialien mit dem, was du hast, und dem, was du brauchst; mit Auctionator auch die Materialkosten und im Auktionshaus einen Button, der die Materialien sucht. Am Briefkasten **schickt ein Rechtsklick auf einen Hersteller ihm die Materialien per Post**: Das Addon teilt die Stapel und füllt den Brief aus, du klickst auf Senden. Der Schalter **In der Gilde unbekannt** zeigt die Rezepte, die in der Gilde noch niemand kennt.
 
 ![Reiter Rezepte](https://raw.githubusercontent.com/albertlast/WoWFGRezept/main/docs/screenshots/recipes.png)
 
@@ -254,6 +258,10 @@ Fragen oder Fehler? Schreib einen Kommentar, ein GitHub-Issue oder melde dich be
 ### Changelog (Markdown)
 
 ```markdown
+## 0.21.0
+
+- **In der Gilde unbekannt:** Ein neuer Schalter im Reiter Rezepte listet die Rezepte, die in der Gilde noch niemand kennt. Öffne jeden deiner Berufe einmal im Berufsfenster; die Listen anderer Berufe kommen von Gildenmitgliedern mit Version 0.21.0 oder neuer.
+
 ## 0.20.0
 
 - Fix: Die Materialkosten nehmen den günstigeren Preis aus dem von Auctionator gesehenen Händlerpreis und dem Auktionshauspreis; ein teurer Händler treibt die Kosten nicht mehr hoch.

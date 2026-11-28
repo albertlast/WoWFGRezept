@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0 (2026-11-28)
+
+- **Unknown in guild:** a new switch in the Recipes tab lists the recipes nobody in the guild knows yet, with the skill at which each turns grey. The game lists every recipe of a profession in its profession window, learned or not; open each of your professions there once. The lists are kept for your whole account, so your alts' professions count too.
+- Lists of professions you do not have come from guild members: while the switch is on, one online member with that profession is asked by whisper, once per game version. Only members running 0.21.0 or later can answer, older versions are never asked and notice nothing; the count of professions still without a list stands next to the switch.
+
 ## 0.20.0 (2026-11-24)
 
 - Fix: material costs with Auctionator now take the cheaper of the vendor price Auctionator saw and the auction house price. Before, any merchant Auctionator had seen won, even one asking 50 gold for a reagent that sells for 28 silver in the auction house. Vendor goods like thread, vials or dye still count with the full vendor price.
