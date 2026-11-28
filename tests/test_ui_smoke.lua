@@ -830,6 +830,72 @@ test("tabs, rows and tooltip run against real pool data", function()
 	eq(told[2], "Otto-OtherRealm")
 end)
 
+test("Recipes tab: the unknown-in-guild switch lists listed recipes nobody in the guild knows", function()
+	local world = H.NewWorld()
+	local a = world:AddChar({ guid = "Player-1-00000001", name = "Anna",
+		profs = { [197] = { rank = 150, maxRank = 300, name = "Tailoring", recipes = { [3914] = 2568 } } } })
+	-- Bert knows 3916; his window also lists three recipes he has not learned.
+	local b = world:AddChar({ guid = "Player-1-00000002", name = "Bert", recipeTrivial = { [3917] = 110 },
+		profs = { [197] = { rank = 100, maxRank = 300, name = "Tailoring", recipes = { [3916] = 2570 },
+			unlearned = { [3914] = true, [3917] = true, [3918] = true } } } })
+	local cb = world:Login(b.guid)
+	local ca = world:Login(a.guid)
+	world:Run(60)
+	ca:OpenTradeSkill(197)
+	cb:OpenTradeSkill(197)
+	world:Run(120)
+
+	local ui = uiEnv(cb)
+	local ns = cb.ns
+	eq(table.concat(ns.Catalog.Recipes(197), ","), "3914,3916,3917,3918", "the whole list, learned or not")
+	local asked = 0
+	ns.Protocol.RequestFacts = function() asked = asked + 1 end
+
+	local function recipeIDs()
+		local ids = {}
+		for _, item in ipairs(ui.lists[1].items) do
+			if item.kind ~= "group" then ids[#ids + 1] = item.recipeID end
+		end
+		table.sort(ids)
+		return table.concat(ids, ",")
+	end
+	ns.UI.Show("search", "recipe") -- searching: every group open
+	eq(recipeIDs(), "3914,3916", "switch off: the guild's recipes")
+	ns.UI.ShowUnknownRecipes(true)
+	eq(recipeIDs(), "3917,3918", "switch on: listed, nobody knows them")
+	truthy(ns.Unknown.Is(3917))
+	falsy(ns.Unknown.Is(3914), "Anna knows it")
+	falsy(ns.Unknown.Is(123456), "in no list")
+	local row
+	for _, item in ipairs(ui.lists[1].items) do
+		if item.recipeID == 3917 then row = item end
+	end
+	truthy(row.count:find("110", 1, true), "grey skill on the right: " .. row.count)
+
+	ns.UI.ShowRecipe(3917)
+	local line
+	for _, list in ipairs(ui.lists) do
+		local items = rawget(list, "items") or {}
+		if items[1] and items[1].text then line = items[1].text end
+	end
+	truthy(line and line:find("Nobody in your guild knows this recipe yet.", 1, true), tostring(line))
+	eq(asked, 0, "nobody is asked about reagents of unknown recipes")
+
+	-- Anna learns 3917: it leaves the list.
+	a.profs[197].recipes[3917] = 2571
+	ca:Fire("NEW_RECIPE_LEARNED", 3917)
+	world:Run(120)
+	ns.UI.Show("search", "recipe")
+	eq(recipeIDs(), "3918")
+
+	ns.UI.ShowUnknownRecipes(false)
+	eq(recipeIDs(), "3914,3916,3917")
+	ns.UI.ShowUnknownRecipes(true)
+	ns.UI.ShowCrafter(a.guid)
+	ns.UI.Show("search", "recipe")
+	eq(recipeIDs(), "3914,3917", "the Members tab's crafter view turns the switch off")
+end)
+
 test("EllesmereUI skin: our frames are handed over, queued until the skin arrives", function()
 	local world = H.NewWorld()
 	local a = world:AddChar({ guid = "Player-1-00000001", name = "Anna" })

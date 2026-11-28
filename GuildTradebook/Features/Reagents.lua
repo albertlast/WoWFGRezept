@@ -31,8 +31,9 @@ end
 
 -- Reagents of a recipe ({ {itemID, quantity, optional}, ... }): known facts,
 -- else the local client, else asked from the guild (FACT_REQ, see Protocol)
--- and nil until the answer arrives.
-function Reagents.ForRecipe(recipeID)
+-- and nil until the answer arrives. localOnly: never ask the guild (a recipe
+-- nobody there knows); nil then means the reagents are unknown.
+function Reagents.ForRecipe(recipeID, localOnly)
 	local fact = ns.db.recipeFacts[recipeID]
 	if fact and fact.reagents then
 		return fact.reagents
@@ -45,7 +46,9 @@ function Reagents.ForRecipe(recipeID)
 			return fact.reagents
 		end
 	end
-	ns.Protocol.RequestFacts({ recipeID })
+	if not localOnly then
+		ns.Protocol.RequestFacts({ recipeID })
+	end
 	return nil
 end
 

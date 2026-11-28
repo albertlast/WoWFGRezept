@@ -2074,6 +2074,112 @@ test("recipe categories travel with the record; names come in the viewer's langu
 	truthy(cg.ns.Categories.Of(3915) == 11)
 end)
 
+-- Recipe lists (Catalog): Anna (0.21) lists Alchemy with two unlearned
+-- recipes, Olli (0.20) has Alchemy too, Cleo (0.21) has no profession.
+local function listWorld(seed, opts)
+	opts = opts or {}
+	math.randomseed(seed)
+	local world = H.NewWorld()
+	local function alchemist(n, name, version)
+		return world:AddChar({ guid = guid(n), name = name, version = version,
+			recipeTrivial = { [2330] = 60 }, recipeCats = { [2330] = 5 },
+			profs = { [ALCHEMY] = { rank = 100, maxRank = 300, name = "Alchemy", recipes = { [2329] = 2454 },
+				unlearned = { [2330] = true, [2331] = true } } } })
+	end
+	local a = not opts.noAnna and alchemist(1, "Anna", "0.21.0") or nil
+	local o = alchemist(2, "Olli", "0.20.0")
+	local b = opts.bea and alchemist(4, "Bea", "0.21.0") or nil
+	local c = world:AddChar({ guid = guid(3), name = "Cleo", version = "0.21.0" })
+	local cc = world:Login(c.guid)
+	local clients = { c = cc }
+	for key, char in pairs({ a = a, o = o, b = b }) do
+		clients[key] = world:Login(char.guid)
+	end
+	world:Run(60)
+	for key, client in pairs(clients) do
+		if key ~= "c" and not (opts.unscanned and opts.unscanned[key]) then client:OpenTradeSkill(ALCHEMY) end
+	end
+	world:Run(120)
+	-- Who Cleo asks.
+	local asked = {}
+	local request = cc.ns.Protocol.RequestLists
+	cc.ns.Protocol.RequestLists = function(target, skillLines)
+		asked[#asked + 1] = (cc.ns.Roster.NameOf(target):gsub("%-.*$", ""))
+		return request(target, skillLines)
+	end
+	world:ResetCounters()
+	return world, clients, asked
+end
+
+test("recipe lists: asked from a member running 0.21, never from older versions", function()
+	local world, cl, asked = listWorld(31)
+	local cc = cl.c
+	eq(table.concat(cl.a.ns.Catalog.Recipes(ALCHEMY), ","), "2329,2330,2331", "Anna's own window")
+	eq(cc.ns.Catalog.Recipes(ALCHEMY), nil, "Cleo has no Alchemy")
+	-- Nothing is asked until the switch shows the list.
+	world:Run(300)
+	eq(world.byType.L, nil, "no request in the background")
+	cc.ns.Unknown.Search("", 0)
+	world:Run(30)
+	eq(table.concat(asked, ","), "Anna", "only the 0.21 alchemist is asked")
+	eq(world.byType.L, 1)
+	eq(world.byType.M, 1, "one answer")
+	eq(table.concat(cc.ns.Catalog.Recipes(ALCHEMY), ","), "2329,2330,2331")
+	local db = cc.env.GuildTradebookDB
+	eq(db.recipeFacts[2330].trivial, 60, "grey skill came with the list")
+	eq(db.recipeFacts[2330].cat, 5, "category came with the list")
+	truthy(cc.ns.Unknown.Is(2330))
+	falsy(cc.ns.Unknown.Is(2329), "known in the guild")
+	-- Complete: nothing more is asked.
+	world:Run(600)
+	cc.ns.Unknown.Search("", 0)
+	world:Run(120)
+	eq(world.byType.L, 1, "no second request")
+end)
+
+test("recipe lists: with only older versions online nobody is asked", function()
+	local world, cl, asked = listWorld(32, { noAnna = true })
+	local cc = cl.c
+	cc.ns.Unknown.Search("", 0)
+	world:Run(200)
+	eq(#asked, 0)
+	eq(world.byType.L, nil)
+	eq(table.concat(cc.ns.Catalog.Missing(), ","), tostring(ALCHEMY), "still missing")
+end)
+
+test("recipe lists: a member without the list stays silent, the next one is asked", function()
+	local world, cl, asked = listWorld(33, { bea = true, unscanned = { a = true } })
+	local cc = cl.c
+	eq(cl.a.ns.Catalog.Recipes(ALCHEMY), nil, "Anna has not opened her window")
+	cc.ns.Unknown.Search("", 0)
+	world:Run(200)
+	truthy(#asked >= 1 and #asked <= 2, "asked: " .. table.concat(asked, ","))
+	eq(asked[#asked], "Bea", "the list came from Bea")
+	eq(table.concat(cc.ns.Catalog.Recipes(ALCHEMY), ","), "2329,2330,2331")
+end)
+
+test("recipe lists: taken only when asked for, from the same build, never over the own list", function()
+	local world, cl = listWorld(34)
+	local Catalog = cl.c.ns.Catalog
+	local flat = { 2329, 2454, 0, 0, 2330, 0, 60, 5 }
+	falsy(Catalog.FromWire(ALCHEMY, Catalog.Build(), flat), "not asked for")
+	Catalog.requested[ALCHEMY] = { at = 0, first = 0, tried = {} }
+	falsy(Catalog.FromWire(ALCHEMY, "1.60.1.1", flat), "another game build")
+	falsy(Catalog.FromWire(ALCHEMY, Catalog.Build(), { 2329, 2454, 0 }), "malformed")
+	falsy(Catalog.FromWire(ALCHEMY, Catalog.Build(), { -1, 0, 0, 0 }), "invalid recipe")
+	truthy(Catalog.FromWire(ALCHEMY, Catalog.Build(), flat))
+	eq(table.concat(Catalog.Recipes(ALCHEMY), ","), "2329,2330")
+	-- Anna's own list is never replaced by someone else's.
+	local own = cl.a.ns.Catalog
+	own.requested[ALCHEMY] = { at = 0, first = 0, tried = {} }
+	falsy(own.FromWire(ALCHEMY, own.Build(), flat))
+	eq(table.concat(own.Recipes(ALCHEMY), ","), "2329,2330,2331")
+	-- A new game build: the old lists count as missing.
+	cl.c.env.GetBuildInfo = function() return "1.60.2", "71000" end
+	eq(Catalog.Recipes(ALCHEMY), nil)
+	world:Run(1)
+end)
+
 test("grey skills travel with the record (order of the recipe list)", function()
 	math.randomseed(7)
 	local world = H.NewWorld()

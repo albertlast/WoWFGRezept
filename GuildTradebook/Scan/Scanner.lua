@@ -580,11 +580,37 @@ function Scanner.ScanTradeSkill()
 
 	local prof = own.profs[skillLine]
 	local recipes, cooldowns, cats, catIDs, trivial, count, seen = {}, {}, {}, {}, {}, 0, 0
+	-- Every recipe of the profession, learned or not (Catalog).
+	local listed, build = {}, Scanner.BuildKey()
 	for _, recipeID in ipairs(ids) do
 		local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
 		if info then seen = seen + 1 end
-		if info and info.learned and not info.isDummyRecipe and not info.isGatheringRecipe
-			and not info.isSalvageRecipe and not info.isRecraft and not isForeign(own, skillLine, recipeID) then
+		local craftable = info and not info.isDummyRecipe and not info.isGatheringRecipe
+			and not info.isSalvageRecipe and not info.isRecraft and not isForeign(own, skillLine, recipeID)
+		if craftable then
+			listed[#listed + 1] = recipeID
+		end
+		if craftable and not info.learned then
+			-- Facts once per game version: item, grey skill and category
+			-- for the "Unknown in guild" list. Without reagents they came
+			-- from someone else (LIST), not from this client.
+			local fact = ns.db.recipeFacts[recipeID]
+			if not fact or fact.build ~= build or not fact.reagents then
+				fact = Scanner.ResolveFact(recipeID, info)
+			end
+			-- No schematic: grey skill and category from the recipe info.
+			if not fact then
+				local partial = {}
+				if Util.IsInt(info.maxTrivialLevel, 1, 10000) then partial.trivial = info.maxTrivialLevel end
+				if Util.IsInt(info.categoryID, 1, 2 ^ 31) then partial.cat = info.categoryID end
+				if next(partial) then
+					Store.SetFact(ns.db, recipeID, partial, true, build)
+					fact = ns.db.recipeFacts[recipeID]
+				end
+			end
+			if fact and fact.cat then catIDs[fact.cat] = true end
+		end
+		if craftable and info.learned then
 			local fact = Scanner.ResolveFact(recipeID, info)
 			recipes[recipeID] = fact and fact.item or 0
 			cooldowns[recipeID] = Scanner.ReadCooldown(recipeID)
@@ -596,7 +622,14 @@ function Scanner.ScanTradeSkill()
 			count = count + 1
 		end
 	end
+	-- Only the complete list, with every listed recipe described.
+	if complete and seen == #ids and #listed > 0 then
+		ns.Catalog.Set(skillLine, listed, true)
+	end
 	if count == 0 then
+		if Scanner.ResolveCategories(catIDs) then
+			ns.Emit("CategoriesChanged")
+		end
 		ns.Debug("scan", skillLine, "no learned recipes:", #ids, "listed,", seen, "described,",
 			complete and "complete" or "partial", prof.recipes and "has data" or "not scanned")
 		applyEmpty(own, skillLine, complete and seen == #ids)

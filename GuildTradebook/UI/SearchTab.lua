@@ -1,10 +1,12 @@
 local _, ns = ...
 
-local L, W, Index, Util, Categories = ns.L, ns.Widgets, ns.Index, ns.Util, ns.Categories
+local L, W, Index, Util, Categories, Unknown = ns.L, ns.Widgets, ns.Index, ns.Util, ns.Categories, ns.Unknown
 -- history: recipes visited by clicking a reagent, for the Back button.
 -- crafter: GUID of a member whose recipes are shown (from the Members tab).
 -- searchClosed: groups closed by hand during the current search.
-local state = { text = "", skillLine = 0, selected = nil, crafts = 1, history = {}, crafter = nil, searchClosed = {} }
+-- unknown: the list shows the recipes nobody in the guild knows (Unknown).
+local state = { text = "", skillLine = 0, selected = nil, crafts = 1, history = {}, crafter = nil, searchClosed = {},
+	unknown = false }
 local MAX_HISTORY = 20
 local MAX_CRAFTS = 50
 local MAX_REAGENT_ROWS = 8
@@ -220,12 +222,14 @@ end
 
 local function refreshReagents(rid)
 	local d = ui.detail
-	local reagents = rid and ns.Reagents.ForRecipe(rid)
+	-- Nobody in the guild could answer for an unknown recipe.
+	local unknown = rid and Unknown.Is(rid)
+	local reagents = rid and ns.Reagents.ForRecipe(rid, unknown)
 	local rows = {}
 	if not rid then
 		d.reagents:SetText("")
 	elseif not reagents then
-		d.reagents:SetText(L.REAGENTS_LOADING)
+		d.reagents:SetText(unknown and L.REAGENTS_UNKNOWN or L.REAGENTS_LOADING)
 	else
 		d.reagents:SetText(L.REAGENTS_FOR:format(state.crafts))
 		rows = ns.Reagents.Check(reagents, state.crafts, ns.Reagents.Count)
@@ -260,10 +264,21 @@ local function refreshReagents(rid)
 	end
 end
 
+-- The list under the reagents: who crafts the recipe, or one line saying
+-- nobody in the guild knows it.
+local function refreshCrafters(rid)
+	if rid and Unknown.Is(rid) then
+		ui.crafters:SetData({ { text = "|cff999999" .. L.UNKNOWN_NOBODY .. "|r" } })
+		return
+	end
+	ui.crafters:SetData(rid and Index.Crafters(rid) or {})
+end
+
 local function refreshDetail()
 	local d = ui.detail
 	local rid = state.selected
-	d.wish:SetShown(rid ~= nil)
+	-- A wish waits for a crafter; an unknown recipe has none.
+	d.wish:SetShown(rid ~= nil and not Unknown.Is(rid))
 	d.back:SetShown(#state.history > 0)
 	-- The header uses the Back button's space while it is hidden.
 	d.item:SetPoint("RIGHT", d.back:IsShown() and d.back or d.wish, "LEFT", -6, 0)
@@ -274,7 +289,7 @@ local function refreshDetail()
 		d.item.itemID, d.item.spellID = nil, nil
 		d.item:SetText("")
 		d.item.icon:Hide()
-		ui.crafters:SetData({})
+		refreshCrafters(nil)
 		return
 	end
 	-- Header: the crafted item (icon + link). Recipes without an item
@@ -293,7 +308,7 @@ local function refreshDetail()
 	d.item.icon:SetTexture(icon or nil)
 	d.item.icon:SetShown(icon ~= nil and icon ~= false)
 	d.wish:SetText(ns.Wishlist.Has(rid) and L.WISH_REMOVE or L.WISH_ADD)
-	ui.crafters:SetData(Index.Crafters(rid))
+	refreshCrafters(rid)
 end
 
 local function selectRecipe(recipeID)
@@ -308,7 +323,12 @@ local function refresh(_, arg)
 		state.text = arg
 		ui.search:SetText(arg)
 	end
-	local results = Index.Search(state.text, state.skillLine, state.crafter, ns.db.options.hideForeignBoP)
+	local results
+	if state.unknown then
+		results = Unknown.Search(state.text, state.skillLine)
+	else
+		results = Index.Search(state.text, state.skillLine, state.crafter, ns.db.options.hideForeignBoP)
+	end
 	if state.crafter then
 		local c = Index.CrafterInfo(state.crafter)
 		ui.crafterLabel:SetText(L.FILTER_CRAFTER:format(Util.ClassColored(Util.ShortName(c.name), c.class)))
@@ -316,15 +336,44 @@ local function refresh(_, arg)
 	ui.crafterLabel:SetShown(state.crafter ~= nil)
 	ui.crafterClear:SetShown(state.crafter ~= nil)
 	ui.results:SetData(RecipeList.Rows(results, state.skillLine == 0, isOpen, not searching()))
-	for _, r in ipairs(results) do
+	ui.unknown:Refresh()
+	-- Professions whose recipe list has not arrived yet (Catalog).
+	local missing = {}
+	if state.unknown then
+		for _, sl in ipairs(ns.Catalog.Missing()) do
+			if state.skillLine == 0 or sl == state.skillLine then missing[#missing + 1] = sl end
+		end
+	end
+	ui.missing.skillLines = missing
+	ui.missing.fs:SetText(L.UNKNOWN_MISSING:format(#missing))
+	ui.missing:SetShown(#missing > 0)
+	-- Categories are asked for the guild's recipes only.
+	for _, r in ipairs(state.unknown and {} or results) do
 		if not Categories.Of(r.recipeID) then
 			Categories.Shown()
 			break
 		end
 	end
+	ui.empty:SetText(#missing > 0 and L.UNKNOWN_WAITING or L.NO_RESULTS)
 	ui.empty:SetShown(#results == 0)
 	ui.profession:GenerateMenu()
 	refreshDetail()
+end
+
+-- The "Unknown in guild" switch: starts from a plain list (no crafter
+-- filter, nothing selected); a profession filter stays if the new list has
+-- that profession.
+local function setUnknown(on)
+	state.unknown = on
+	state.crafter = nil
+	state.selected = nil
+	state.history = {}
+	state.searchClosed = {}
+	local skills = on and Unknown.SkillLines() or Index.SkillLines()
+	if state.skillLine ~= 0 and not Util.Contains(skills, state.skillLine) then
+		state.skillLine = 0
+	end
+	refresh()
 end
 
 local function build(content)
@@ -344,7 +393,7 @@ local function build(content)
 
 	ui.profession = W.CreateDropdown(content, 180, function()
 		local entries = { { 0, L.ALL_PROFESSIONS } }
-		for _, sl in ipairs(Index.SkillLines()) do
+		for _, sl in ipairs(state.unknown and Unknown.SkillLines() or Index.SkillLines()) do
 			entries[#entries + 1] = { sl, Index.SkillLineName(sl) }
 		end
 		return entries
@@ -354,9 +403,39 @@ local function build(content)
 	end)
 	ui.profession:SetPoint("LEFT", search, "RIGHT", 12, 0)
 
+	-- Switch: the recipes nobody in the guild knows instead of the guild's.
+	ui.unknown = W.CreateCheck(content, L.UNKNOWN_TOGGLE, function() return state.unknown end, setUnknown)
+	ui.unknown:SetPoint("LEFT", ui.profession, "RIGHT", 10, 0)
+	ui.unknown:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(L.UNKNOWN_TOGGLE)
+		GameTooltip:AddLine(L.UNKNOWN_TOGGLE_HINT, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	ui.unknown:SetScript("OnLeave", GameTooltip_Hide)
+
+	-- With the switch on: how many professions still lack their recipe list
+	-- (asked from guild members), the names in the tooltip.
+	ui.missing = CreateFrame("Button", nil, content)
+	ui.missing:SetSize(110, 20)
+	ui.missing:SetPoint("LEFT", ui.unknown.label, "RIGHT", 12, 0)
+	ui.missing.fs = W.Text(ui.missing, "GameFontDisableSmall")
+	ui.missing.fs:SetAllPoints()
+	ui.missing:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(L.UNKNOWN_MISSING:format(#(self.skillLines or {})))
+		for _, sl in ipairs(self.skillLines or {}) do
+			GameTooltip:AddLine(Index.SkillLineName(sl), 1, 1, 1)
+		end
+		GameTooltip:AddLine(L.UNKNOWN_MISSING_HINT, nil, nil, nil, true)
+		GameTooltip:Show()
+	end)
+	ui.missing:SetScript("OnLeave", GameTooltip_Hide)
+	ui.missing:Hide()
+
 	-- Crafter filter, set from the Members tab; the button removes it.
 	ui.crafterLabel = W.Text(content, "GameFontHighlightSmall")
-	ui.crafterLabel:SetPoint("LEFT", ui.profession, "RIGHT", 12, 0)
+	ui.crafterLabel:SetPoint("LEFT", ui.unknown.label, "RIGHT", 12, 0)
 	ui.crafterClear = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
 	ui.crafterClear:SetSize(22, 20)
 	ui.crafterClear:SetText("x")
@@ -541,6 +620,7 @@ local function build(content)
 		row.text:SetPoint("LEFT", 4, 0)
 		row.text:SetPoint("RIGHT", -4, 0)
 		row:SetScript("OnClick", function(self, button)
+			if self.data.text then return end -- "nobody knows it"
 			if button == "RightButton" then
 				crafterMenu(self, self.data)
 				return
@@ -552,7 +632,7 @@ local function build(content)
 		end)
 	end, function(row, data)
 		row.data = data
-		row.text:SetText(W.CrafterLabel(data))
+		row.text:SetText(data.text or W.CrafterLabel(data))
 	end)
 	ui.crafters.box:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
 	ui.crafters.box:SetPoint("BOTTOMRIGHT", -16, 0)
@@ -609,6 +689,7 @@ end
 -- the profession filter to skillLine (nil: all professions).
 function ns.UI.ShowCrafter(guid, skillLine)
 	state.crafter = guid
+	state.unknown = false
 	state.text = ""
 	state.skillLine = skillLine or 0
 	state.selected = nil
@@ -620,6 +701,12 @@ end
 -- For tests: the auction house search button of the recipe detail.
 function ns.UI.RecipeSearchButton()
 	return ui.detail.ahSearch
+end
+
+-- Opens the Recipes tab with the "Unknown in guild" switch on or off.
+function ns.UI.ShowUnknownRecipes(on)
+	ns.UI.Show("search")
+	setUnknown(on and true or false)
 end
 
 -- For tests: how many recipes Back can return through.

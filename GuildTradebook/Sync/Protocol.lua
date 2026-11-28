@@ -41,6 +41,13 @@ Recipe categories (see Search/Categories.lua):
   E  CAT      {c = categories,          whisper answer: every language the sender knows,
                r = {recipeID, categoryID, ...}}  and the recipes' categories
 
+Recipe lists of a profession, learned or not (see Data/Catalog.lua; since
+0.21, older versions ignore both types and are never asked):
+  L  LIST_REQ {s = skillLines}          whisper to an online member with the profession
+  M  LIST     {s = skillLine,           whisper answer, one per profession it has a list of:
+               b = game build,          taken only from the same build
+               l = {recipeID, item, grey, category, ...}}  (0 = not known)
+
 Guild chat "!craft" (see Features/ChatResponder.lua):
   X  ANSWERED {k = question key}        GUILD: "I answer this one", others stay silent
 
@@ -67,6 +74,7 @@ local P = {
 	outRecords = {},    -- [target name] = { guid = .., set = {[guid] = true} }: records about to go out
 	split = nil,        -- { partner, at, deferred = {[guid] = digest entry} } (fresh install)
 	outbox = {},
+	listAnswered = {},  -- [sender .. ":" .. skillLine] = GetTime() of our last LIST to them
 }
 ns.Protocol = P
 
@@ -80,6 +88,7 @@ P.MAX_FACTS = 50
 P.MAX_CATEGORIES = 100
 P.MAX_CATEGORY_RECIPES = 200
 P.MAX_OUTBOX = 100
+P.LIST_ANSWER_GAP = 60       -- seconds: the same list goes to the same member at most this often
 P.MAJOR_DELAY = 5            -- seconds: profession or recipe changes
 P.MINOR_DELAY = 60           -- seconds: rank-ups, in a small guild
 P.MINOR_DELAY_MAX = 900      -- seconds: rank-ups, however busy the guild is
@@ -699,6 +708,11 @@ function P.RequestCategories(guid, ids, rids)
 	P.Send({ t = "C", l = ids, r = rids }, "WHISPER", Roster.NameOf(guid), "BULK", guid)
 end
 
+-- Recipe lists of professions (Catalog), from one member.
+function P.RequestLists(guid, skillLines)
+	P.Send({ t = "L", s = skillLines }, "WHISPER", Roster.NameOf(guid), "NORMAL", guid)
+end
+
 -- Receiving --------------------------------------------------------------------
 
 local handlers = {}
@@ -1038,6 +1052,27 @@ handlers.E = function(msg, channel)
 	end
 	if changed then
 		ns.Emit("CategoriesChanged")
+	end
+end
+
+handlers.L = function(msg, channel, sender)
+	if channel ~= "WHISPER" or type(msg.s) ~= "table" or #msg.s > ns.Catalog.MAX_SKILLS then return end
+	local now = GetTime()
+	for _, sl in ipairs(msg.s) do
+		local key = sender .. ":" .. tostring(sl)
+		local last = P.listAnswered[key]
+		local flat = Util.IsInt(sl, 1, 2 ^ 31) and not (last and now - last < P.LIST_ANSWER_GAP) and ns.Catalog.ToWire(sl)
+		if flat then
+			P.listAnswered[key] = now
+			P.Send({ t = "M", s = sl, b = ns.Catalog.Build(), l = flat }, "WHISPER", sender, "BULK")
+		end
+	end
+end
+
+handlers.M = function(msg, channel, sender)
+	if channel ~= "WHISPER" then return end
+	if ns.Catalog.FromWire(msg.s, msg.b, msg.l) then
+		ns.Debug("recipe list", msg.s, "from", sender)
 	end
 end
 

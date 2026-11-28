@@ -116,6 +116,7 @@ function Store.InitDB(saved)
 	saved.guilds = saved.guilds or {}
 	saved.recipeFacts = saved.recipeFacts or {}
 	saved.categories = saved.categories or {}
+	saved.recipeLists = saved.recipeLists or {} -- see Data/Catalog.lua
 	if type(saved.tooltipHidden) ~= "table" then
 		-- Not set up yet: the default filter. It is by skill line, so it works
 		-- before a single profession is known; later marks are the user's.
